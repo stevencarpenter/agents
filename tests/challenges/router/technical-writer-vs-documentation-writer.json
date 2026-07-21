@@ -1,0 +1,20 @@
+{
+  "challenges": [
+    {
+      "id": "tutorial-vs-readme-api",
+      "prompt": "Write a hands-on tutorial that teaches homelab operators how to add a new Compose service end-to-end.",
+      "preferred_agent": "technical-writer",
+      "wrong_agent": "documentation-writer",
+      "must_include": ["tutorial", "outline"],
+      "must_not_include": ["API reference table"]
+    },
+    {
+      "id": "readme-env-reference",
+      "prompt": "Document every environment variable and CLI flag for mcp_sync in the README reference section.",
+      "preferred_agent": "documentation-writer",
+      "wrong_agent": "technical-writer",
+      "must_include": ["reference", "README"],
+      "must_not_include": ["step-by-step tutorial"]
+    }
+  ]
+}

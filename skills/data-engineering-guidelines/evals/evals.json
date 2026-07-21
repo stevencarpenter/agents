@@ -1,0 +1,49 @@
+{
+  "skill_name": "data-engineering-guidelines",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Review the proposed lakehouse design in evals/files/clickstream_pipeline_design.md before the team builds it. Deliver outputs/review.md with severity-ranked findings — each naming the failure mode, citing the design section as evidence, and giving the corrected form — plus a corrected outputs/design.md for the storage, ingestion, retention, and PII sections.",
+      "expected_output": "Review naming bare-Parquet, user_id over-partitioning, non-idempotent blind append, VACUUM below time-travel retention, and query-side PII masking; corrected design uses Delta/Iceberg, date partitioning or liquid clustering, idempotent MERGE/dedup keyed on a stable key, safe retention, and catalog-level masking at silver.",
+      "files": ["evals/files/clickstream_pipeline_design.md"],
+      "expectations": [
+        "Flags bare Parquet and requires Delta Lake or Iceberg for ACID, schema evolution, and time travel",
+        "Flags partitioning by high-cardinality user_id as a small-files problem; corrected design partitions on date or uses liquid clustering / hidden partitioning",
+        "Flags blind append on consumer restart as non-idempotent duplicate ingestion; corrected design dedups or MERGEs on a stable event key so replays converge",
+        "Flags the planned VACUUM RETAIN 24 HOURS as breaking the reproducibility finance depends on — retention must never undercut the time-travel window backing monthly-close reruns",
+        "Flags per-dashboard masking of email/ip_address; corrected design masks or tokenizes PII at the silver layer via catalog policies (row filters / column masks), not in ad-hoc queries",
+        "Flags the daily full scan of clean/ and prescribes partition pruning or an incremental gold aggregate"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Design and implement the bronze-to-silver CDC pipeline for evals/files/customers_cdc_contract.md. Deliver outputs/silver_customers.py (PySpark or engine-neutral pseudocode is acceptable, but MERGE logic must be concrete), outputs/quality_checks.md deciding drop/quarantine/fail per contract check, and outputs/runbook.md documenting the 3-day replay procedure and how deletes are handled.",
+      "expected_output": "Medallion pipeline with idempotent MERGE keyed on customer_id ordered by lsn, tombstoned deletes, explicit per-check violation actions, and a partition-level replay runbook.",
+      "files": ["evals/files/customers_cdc_contract.md"],
+      "expectations": [
+        "Bronze is append-only immutable landing of the raw Debezium envelope; silver is derived and reproducible from bronze",
+        "Dedup and MERGE order changes by lsn (not updated_at alone), matching the contract's total-order semantics",
+        "MERGE is idempotent on customer_id: re-running any window converges to the same silver state",
+        "Deletes tombstone the silver row (is_deleted flag) rather than physically deleting, with bronze history retained",
+        "quality_checks.md assigns an explicit action (drop, quarantine, or fail the run) to each of the four contract checks with a rationale",
+        "PII handling puts email masking at the silver boundary via catalog-level policy tied to the analyst_pii role, not in consumer queries",
+        "runbook.md documents deterministic partition-level replay of a 3-day bronze window"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Review the ML training-data builder in evals/files/churn_training_set.py for data-correctness problems that would silently corrupt the churn model. Deliver outputs/review.md naming each failure mode with line-level evidence, and outputs/fixed_training_set.py correcting them.",
+      "expected_output": "Review identifying point-in-time leakage from the all-history feature join, training/serving skew from duplicated feature definitions, missing training-data versioning, and unversioned embeddings; fix uses as-of joins bounded by observation_date and pins snapshots/model versions.",
+      "files": ["evals/files/churn_training_set.py"],
+      "expectations": [
+        "Identifies point-in-time leakage: features aggregate ALL order history, including events after each label's observation_date, leaking the future into training",
+        "Fix computes features with an as-of join or a window bounded by observation_date per label row",
+        "Identifies training/serving skew risk: serving_feature_sql duplicates the feature definitions as a separately maintained SQL copy; recommends a single shared feature definition (feature store) serving both offline and online",
+        "Identifies missing reproducibility: no table snapshot/version or feature-code version is recorded, so a model run cannot be reconstructed",
+        "Identifies that the embeddings are unversioned: neither the embedding model nor the source snapshot is pinned, so re-runs silently change the vector space",
+        "Flags the full overwrite rebuild of ticket_embeddings and recommends keeping the vector data in sync with source updates via the same CDC/incremental path as other derived tables",
+        "review.md names the failure modes explicitly (leakage, skew, reproducibility) with line references rather than generic style notes"
+      ]
+    }
+  ]
+}

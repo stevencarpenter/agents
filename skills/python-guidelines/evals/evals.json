@@ -1,0 +1,50 @@
+{
+  "skill_name": "python-guidelines",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Review evals/files/report_runner.py as a senior Python reviewer. Deliver outputs/review.md with severity-ranked findings (correctness > type safety > resource safety > testability > style), each with line evidence and the corrected idiom, then outputs/report_runner_fixed.py applying the fixes.",
+      "expected_output": "Findings covering shell=True command injection, bare except returning None, swallowed scp failures, mutable default argument, unclosed file handle, os.getcwd string path concatenation, module-level mutable cache, untyped signatures, and the ignored subprocess result; fixed code uses list args with check=True, pathlib, specific exceptions, typed signatures, and context managers.",
+      "files": ["evals/files/report_runner.py"],
+      "expectations": [
+        "Flags both subprocess calls for shell=True with interpolated input as command injection; fix passes args as a list without shell",
+        "Flags missing check=True and the ignored/unused subprocess result (run_report ignores failure and returns a path that may not exist)",
+        "Flags the bare except: returning None in load_report and the except Exception: pass in ship_reports as silently swallowing errors; fix raises specific exceptions or lets them propagate",
+        "Flags the mutable default argument params={}",
+        "Flags open() without a context manager (file handle leak) and string path concatenation; fix uses pathlib.Path and with open",
+        "Flags the module-level mutable CACHE dict as unjustified global state",
+        "Flags untyped public signatures; fixed version types every public function",
+        "Fixed code contains no shell=True and no bare except anywhere"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Implement the library module specified in evals/files/checkpoint_spec.md. Deliver outputs/checkpoint.py and outputs/test_checkpoint.py exactly to spec (stdlib only, typed throughout). State the exact command you would run to prove the tests pass.",
+      "expected_output": "Typed CheckpointStore using pathlib, atomic temp-file-then-rename saves, distinct missing-vs-corrupt signaling, strict job_id validation blocking traversal, idempotent delete, and tests using TemporaryDirectory.",
+      "files": ["evals/files/checkpoint_spec.md"],
+      "expectations": [
+        "Every public signature is fully typed, using modern syntax (dict[str, ...], X | None — not Optional/Dict) and pathlib.Path for all filesystem paths",
+        "save() writes to a temp file in the same directory then os.replace/Path.replace renames it — a crash mid-save cannot corrupt the previous checkpoint",
+        "Missing checkpoint and corrupt checkpoint are distinguishable: missing is an expected condition (None return or FileNotFoundError per a documented choice); corrupt raises a distinct specific exception, never a bare Exception or silent None",
+        "job_id is validated against the allowed character set before any filesystem access, with a ValueError (or domain error) on violation — a traversal id like ../../etc/passwd is tested and rejected",
+        "delete() of a missing checkpoint is a no-op via an intentional specific idiom (missing_ok=True, contextlib.suppress(FileNotFoundError), or except FileNotFoundError) — never a bare except or except Exception",
+        "Tests use tempfile.TemporaryDirectory (never the project tree), cover round-trip, rename-based atomicity, missing vs corrupt, validation rejection, and delete idempotency, and use a single framework consistently",
+        "No dependencies beyond the standard library; the proof command is stated exactly (pytest or unittest invocation)"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Review the test file evals/files/test_pricing.py against good Python test design. Deliver outputs/review.md explaining what each test actually verifies versus what it should verify, and outputs/test_pricing_fixed.py with rewritten tests (assume pricing.apply_discount(amount, tier) -> float applies a tier discount rounded to 2 decimals, raising KeyError on unknown tier; pricing.load_rules(path) -> dict parses a JSON rules file).",
+      "expected_output": "Review flagging mock-driven internal-call assertions, filesystem writes into the project tree, mixed unittest/pytest styles, and assertion-free tests; rewrite tests the contract (inputs to outputs and error conditions) with TemporaryDirectory.",
+      "files": ["evals/files/test_pricing.py"],
+      "expectations": [
+        "Flags test_apply_discount_calls_round_correctly as testing internal call sequences via mocks instead of the contract; rewrite asserts the returned value for known inputs and the KeyError on unknown tier",
+        "Flags test_load_rules for writing rules.json into the project tree; rewrite uses tempfile.TemporaryDirectory",
+        "Flags mixing unittest.TestCase and bare pytest functions in one module; rewrite picks one framework consistently",
+        "Flags test_tiers_do_not_crash as an assertion-free smoke test; rewrite asserts expected outputs",
+        "Flags the unclosed file handle in test_load_rules or fixes it via a context manager in the rewrite",
+        "Rewritten tests cover error conditions (unknown tier, missing/invalid rules file), not just happy paths"
+      ]
+    }
+  ]
+}

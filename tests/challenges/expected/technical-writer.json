@@ -1,0 +1,29 @@
+{
+  "challenges": {
+    "tutorial-reference-bleed": {
+      "must_include": ["documentation-writer", "Diátaxis"],
+      "must_not_include": ["reference table"],
+      "must_defer_to": "documentation-writer"
+    },
+    "unverified-commands": {
+      "must_include": ["verify", "run"],
+      "must_not_include": ["verify later"],
+      "must_defer_to": null
+    },
+    "mermaid-instead-figma": {
+      "must_include": ["FigJam", "Figma"],
+      "must_not_include": ["```mermaid"],
+      "must_defer_to": null
+    },
+    "wrong-agent-routing": {
+      "must_include": ["documentation-writer"],
+      "must_not_include": ["I'll update the README"],
+      "must_defer_to": "documentation-writer"
+    },
+    "skip-outline": {
+      "must_include": ["outline"],
+      "must_not_include": ["skip the outline"],
+      "must_defer_to": null
+    }
+  }
+}

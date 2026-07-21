@@ -1,0 +1,20 @@
+{
+  "challenges": [
+    {
+      "id": "migration-vs-mining",
+      "prompt": "Add a composite index on hippo.db events(user_id, created_at) and backfill null user_ids before we mine frequency stats.",
+      "preferred_agent": "sql-specialist",
+      "wrong_agent": "sqlite-analyst",
+      "must_include": ["migration", "index"],
+      "must_not_include": ["read-only mining only"]
+    },
+    {
+      "id": "read-only-corpus-stats",
+      "prompt": "Mine hippo.db read-only: top event types per week and FTS5 search hits for 'deployment' — show the SQL.",
+      "preferred_agent": "sqlite-analyst",
+      "wrong_agent": "sql-specialist",
+      "must_include": ["SELECT", "read-only"],
+      "must_not_include": ["ALTER TABLE", "CREATE INDEX"]
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "skill_name": "spark-guidelines",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Migrate the legacy Scala Structured Streaming job in evals/files/LegacyFleetAggregator.scala to Spark 4. Preserve the intended behavior — per-orderId state accumulates delivery events and one row is emitted when an order reaches DELIVERED (the legacy job never clears state after emitting; fixing that defect is in scope). Save outputs/MigratedFleetAggregator.scala and outputs/migration_notes.md covering everything an operator must know before deploying the migrated job over the existing one.",
+      "expected_output": "Spark 4 StatefulProcessor with ListState, checkpoint migration warning, Avro encoding guidance.",
+      "files": ["evals/files/LegacyFleetAggregator.scala"],
+      "expectations": [
+        "Output uses transformWithState instead of flatMapGroupsWithState",
+        "StatefulProcessor class with init and handleInputRows lifecycle methods",
+        "Uses ListState or composite state type rather than single ValueState blob with manual list mutation",
+        "migration_notes.md documents checkpoint migration requirement when switching operators",
+        "migration_notes.md mentions Avro state encoding (stateStore.encodingFormat) for schema evolution"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Build the PySpark silver-layer pipeline specified by the data contract in evals/files/bronze_orders_contract.md. Implement outputs/silver_orders.py fulfilling every contract requirement, and outputs/pipeline_design.md documenting your design decisions and how the pipeline meets the contract's SLAs.",
+      "expected_output": "Typed PySpark with ingest_timestamp tie-break in dedup AND MERGE condition.",
+      "files": ["evals/files/bronze_orders_contract.md"],
+      "expectations": [
+        "silver_orders.py defines explicit StructType for orders schema",
+        "Dedup orders by event_timestamp desc then ingest_timestamp desc on order_id partition",
+        "MERGE whenMatchedUpdate uses event_timestamp and ingest_timestamp tie-break logic",
+        "pipeline_design.md documents tie-break scenario and replay/idempotency story",
+        "pipeline_design.md pins the data-contract elements before code: schema, freshness SLA, partitioning strategy for the silver table, and the sink idempotency key"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "The streaming job in evals/files/StreamingSessionAggregator.scala OOMs on the driver after roughly 6 hours in production. Diagnose it and fix it. Deliver outputs/diagnosis.md naming every contributing failure mode with line-level evidence, ranked by contribution to the driver OOM, and outputs/fixes.scala with a corrected Spark 4 implementation suitable for production.",
+      "expected_output": "Diagnosis with console sink called out; fixes use transformWithState and non-console sink.",
+      "files": ["evals/files/StreamingSessionAggregator.scala"],
+      "expectations": [
+        "diagnosis.md names console sink as a driver OOM contributor with code evidence",
+        "Identifies missing or inadequate watermark on event-time aggregation",
+        "Identifies unbounded state growth (NoTimeout or missing TTL)",
+        "fixes.scala uses transformWithState with watermark or TTLConfig",
+        "fixes.scala replaces console sink with delta parquet or kafka distributed sink"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "skill_name": "typescript-guidelines",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Review evals/files/userService.ts as a senior TypeScript reviewer under a strict tsconfig. Deliver outputs/review.md with severity-ranked findings (type holes > async correctness > null safety > style), each with line evidence and the corrected idiom, then outputs/userService_fixed.ts applying the fixes.",
+      "expected_output": "Findings covering Record<string, any> cache, uncommented @ts-ignore, unvalidated res.json() trusted as User, floating fetch inside try/catch, empty catch swallowing rejections, async work in a constructor, unjustified non-null assertions, unknown silenced with as, and missing explicit Promise return types.",
+      "files": ["evals/files/userService.ts"],
+      "expectations": [
+        "Flags Record<string, any> and the as User cast as type holes; fix types the cache and validates or explicitly types the fetch payload without any",
+        "Flags the @ts-ignore with no cited reason",
+        "Flags updateEmail's un-awaited fetch as a floating promise whose rejection escapes the try/catch, making the empty catch block dead and the error swallowed; fix awaits inside try/catch and handles or propagates the failure",
+        "Flags UserSession doing async work in the constructor, leaving this.user undefined until an unknowable time, and displayName's unjustified this.user! non-null assertion; fix uses a static async factory or explicit load method",
+        "Flags user.plan! in getRenewalYear as an unjustified non-null assertion on a required-but-maybe-absent-at-runtime value",
+        "Flags auditLog casting unknown payload with as instead of narrowing via a type guard",
+        "Flags missing explicit Promise<T> return types on the exported async functions",
+        "Notes updateEmail returning string | undefined via optional chaining papering over the email? hole where callers expect a value"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Review evals/files/commentWidget.ts for security and runtime-target problems. The file header states it bundles for the browser AND is imported by the SSR server. Deliver outputs/review.md naming each issue with line evidence and severity, and outputs/commentWidget_fixed.ts correcting them.",
+      "expected_output": "Findings covering XSS via innerHTML with API-provided author/body, unvalidated JSON.parse trusted as Comment[], node:fs readFileSync in a browser bundle (and sync fs on the server path), a floating analytics promise, and TELEMETRY_SECRET leaking into the client bundle via import.meta.env.",
+      "files": ["evals/files/commentWidget.ts"],
+      "expectations": [
+        "Flags el.innerHTML with API-provided author/body as XSS; fix uses textContent / DOM construction or sanitization for the user-content slots",
+        "Flags JSON.parse output trusted as Comment[] without validation; fix narrows from unknown with a guard before use",
+        "Flags node:fs readFileSync as a Node-only API that breaks the browser bundle (the primary defect; module-load sync IO on the SSR path is a secondary note); fix inlines the template or loads it per-target",
+        "Flags import.meta.env.TELEMETRY_SECRET as leaking a secret into the shipped client bundle",
+        "Flags the fire-and-forget fetch in trackWidgetLoad as a floating promise; fix at minimum attaches non-empty rejection handling",
+        "Findings are severity-ordered with XSS and the secret leak above the runtime-mismatch and floating-promise items"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Implement the module specified in evals/files/config_loader_spec.md. Deliver outputs/configLoader.ts and outputs/configLoader.test.ts. State the exact commands you would run to prove it (typecheck + tests).",
+      "expected_output": "A discriminated-union Result return distinguishing all four failure kinds, unknown-based validation with type guards and no as-casts, explicit return types, defaulted optional fields, and vitest tests covering every branch.",
+      "files": ["evals/files/config_loader_spec.md"],
+      "expectations": [
+        "Return type is a discriminated union (e.g. { ok: true, config } | { ok: false, error }) where the error side distinguishes network failure, non-2xx, malformed JSON, and schema-invalid (with field and reason) — callers never need try/catch and never receive undefined",
+        "JSON.parse output is handled as unknown and narrowed by an explicit validation function using type guards; no as Config anywhere, no any",
+        "All exported functions have explicit return type annotations including Promise<...> on async ones",
+        "Validation enforces https on apiBaseUrl, integer 0-10 on retryLimit, and applies defaults (featureFlags {}, retryLimit 3) for absent optional fields",
+        "Object indexing respects noUncheckedIndexedAccess (no unchecked featureFlags[name] assumptions)",
+        "Tests cover the valid path, all four failure kinds, defaulting, and http rejection, injecting fetchImpl rather than patching globals",
+        "The proof commands are stated exactly (tsc --noEmit and vitest run or equivalents)"
+      ]
+    }
+  ]
+}

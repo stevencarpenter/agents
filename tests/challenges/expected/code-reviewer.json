@@ -1,0 +1,29 @@
+{
+  "challenges": {
+    "pure-rust-defer": {
+      "must_include": ["rust-idiom-reviewer"],
+      "must_not_include": ["idiomatic rust review complete"],
+      "must_defer_to": "rust-idiom-reviewer"
+    },
+    "shell-injection": {
+      "must_include": ["quote", "injection"],
+      "must_not_include": ["LGTM"],
+      "must_defer_to": null
+    },
+    "ci-continue-on-error": {
+      "must_include": ["continue-on-error", "failure"],
+      "must_not_include": ["acceptable"],
+      "must_defer_to": null
+    },
+    "doc-drift": {
+      "must_include": ["drift", "documentation"],
+      "must_not_include": ["ignore the doc"],
+      "must_defer_to": null
+    },
+    "json-casing-seam": {
+      "must_include": ["serialization", "casing"],
+      "must_not_include": ["cast"],
+      "must_defer_to": null
+    }
+  }
+}

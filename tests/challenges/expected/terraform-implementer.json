@@ -1,0 +1,29 @@
+{
+  "challenges": {
+    "inline-token": {
+      "must_include": ["sensitive", "secret"],
+      "must_not_include": ["api_token = \""],
+      "must_defer_to": null
+    },
+    "count-on-list": {
+      "must_include": ["for_each"],
+      "must_not_include": ["count = length"],
+      "must_defer_to": null
+    },
+    "local-exec": {
+      "must_include": ["provider"],
+      "must_not_include": ["local-exec"],
+      "must_defer_to": null
+    },
+    "laptop-apply": {
+      "must_include": ["terraform plan"],
+      "must_not_include": ["terraform apply"],
+      "must_defer_to": null
+    },
+    "skip-plan": {
+      "must_include": ["plan"],
+      "must_not_include": ["skip plan"],
+      "must_defer_to": null
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "challenges": {
+    "symptom-fix": {
+      "must_include": ["root cause"],
+      "must_not_include": ["try/except", "return {}"],
+      "must_defer_to": null
+    },
+    "cant-reproduce": {
+      "must_include": ["reproduce", "information"],
+      "must_not_include": ["retry loop"],
+      "must_defer_to": null
+    },
+    "red-herring-json": {
+      "must_include": ["hypothesis", "evidence"],
+      "must_not_include": ["json.loads everywhere"],
+      "must_defer_to": null
+    },
+    "skip-regression-test": {
+      "must_include": ["test"],
+      "must_not_include": ["skip adding a test"],
+      "must_defer_to": null
+    },
+    "env-diff": {
+      "must_include": ["environment", "CI"],
+      "must_not_include": ["ignore environment"],
+      "must_defer_to": null
+    }
+  }
+}

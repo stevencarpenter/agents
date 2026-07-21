@@ -1,0 +1,49 @@
+{
+  "skill_name": "rust-guidelines",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Review the public library code in evals/files/inventory.rs as a senior Rust reviewer. Deliver outputs/review.md with severity-ranked findings (correctness first, style last), each with line evidence, why the current shape is risky, and the idiomatic direction. Then deliver outputs/inventory_fixed.rs applying the fixes.",
+      "expected_output": "Findings covering unwrap panics in library code, String error type, primitive obsession, needless clones, blanket lint suppression, and blocking sleep inside async; fixed code uses domain types, borrowed inputs, a domain error enum, and non-blocking sleep.",
+      "files": ["evals/files/inventory.rs"],
+      "expectations": [
+        "Flags the unwrap() calls on fallible operations in library code (missing SKU lookup, fs read, parse, and the network/parse unwraps in sync_remote) as panics that must become errors propagated to the caller",
+        "Flags Result<_, String> as a stringly error type; fix defines a domain error enum (thiserror-style or manual) since this is a library, not an application",
+        "Flags primitive obsession: sku/warehouse/path/url passed as owned String; fix uses newtypes (e.g. Sku) and borrowed inputs (&str, impl AsRef<Path>)",
+        "Flags the needless .clone() calls on sku/path where a borrow suffices",
+        "Flags the blanket #![allow(dead_code, unused_variables, clippy::all)] as broad suppression; exceptions need #[expect(..., reason)] or removal",
+        "Flags std::thread::sleep inside the async fn as blocking the executor; fix uses the runtime's async sleep",
+        "Flags the unused warehouse parameter and the unchecked parts[1] indexing on malformed CSV lines",
+        "review.md presents findings in severity order: correctness items (panics, blocking in async, unchecked indexing) before API-shape items (error type, ownership), with style nits last or omitted"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Design the public API described in evals/files/retry_api_brief.md. Deliver outputs/lib.rs (public types, constructors, doc comments; internals may be todo!()) and outputs/api_notes.md explaining the shape and the semver/extension story, including how tracing support and new backoff strategies land without a breaking change.",
+      "expected_output": "Builder-based config, generic over the caller's error type, a structured RetryError enum distinguishing exhausted/non-retryable/timeout, non_exhaustive extension points, and doc examples.",
+      "files": ["evals/files/retry_api_brief.md"],
+      "expectations": [
+        "Uses a builder (or equivalent fluent constructor) for the many-optional-knobs config rather than a positional constructor or a fully public struct",
+        "Error type is a structured enum distinguishing Exhausted (carrying the last error), NonRetryable (carrying it), and Timeout — not a String or a single opaque variant",
+        "API is generic over the caller's error type; the retryable predicate composes with it (no forced Box<dyn Error> in the caller's face)",
+        "Extension story is concrete: #[non_exhaustive] on the error enum and/or sealed or non-exhaustive backoff strategy type, and tracing planned as an additive cargo feature",
+        "Public items carry doc comments and at least one runnable-shaped example matching the known-consumer snippet",
+        "api_notes.md justifies the shape with concrete misuse-resistance arguments: what invalid configurations are unrepresentable or rejected by build(), and why inputs are borrowed vs owned — not a restatement of the type list"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Audit evals/files/ring_buffer.rs (Rust 2021 edition) for soundness. The type is handed to a C metrics library whose callback may fire on any thread. Deliver outputs/audit.md naming each soundness hole with line evidence and the violated invariant, and outputs/ring_buffer_fixed.rs with a sound version (safe API preferred; any remaining unsafe must state its invariant). Say how you would verify the fix.",
+      "expected_output": "Audit finding the out-of-bounds/wrapping read in last_two, the unjustified manual Send/Sync impls combined with cross-thread aliasing via the C callback, the escaping reference lifetime, and the pointless unsafe in push; fixed version uses safe indexing, synchronization for cross-thread access, and mentions Miri.",
+      "files": ["evals/files/ring_buffer.rs"],
+      "expectations": [
+        "Finds that last_two computes head.wrapping_sub(2), which underflows when head < 2, producing an out-of-bounds from_raw_parts read; also notes the slice is wrong when the two samples wrap around the ring boundary (non-contiguous) or len < 2",
+        "Finds that register_with_c leaks a *const RingBuffer to a callback that outlives the borrow and may fire on any thread, while Rust code can still call push(&mut self) — aliasing a mutable object across threads with no synchronization",
+        "Flags the manual unsafe impl Send/Sync as unjustified assertions (precise answers may note they are inert as written since the type is auto-Send/Sync — the race actually arrives via the pointer escape); fix removes them and makes any cross-thread sharing genuinely synchronized (Mutex/atomics or an Arc-owned registration handle)",
+        "Flags the unsafe pointer write in push as unnecessary — safe indexing expresses it; unsafe must be a narrow boundary with a stated invariant",
+        "Fixed version keeps any remaining unsafe behind a documented invariant comment and a safe public API, and manages callback lifetime (unregister on drop or ownership transfer)",
+        "audit.md names Miri (and a threaded test or loom-style check) as verification for the fix"
+      ]
+    }
+  ]
+}

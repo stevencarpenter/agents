@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stevencarpenter.github.io/agents/schema/skill.schema.json",
+  "title": "Agent Registry Skill",
+  "type": "object",
+  "required": ["name", "description"],
+  "additionalProperties": true,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$"
+    },
+    "description": {
+      "type": "string",
+      "pattern": "Use when"
+    }
+  }
+}

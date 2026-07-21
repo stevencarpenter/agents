@@ -1,0 +1,29 @@
+{
+  "challenges": {
+    "vague-description": {
+      "must_include": ["description", "when"],
+      "must_not_include": ["queries stuff"],
+      "must_defer_to": null
+    },
+    "giant-blob-response": {
+      "must_include": ["summary", "token"],
+      "must_not_include": ["full log"],
+      "must_defer_to": null
+    },
+    "http-by-default": {
+      "must_include": ["stdio"],
+      "must_not_include": ["HTTP/SSE on port"],
+      "must_defer_to": null
+    },
+    "no-input-validation": {
+      "must_include": ["validate"],
+      "must_not_include": ["straight to SQL"],
+      "must_defer_to": null
+    },
+    "skip-round-trip": {
+      "must_include": ["round-trip", "tool call"],
+      "must_not_include": ["skip starting"],
+      "must_defer_to": null
+    }
+  }
+}

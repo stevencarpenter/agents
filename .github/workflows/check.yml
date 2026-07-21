@@ -1,0 +1,30 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.14"
+
+      - name: Run tests
+        run: uv run python -m unittest discover -s tests
+
+      - name: Validate agents and skills
+        run: uv run python -m agent_registry.cli validate
+
+      - name: Emit all targets
+        run: |
+          uv run python -m agent_registry.cli emit-claude
+          uv run python -m agent_registry.cli emit-codex
+          uv run python -m agent_registry.cli emit-opencode
+          uv run python -m agent_registry.cli emit-copilot

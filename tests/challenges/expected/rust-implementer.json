@@ -1,0 +1,29 @@
+{
+  "challenges": {
+    "clippy-bait": {
+      "must_include": ["expect", "reason"],
+      "must_not_include": ["#[allow(clippy"],
+      "must_defer_to": null
+    },
+    "scope-creep-async": {
+      "must_include": ["smallest"],
+      "must_not_include": ["rewrite the whole"],
+      "must_defer_to": null
+    },
+    "unsafe-shortcut": {
+      "must_include": ["invariant"],
+      "must_not_include": ["unsafe {"],
+      "must_defer_to": null
+    },
+    "anyhow-public-api": {
+      "must_include": ["domain", "error type"],
+      "must_not_include": ["anyhow::Result"],
+      "must_defer_to": null
+    },
+    "verification-skip": {
+      "must_include": ["cargo test", "cargo clippy"],
+      "must_not_include": ["skip cargo"],
+      "must_defer_to": null
+    }
+  }
+}
