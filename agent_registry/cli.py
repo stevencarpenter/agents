@@ -14,6 +14,7 @@ from agent_registry.agents import (
 from agent_registry.claude_code import emit_claude_agent
 from agent_registry.codex import CODEX_EXT, emit_codex_agent
 from agent_registry.copilot import emit_copilot_instructions
+from agent_registry.cursor import CURSOR_EXT, emit_cursor_agent
 from agent_registry.opencode import emit_opencode_agent
 
 _MANIFEST = ".installed-by-agent-registry.json"
@@ -67,12 +68,17 @@ def main() -> int:
     emit_copilot_parser.add_argument("--skills-dir", default="skills")
     emit_copilot_parser.add_argument("--out-dir", default="build/copilot")
 
+    emit_cursor_parser = subparsers.add_parser("emit-cursor")
+    emit_cursor_parser.add_argument("--agents-dir", default="agents")
+    emit_cursor_parser.add_argument("--skills-dir", default="skills")
+    emit_cursor_parser.add_argument("--out-dir", default="build/cursor/agents")
+
     install_parser = subparsers.add_parser("install")
     install_parser.add_argument("--agents-dir", default="agents")
     install_parser.add_argument("--skills-dir", default="skills")
     install_parser.add_argument(
         "--target",
-        choices=["claude", "codex", "opencode", "copilot", "all"],
+        choices=["claude", "codex", "opencode", "copilot", "cursor", "all"],
         default="all",
     )
 
@@ -127,23 +133,34 @@ def main() -> int:
         print(f"emitted copilot instructions ({len(agents)} agents) to {out_dir}")
         return 0
 
-    if args.command == "install":
+    if args.command == "emit-cursor":
         agents = _load_agents(args.agents_dir, args.skills_dir)
+        out_dir = Path(args.out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for agent in agents:
+            (out_dir / f"{agent.name}{CURSOR_EXT}").write_text(emit_cursor_agent(agent), encoding="utf-8")
+        print(f"emitted {len(agents)} cursor agents to {out_dir}")
+        return 0
+
+    if args.command == "install":
+        all_agents = _load_agents(args.agents_dir, args.skills_dir)
         home = Path.home()
-        targets = ["claude", "codex", "opencode", "copilot"] if args.target == "all" else [args.target]
+        targets = (
+            ["claude", "codex", "opencode", "copilot", "cursor"] if args.target == "all" else [args.target]
+        )
 
         if "claude" in targets:
-            files = {f"{a.name}.md": emit_claude_agent(a) for a in agents}
+            files = {f"{a.name}.md": emit_claude_agent(a) for a in all_agents}
             n = _sync_dir(home / ".claude" / "agents", files)
             print(f"installed {n} agents → ~/.claude/agents")
 
         if "codex" in targets:
-            files = {f"{a.name}{CODEX_EXT}": emit_codex_agent(a) for a in agents}
+            files = {f"{a.name}{CODEX_EXT}": emit_codex_agent(a) for a in all_agents}
             n = _sync_dir(home / ".codex" / "agents", files)
             print(f"installed {n} agents → ~/.codex/agents (TOML)")
 
         if "opencode" in targets:
-            files = {f"{a.name}.md": emit_opencode_agent(a) for a in agents}
+            files = {f"{a.name}.md": emit_opencode_agent(a) for a in all_agents}
             n = _sync_dir(home / ".config" / "opencode" / "agents", files)
             print(f"installed {n} agents → ~/.config/opencode/agents")
 
@@ -151,14 +168,19 @@ def main() -> int:
             dest = home / ".config" / "github-copilot"
             dest.mkdir(parents=True, exist_ok=True)
             (dest / "global-agents-instructions.md").write_text(
-                emit_copilot_instructions(agents), encoding="utf-8"
+                emit_copilot_instructions(all_agents), encoding="utf-8"
             )
-            print(f"installed {len(agents)} agents → ~/.config/github-copilot/global-agents-instructions.md")
+            print(f"installed {len(all_agents)} agents → ~/.config/github-copilot/global-agents-instructions.md")
             # The github-copilot dir is only partially chezmoi-managed; warn only
             # if chezmoi actually tracks THIS file (any prefix/.tmpl variant).
             cm_src = home / ".local" / "share" / "chezmoi" / "dot_config" / "github-copilot"
             if cm_src.exists() and any(cm_src.glob("*global-agents-instructions.md*")):
                 print("  note: chezmoi also tracks this file — manage it there so `chezmoi apply` doesn't overwrite it")
+
+        if "cursor" in targets:
+            files = {f"{a.name}{CURSOR_EXT}": emit_cursor_agent(a) for a in all_agents}
+            n = _sync_dir(home / ".cursor" / "agents", files)
+            print(f"installed {n} agents → ~/.cursor/agents")
 
         return 0
 
