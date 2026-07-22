@@ -18,7 +18,10 @@ emit-opencode:
 emit-copilot:
     uv run python -m agent_registry.cli emit-copilot
 
-emit: emit-claude emit-codex emit-opencode emit-copilot
+emit-cursor:
+    uv run python -m agent_registry.cli emit-cursor
+
+emit: emit-claude emit-codex emit-opencode emit-copilot emit-cursor
 
 install:
     uv run python -m agent_registry.cli install
@@ -34,6 +37,9 @@ install-opencode:
 
 install-copilot:
     uv run python -m agent_registry.cli install --target copilot
+
+install-cursor:
+    uv run python -m agent_registry.cli install --target cursor
 
 check: test validate emit
 
