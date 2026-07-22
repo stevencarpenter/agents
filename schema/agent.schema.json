@@ -6,7 +6,10 @@
   "properties": {
     "name": {
       "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$"
+      "oneOf": [
+        {"pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$"},
+        {"enum": ["Explore"]}
+      ]
     },
     "description": {
       "type": "string",

@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from agent_registry.agents import (
     AgentValidationError,
@@ -11,6 +12,9 @@ from agent_registry.agents import (
 )
 from agent_registry.claude_code import emit_claude_agent
 from agent_registry.codex import emit_codex_agent
+from agent_registry.cursor import emit_cursor_agent
+from agent_registry.mcp_tools import parse_tools_field
+from agent_registry.model_translation import translate_model
 from agent_registry.opencode import emit_opencode_agent
 
 
@@ -152,8 +156,32 @@ Review code with adversarial attention to behavior.
             self.assertNotIn("tools", rendered)
             self.assertNotIn("color", rendered)
             self.assertNotIn("x-derived-from", rendered)
-            # model is omitted so the Codex agent inherits the session model.
+            # Unknown aliases are omitted so Codex inherits the session model.
             self.assertNotIn("model", rendered)
+
+    def test_emit_codex_translates_haiku_and_enforces_read_only_sandbox(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_agent(
+                Path(tmp),
+                "lookup",
+                "---\nname: lookup\ndescription: Use when looking up known facts.\nmodel: haiku\nx-registry-permission: read-only\ndisallowedTools: Write, Edit, MultiEdit, NotebookEdit\n---\n\nLook it up.\n",
+            )
+            rendered = emit_codex_agent(load_agent(path))
+
+            self.assertIn('model = "gpt-5.6-terra"', rendered)
+            self.assertIn('sandbox_mode = "read-only"', rendered)
+
+    def test_emit_codex_discloses_unenforced_mcp_allowlist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_agent(
+                Path(tmp),
+                "lookup",
+                "---\nname: lookup\ndescription: Use when looking up known facts.\ntools: mcp__docs__fetch\nx-allow-tools-allowlist: true\nx-registry-permission: read-only\ndisallowedTools: Write, Edit, MultiEdit, NotebookEdit\n---\n\nUse only the docs fetch tool.\n",
+            )
+            rendered = emit_codex_agent(load_agent(path))
+
+            self.assertIn("Tool-scope notice (Codex)", rendered)
+            self.assertIn("not an enforced remote-tool boundary", rendered)
 
     def test_emit_codex_agent_is_parseable_toml(self) -> None:
         import tomllib
@@ -281,6 +309,118 @@ Review code with adversarial attention to behavior.
 
             self.assertIn("edit: deny", rendered)
             self.assertIn("bash: allow", rendered)
+
+    def test_emit_opencode_reviewed_allowlist_is_default_deny(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_agent(
+                Path(tmp),
+                "lookup",
+                "---\nname: lookup\ndescription: Use when looking up known facts.\nmodel: haiku\ntools: Read, mcp__docs__resolve, mcp__docs__fetch\nx-allow-tools-allowlist: true\nx-registry-permission: read-only\ndisallowedTools: Write, Edit, MultiEdit, NotebookEdit\n---\n\nLook it up.\n",
+            )
+            rendered = emit_opencode_agent(load_agent(path))
+
+            deny_index = rendered.index('"*": deny')
+            self.assertLess(deny_index, rendered.index("read: allow"))
+            self.assertLess(deny_index, rendered.index('"docs_fetch": allow'))
+            self.assertIn('"docs_resolve": allow', rendered)
+            self.assertIn("model: anthropic/claude-haiku-4-5", rendered)
+
+    # ---- shared translations and Cursor ----
+
+    def test_parse_tools_field_preserves_wildcards_and_specific_tools(self) -> None:
+        parsed = parse_tools_field("Read, mcp__one__*, mcp__two__first, mcp__two__second")
+
+        self.assertEqual(parsed.plain_tools, ("Read",))
+        self.assertIsNone(parsed.mcp_servers["one"])
+        self.assertEqual(parsed.mcp_servers["two"], frozenset({"first", "second"}))
+
+    def test_model_translation_uses_current_target_ids(self) -> None:
+        self.assertEqual(translate_model("haiku", "codex"), "gpt-5.6-terra")
+        self.assertEqual(translate_model("haiku", "opencode"), "anthropic/claude-haiku-4-5")
+        self.assertEqual(translate_model("haiku", "cursor"), "claude-haiku-4-5")
+        self.assertIsNone(translate_model("inherit", "codex"))
+
+    def test_emit_cursor_keeps_mcp_agents_functional_and_warns_about_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_agent(
+                Path(tmp),
+                "lookup",
+                "---\nname: lookup\ndescription: Use when looking up known facts.\nmodel: haiku\ntools: mcp__docs__*\nx-allow-tools-allowlist: true\nx-registry-permission: read-only\ndisallowedTools: Write, Edit, MultiEdit, NotebookEdit\n---\n\nLook it up.\n",
+            )
+            rendered = emit_cursor_agent(load_agent(path))
+
+            self.assertIn("name: lookup\n", rendered)
+            self.assertIn("model: claude-haiku-4-5\n", rendered)
+            self.assertNotIn("readonly: true\n", rendered)
+            self.assertIn("Tool-scope notice (Cursor)", rendered)
+
+    def test_emit_cursor_marks_non_mcp_reviewers_read_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_agent(Path(tmp), "code-reviewer", self._sample_agent_text("code-reviewer"))
+
+            self.assertIn("readonly: true\n", emit_cursor_agent(load_agent(path)))
+
+    def test_install_cursor_uses_full_agent_set(self) -> None:
+        from agent_registry.cli import main
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.write_agent(root, "code-reviewer", self._sample_agent_text("code-reviewer"))
+            self.write_skill(
+                root,
+                "unused-skill",
+                "---\nname: unused-skill\ndescription: Use when satisfying the fixture skill tree.\n---\n\nFixture.\n",
+            )
+            install_home = root / "home"
+            with (
+                patch("sys.argv", ["agent-registry", "install", "--agents-dir", str(root / "agents"), "--skills-dir", str(root / "skills"), "--target", "cursor"]),
+                patch.object(Path, "home", return_value=install_home),
+            ):
+                self.assertEqual(main(), 0)
+
+            self.assertTrue((install_home / ".cursor" / "agents" / "code-reviewer.md").is_file())
+
+    def test_install_copilot_and_all_targets_complete(self) -> None:
+        from agent_registry.cli import main
+
+        for target in ("copilot", "all"):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                self.write_agent(root, "code-reviewer", self._sample_agent_text("code-reviewer"))
+                self.write_skill(
+                    root,
+                    "unused-skill",
+                    "---\nname: unused-skill\ndescription: Use when satisfying the fixture skill tree.\n---\n\nFixture.\n",
+                )
+                install_home = root / "home"
+                with (
+                    patch(
+                        "sys.argv",
+                        [
+                            "agent-registry",
+                            "install",
+                            "--agents-dir",
+                            str(root / "agents"),
+                            "--skills-dir",
+                            str(root / "skills"),
+                            "--target",
+                            target,
+                        ],
+                    ),
+                    patch.object(Path, "home", return_value=install_home),
+                ):
+                    self.assertEqual(main(), 0)
+
+                self.assertTrue(
+                    (install_home / ".config" / "github-copilot" / "global-agents-instructions.md").is_file()
+                )
+                if target == "all":
+                    self.assertTrue((install_home / ".claude" / "agents" / "code-reviewer.md").is_file())
+                    self.assertTrue((install_home / ".codex" / "agents" / "code-reviewer.toml").is_file())
+                    self.assertTrue(
+                        (install_home / ".config" / "opencode" / "agents" / "code-reviewer.md").is_file()
+                    )
+                    self.assertTrue((install_home / ".cursor" / "agents" / "code-reviewer.md").is_file())
 
     # ---- skill tree ----
 

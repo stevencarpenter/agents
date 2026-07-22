@@ -26,6 +26,12 @@ class Skill:
 
 
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
+# Claude Code's built-in subagents (Explore, Plan, ...) match by exact,
+# case-sensitive `name`, so overriding one requires reproducing that literal
+# name even though it violates the kebab-case convention every other agent
+# follows. Keep this set to actual built-in names being overridden, not a
+# general escape hatch from the naming convention.
+_BUILTIN_OVERRIDE_NAMES = {"Explore"}
 # Control characters other than tab (\x09) and newline (\x0a). These are illegal
 # in TOML strings, so an agent body containing one would emit a .toml file Codex
 # cannot parse. Reject at validation rather than letting an emitter produce
@@ -256,7 +262,7 @@ def _validate_registry_item(
 ) -> None:
     if not name:
         raise AgentValidationError(f"{path}: missing name")
-    if not _NAME_RE.fullmatch(name):
+    if not (_NAME_RE.fullmatch(name) or name in _BUILTIN_OVERRIDE_NAMES):
         raise AgentValidationError(f"{path}: invalid name: {name}")
     if path.parent.name != expected_parent_name:
         raise AgentValidationError(
@@ -306,7 +312,6 @@ def _validate_agent_tool_contract(agent: Agent) -> None:
                 f"{agent.path}: read-only agents must disallow write tools: "
                 f"{', '.join(sorted(missing))}"
             )
-
 
 def _metadata_csv_set(raw: str) -> set[str]:
     return {item.strip() for item in raw.split(",") if item.strip()}
