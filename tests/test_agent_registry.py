@@ -624,9 +624,33 @@ Review code with adversarial attention to behavior.
 
         for agent in agents:
             skill_refs = {name.strip() for name in agent.metadata.get("skills", "").split(",") if name.strip()}
-            self.assertIn("tool-priority", skill_refs, f"{agent.name} must inline tool-priority")
+            # Mechanical leaf agents (x-mechanical: true) are deliberately exempt: they
+            # either carry a hard MCP allowlist that makes tool-priority's advice
+            # unreachable, or (Explore) contradict it. See test_mechanical_agents_skip_tool_priority.
+            if agent.metadata.get("x-mechanical") != "true":
+                self.assertIn("tool-priority", skill_refs, f"{agent.name} must inline tool-priority")
             if "tools" in agent.metadata:
                 self.assertEqual(agent.metadata.get("x-allow-tools-allowlist"), "true")
+
+    def test_mechanical_agents_skip_tool_priority(self) -> None:
+        """Mechanical leaf agents must NOT inline tool-priority — it is dead weight
+        (unreachable under their MCP allowlist) or contradictory (Explore is a leaf
+        worker but tool-priority tells agents to spawn teams). This pins that carve-out
+        so the rubric is never silently re-added to a pure pass-through agent."""
+        from agent_registry.agents import compose_agent_with_skills
+
+        root = Path(__file__).resolve().parents[1]
+        skills_by_name = {s.name: s for s in validate_skill_tree(root / "skills")}
+        mechanical = [
+            a for a in validate_agent_tree(root / "agents")
+            if a.metadata.get("x-mechanical") == "true"
+        ]
+        self.assertTrue(mechanical, "expected at least one x-mechanical agent")
+        for agent in mechanical:
+            skill_refs = {name.strip() for name in agent.metadata.get("skills", "").split(",") if name.strip()}
+            self.assertNotIn("tool-priority", skill_refs, agent.name)
+            rendered = emit_claude_agent(compose_agent_with_skills(agent, skills_by_name))
+            self.assertNotIn("# Shared rubric: tool-priority", rendered, agent.name)
 
     def test_real_claude_emits_inherited_tools_shape(self) -> None:
         from agent_registry.agents import compose_agent_with_skills
@@ -641,7 +665,8 @@ Review code with adversarial attention to behavior.
                 self.assertNotIn("\ntools:", rendered, f"{agent.name} should inherit parent tools")
             if agent.metadata.get("x-registry-permission") == "read-only":
                 self.assertIn("disallowedTools: Write, Edit, MultiEdit, NotebookEdit\n", rendered)
-            self.assertIn("# Shared rubric: tool-priority", rendered)
+            if agent.metadata.get("x-mechanical") != "true":
+                self.assertIn("# Shared rubric: tool-priority", rendered)
 
     # ---- skill inlining (compose) ----
 
