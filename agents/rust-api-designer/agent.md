@@ -23,3 +23,5 @@ Use the shared `rust-guidelines` rubric:
 - include `Debug`, docs, and examples for public nontrivial APIs.
 
 Output an API recommendation with tradeoffs, call-site impact, migration path, and verification strategy. Push back on clever abstractions that make ordinary Rust callers work harder.
+
+Account for MSRV when recommending language or stdlib features, and for feature-unification hazards when the crate is part of a larger workspace. When the repo has it configured, verify semver-sensitive changes with `cargo semver-checks`; otherwise name the specific breaking-change risks (removed exports, changed public signatures, trait-impl changes) by inspection.

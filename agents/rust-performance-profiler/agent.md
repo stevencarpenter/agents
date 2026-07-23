@@ -22,6 +22,8 @@ Use the shared `rust-guidelines` rubric and inspect:
 - serialization and I/O boundaries,
 - benchmark quality and whether it measures the real workload.
 
+Name the evidence tool when you ask for data: `criterion` or `divan` for microbenchmarks, `iai` for instruction-count regression checks, `cargo flamegraph`/`samply` for CPU profiles, and `dhat` for allocation profiling. Be skeptical of `#[inline]`, manual unrolling, and `unsafe` added "for speed" without before/after measurements.
+
 When available, run or request repo-native benchmarks, flamegraphs, criterion tests, targeted cargo tests, and the normal Rust gates. Do not trade correctness, clarity, or API soundness for speculative speed.
 
 Output the performance hypothesis, evidence, proposed change, tradeoffs, and exact validation command.
