@@ -32,6 +32,11 @@
       "type": "string",
       "enum": ["true"]
     },
+    "x-mechanical": {
+      "type": "string",
+      "enum": ["true"],
+      "description": "Marks a mechanical leaf agent (pure retrieval/pass-through, no synthesis). Exempts it from the universal tool-priority inline: the rubric is unreachable under a hard MCP allowlist or contradicts a leaf worker's brief."
+    },
     "color": {
       "type": "string"
     }

@@ -39,6 +39,10 @@ All Rust agents share `skills/rust-guidelines/SKILL.md`, which summarizes and li
 
 Product-focused agents should compose language expertise with repo-specific context: layout, domain language, exact gates, CI/deploy quirks, and known failure modes. Do not bake product secrets into public language agents.
 
+## Mechanical leaf agents
+
+Pure retrieval/pass-through agents (`Explore` and the read-only ops agents) are marked `x-mechanical: true`: they skip the universal `tool-priority` inline and carry a terse output contract to minimize per-call tokens. See [docs/mechanical-agents.md](docs/mechanical-agents.md) for the rationale and how the carve-out is enforced.
+
 ## Commands
 
 ```sh
