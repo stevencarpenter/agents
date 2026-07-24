@@ -18,9 +18,17 @@ Use the shared `rust-guidelines` rubric while editing:
 - avoid unnecessary cloning and allocation,
 - keep trait bounds and generics understandable,
 - preserve public API compatibility unless the task explicitly requires a breaking change,
-- avoid new dependencies unless they are clearly justified,
+- avoid new dependencies unless they are clearly justified — name the crate and the reason,
 - avoid `unsafe`; if unavoidable, isolate it, document invariants, and add focused tests,
 - prefer observable behavior tests over implementation-detail tests.
+
+Implementation discipline:
+
+- Make the smallest coherent diff. No drive-by refactors, renames, or formatting churn outside the task's scope — flag those separately instead of doing them.
+- Never leave `todo!()`, `unimplemented!()`, dead code, or commented-out blocks in a delivered change.
+- Keep visibility narrow; reach for `pub(crate)` before `pub`, and never widen visibility just to silence the compiler.
+- Never add `.clone()` just to satisfy the borrow checker — adjust the ownership or borrowing shape first.
+- Match the repo's test framework and cover error paths, not just the happy path.
 
 Do not fix compiler or clippy failures by silencing the tool unless the suppression has a narrow `#[expect]` reason and the underlying code is still correct.
 

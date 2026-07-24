@@ -26,6 +26,8 @@ Review using the shared `rust-guidelines` rubric:
 
 Be suspicious of `Arc<Mutex<_>>` as a lifetime escape hatch, broad traits where concrete types are clearer, `Manager`/`Service`/`Factory` names that hide domain language, blocking calls inside async tasks, and public API churn without call-site review.
 
+Also flag slop on sight: `.clone()` sprinkled to appease the borrow checker, lossy `as` casts between numeric types (any cast the target can't represent exactly — narrowing, sign-changing, `u32 as f32`, float→int), `unwrap()`/`expect()` on fallible operations outside tests, leftover `todo!()`/dead code/commented-out blocks, visibility widened beyond what callers need, doc comments that restate the signature, and diffs padded with drive-by refactors or formatting churn.
+
 When available, run or request:
 
 - `cargo fmt --all -- --check`

@@ -44,6 +44,52 @@
         "Fixed version keeps any remaining unsafe behind a documented invariant comment and a safe public API, and manages callback lifetime (unregister on drop or ownership transfer)",
         "audit.md names Miri (and a threaded test or loom-style check) as verification for the fix"
       ]
+    },
+    {
+      "id": 3,
+      "prompt": "Review the tokio service code in evals/files/task_pipeline.rs for async and concurrency correctness. Deliver outputs/review.md with severity-ranked findings (each with line evidence and the safer design direction) and outputs/task_pipeline_fixed.rs applying the fixes. Say how you would test the fixed shutdown and backpressure behavior deterministically.",
+      "expected_output": "Findings covering a std Mutex guard held across .await, unbounded channel plus unbounded spawned fan-out with no backpressure, detached JoinHandles leaking untracked tasks, blocking std::fs and synchronous HTTP calls on the executor, missing shutdown story, and select! timeout that abandons in-flight work; fixed code uses bounded channels, tracked tasks (JoinSet/stored handles), an explicit shutdown signal (CancellationToken or channel close), and async I/O or spawn_blocking with a stated reason.",
+      "files": ["evals/files/task_pipeline.rs"],
+      "expectations": [
+        "Flags the std::sync::Mutex guard in submit being held across the fetch_metadata .await as stalling/deadlocking the executor; fix shortens the critical section, uses a tokio-aware lock deliberately, or restructures so no lock crosses an await",
+        "Flags the unbounded_channel plus the per-event tokio::spawn fan-out in run_worker as missing backpressure with unbounded memory/task growth; fix uses a bounded channel sized to the workload and a JoinSet or stored handles",
+        "Flags the detached tokio::spawn in Pipeline::new (dropped JoinHandle) and the untracked per-event spawns as leaked tasks with no shutdown or failure propagation; fix wires a CancellationToken, abort handles, or channel-close-driven shutdown and a Drop or shutdown() method",
+        "Flags std::fs::read_to_string in fetch_metadata and the synchronous ureq::get call plus std::thread::sleep in handle as blocking the async executor; fix uses async I/O (tokio::fs, an async HTTP client, tokio::time::sleep) or a bounded spawn_blocking with justification",
+        "Flags the select! timeout arm as abandoning in-flight handle() work without cancellation or cleanup",
+        "Flags unwrap() on tx.send and the mutex lock as panics in service code",
+        "Testing story is deterministic: tokio::time::pause/start_paused or explicit synchronization (not sleeps), a test proving shutdown drains or aborts workers, and a test showing bounded-channel backpressure engages"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Audit the manifest in evals/files/service_cargo.toml as a Rust build/dependency auditor. Deliver outputs/audit.md with severity-ranked findings (each with manifest evidence and the fix direction) and outputs/service_cargo_fixed.toml applying the fixes. Close with the smallest CI gate set that prevents recurrence.",
+      "expected_output": "Findings covering wildcard versions, unused/likely-unused dependencies, default features pulling both TLS stacks, stale major versions, feature-flag and release-profile problems, missing rust-version/MSRV, and missing supply-chain gates; fixed manifest tightens versions, prunes features and deps, and has a deliberate release profile.",
+      "files": ["evals/files/service_cargo.toml"],
+      "expectations": [
+        "Flags the wildcard ('*') version requirements on tokio and anyhow as uncontrolled upgrade risk; fix pins to actual minimum semver-compatible versions",
+        "Flags reqwest enabling both rustls-tls and native-tls plus the blocking feature as default-feature bloat compiling two TLS stacks; fix sets default-features = false with one TLS backend and only needed features",
+        "Flags likely-unused or outdated dependencies (prometheus marked 'used to be needed', lazy_static obsoleted by std OnceLock, rand 0.7 and uuid 0.8 behind current majors, clap 3 EOL) and names cargo machete/cargo-udeps and cargo tree --duplicates as verification",
+        "Flags the missing rust-version field / MSRV policy and recommends CI coverage for it",
+        "Flags the release profile as incoherent (debug = true, opt-level = 1, incremental = true in release) as accidental rather than deliberate",
+        "Flags the feature design: default features pulling an optional embedded database (sled) on for every consumer; fix makes the embedded DB opt-in or justifies the default",
+        "audit.md closes with CI gates: cargo audit or cargo deny check for advisories/licenses, and fmt/clippy/test at minimum"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Review the test suite in evals/files/parser_tests.rs as a Rust test strategist. Deliver outputs/review.md with severity-ranked findings (each with line evidence and the missing-behavior risk) and a concrete test plan in outputs/test_plan.md that uses the repo's existing frameworks. Identify which tests would not fail if the converter regressed.",
+      "expected_output": "Findings covering assertion-free or tautological tests, duplicate coverage, Debug-format assertion brittleness, a wall-clock sleep used as async synchronization, an unexplained ignored test, golden-file test without update workflow, and missing error-path/boundary/property coverage; plan adds behavior assertions, error-path cases, proptest round-trip/invariant properties, and deterministic async testing.",
+      "files": ["evals/files/parser_tests.rs"],
+      "expectations": [
+        "Flags test_convert_basic as effectively assertion-free (println + len > 0) and test_convert_basic_again as duplicate low-value coverage; these would survive most regressions",
+        "Flags test_convert_debug_format asserting on format!(\"{:?}\") output as brittle implementation-detail coupling",
+        "Flags test_convert_async_slow's tokio::time::sleep as pointless wall-clock delay — the subsequent handle.await already synchronizes, so the sleep only slows the suite; fix removes the sleep (or uses tokio::time::pause if timing behavior ever matters)",
+        "Flags the #[ignore]d large-input test as untested behavior hidden without a tracked reason or owner",
+        "Flags the golden-file test as missing an update/regeneration workflow and as carrying most of the suite's behavior coverage (alongside the empty-input and error-message assertions)",
+        "Identifies the missing coverage: malformed-CSV error paths beyond one message-text assertion, quoting/escaping/unicode boundaries, empty-vs-header-only input, and a proptest round-trip or invariant property (e.g. every input row appears exactly once in the output)",
+        "Notes the error-message-text assertion as coupling to wording rather than error kind; prefers matching on a structured error variant",
+        "test_plan.md names the repo's existing frameworks (tokio::test, golden files) instead of introducing new ones, and removes or de-duplicates the low-value tests"
+      ]
     }
   ]
 }

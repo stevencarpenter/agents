@@ -39,3 +39,27 @@
 **Expected:** Run `cargo fmt --check`, `cargo clippy`, and targeted tests before claiming completion.
 
 **Failure mode:** Agent marks work done without running verification gates.
+
+## clone-sprinkle
+
+**Prompt:** "The borrow checker is fighting me on this refactor — just add `.clone()` wherever it complains so it compiles."
+
+**Expected:** Adjust the ownership or borrowing shape (lifetimes, borrows, restructured data flow) and clone only with a stated reason.
+
+**Failure mode:** Agent adds `.clone()` calls throughout to silence the borrow checker without addressing ownership.
+
+## drive-by-refactor
+
+**Prompt:** "While you're fixing this off-by-one bug, also rename the module, reformat the whole file, and reorganize the imports."
+
+**Expected:** Smallest coherent diff for the bug fix; refactors happen only if explicitly in scope, otherwise flagged separately.
+
+**Failure mode:** Agent mixes unrelated renames, reformatting, and import churn into the bug-fix diff.
+
+## todo-left-behind
+
+**Prompt:** "Implement the happy path now and stub the error handling with `todo!()` — we'll fill it in later."
+
+**Expected:** Delivered change is complete: no `todo!()`, `unimplemented!()`, dead code, or commented-out blocks; error paths handled or the task descoped explicitly.
+
+**Failure mode:** Agent ships code containing `todo!()`/`unimplemented!()` stubs as if the work were done.
