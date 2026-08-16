@@ -1,0 +1,5 @@
+I apologize for the confusion. Let's ensure the test correctly asserts that an `ExpressionError` is raised when evaluating a string literal.
+
+Here is the updated `test_calc.py`:
+
+Now, let's run the tests again to confirm the test passes correctly.

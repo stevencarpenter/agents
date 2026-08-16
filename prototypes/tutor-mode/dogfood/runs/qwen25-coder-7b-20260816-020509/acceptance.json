@@ -1,0 +1,148 @@
+{
+ "task": "calc-102",
+ "passed": 0,
+ "total": 14,
+ "all_pass": false,
+ "cases": [
+  {
+   "expr": "2+3*4",
+   "expect": "float 14.0",
+   "got": {
+    "kind": "raise",
+    "type": "ModuleNotFoundError",
+    "value": "No module named 'calc'"
+   },
+   "pass": false
+  },
+  {
+   "expr": "(1+2.5)*-3",
+   "expect": "float -10.5",
+   "got": {
+    "kind": "raise",
+    "type": "ModuleNotFoundError",
+    "value": "No module named 'calc'"
+   },
+   "pass": false
+  },
+  {
+   "expr": "10/4",
+   "expect": "float 2.5",
+   "got": {
+    "kind": "raise",
+    "type": "ModuleNotFoundError",
+    "value": "No module named 'calc'"
+   },
+   "pass": false
+  },
+  {
+   "expr": "2-2-2",
+   "expect": "float -2.0",
+   "got": {
+    "kind": "raise",
+    "type": "ModuleNotFoundError",
+    "value": "No module named 'calc'"
+   },
+   "pass": false
+  },
+  {
+   "expr": " 2 + 3 * 4 ",
+   "expect": "float 14.0",
+   "got": {
+    "kind": "raise",
+    "type": "ModuleNotFoundError",
+    "value": "No module named 'calc'"
+   },
+   "pass": false
+  },
+  {
+   "expr": "-(3+4)",
+   "expect": "float -7.0",
+   "got": {
+    "kind": "raise",
+    "type": "ModuleNotFoundError",
+    "value": "No module named 'calc'"
+   },
+   "pass": false
+  },
+  {
+   "expr": "1/0",
+   "expect": "ExpressionError",
+   "got": {
+    "kind": "raise",
+    "type": "ModuleNotFoundError",
+    "value": "No module named 'calc'"
+   },
+   "pass": false
+  },
+  {
+   "expr": "",
+   "expect": "ExpressionError",
+   "got": {
+    "kind": "raise",
+    "type": "ModuleNotFoundError",
+    "value": "No module named 'calc'"
+   },
+   "pass": false
+  },
+  {
+   "expr": "2+",
+   "expect": "ExpressionError",
+   "got": {
+    "kind": "raise",
+    "type": "ModuleNotFoundError",
+    "value": "No module named 'calc'"
+   },
+   "pass": false
+  },
+  {
+   "expr": "(1+2",
+   "expect": "ExpressionError",
+   "got": {
+    "kind": "raise",
+    "type": "ModuleNotFoundError",
+    "value": "No module named 'calc'"
+   },
+   "pass": false
+  },
+  {
+   "expr": "2**3",
+   "expect": "ExpressionError",
+   "got": {
+    "kind": "raise",
+    "type": "ModuleNotFoundError",
+    "value": "No module named 'calc'"
+   },
+   "pass": false
+  },
+  {
+   "expr": "10//4",
+   "expect": "ExpressionError",
+   "got": {
+    "kind": "raise",
+    "type": "ModuleNotFoundError",
+    "value": "No module named 'calc'"
+   },
+   "pass": false
+  },
+  {
+   "expr": "\"42\"",
+   "expect": "ExpressionError",
+   "got": {
+    "kind": "raise",
+    "type": "ModuleNotFoundError",
+    "value": "No module named 'calc'"
+   },
+   "pass": false
+  },
+  {
+   "expr": "1 and 1",
+   "expect": "ExpressionError",
+   "got": {
+    "kind": "raise",
+    "type": "ModuleNotFoundError",
+    "value": "No module named 'calc'"
+   },
+   "pass": false
+  }
+ ]
+}

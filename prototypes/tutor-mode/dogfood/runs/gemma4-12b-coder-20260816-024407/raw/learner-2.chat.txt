@@ -1,0 +1,3 @@
+Good point—settings fields definitely come from users, so raw `eval` is risky for the wrong reasons. I could try regex-whitelisting digits/ops, but that gets messy with nested parens and unary minus.
+
+What's the sanctioned approach for this ticket? Should I build a proper recursive descent parser/shunting-yard evaluator from scratch, or is there a safe builtin I should use? Parsing feels like the "right" answer, but I've never actually written one.

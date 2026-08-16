@@ -1,0 +1,148 @@
+{
+ "task": "calc-102",
+ "passed": 14,
+ "total": 14,
+ "all_pass": true,
+ "cases": [
+  {
+   "expr": "2+3*4",
+   "expect": "float 14.0",
+   "got": {
+    "kind": "value",
+    "type": "float",
+    "value": "14.0"
+   },
+   "pass": true
+  },
+  {
+   "expr": "(1+2.5)*-3",
+   "expect": "float -10.5",
+   "got": {
+    "kind": "value",
+    "type": "float",
+    "value": "-10.5"
+   },
+   "pass": true
+  },
+  {
+   "expr": "10/4",
+   "expect": "float 2.5",
+   "got": {
+    "kind": "value",
+    "type": "float",
+    "value": "2.5"
+   },
+   "pass": true
+  },
+  {
+   "expr": "2-2-2",
+   "expect": "float -2.0",
+   "got": {
+    "kind": "value",
+    "type": "float",
+    "value": "-2.0"
+   },
+   "pass": true
+  },
+  {
+   "expr": " 2 + 3 * 4 ",
+   "expect": "float 14.0",
+   "got": {
+    "kind": "value",
+    "type": "float",
+    "value": "14.0"
+   },
+   "pass": true
+  },
+  {
+   "expr": "-(3+4)",
+   "expect": "float -7.0",
+   "got": {
+    "kind": "value",
+    "type": "float",
+    "value": "-7.0"
+   },
+   "pass": true
+  },
+  {
+   "expr": "1/0",
+   "expect": "ExpressionError",
+   "got": {
+    "kind": "raise",
+    "type": "ExpressionError",
+    "value": "Division by zero"
+   },
+   "pass": true
+  },
+  {
+   "expr": "",
+   "expect": "ExpressionError",
+   "got": {
+    "kind": "raise",
+    "type": "ExpressionError",
+    "value": "Empty expression"
+   },
+   "pass": true
+  },
+  {
+   "expr": "2+",
+   "expect": "ExpressionError",
+   "got": {
+    "kind": "raise",
+    "type": "ExpressionError",
+    "value": "Unexpected token"
+   },
+   "pass": true
+  },
+  {
+   "expr": "(1+2",
+   "expect": "ExpressionError",
+   "got": {
+    "kind": "raise",
+    "type": "ExpressionError",
+    "value": "Unbalanced parentheses"
+   },
+   "pass": true
+  },
+  {
+   "expr": "2**3",
+   "expect": "ExpressionError",
+   "got": {
+    "kind": "raise",
+    "type": "ExpressionError",
+    "value": "Unexpected token"
+   },
+   "pass": true
+  },
+  {
+   "expr": "10//4",
+   "expect": "ExpressionError",
+   "got": {
+    "kind": "raise",
+    "type": "ExpressionError",
+    "value": "Unexpected token"
+   },
+   "pass": true
+  },
+  {
+   "expr": "\"42\"",
+   "expect": "ExpressionError",
+   "got": {
+    "kind": "raise",
+    "type": "ExpressionError",
+    "value": "Unexpected character: \""
+   },
+   "pass": true
+  },
+  {
+   "expr": "1 and 1",
+   "expect": "ExpressionError",
+   "got": {
+    "kind": "raise",
+    "type": "ExpressionError",
+    "value": "Unexpected character: a"
+   },
+   "pass": true
+  }
+ ]
+}

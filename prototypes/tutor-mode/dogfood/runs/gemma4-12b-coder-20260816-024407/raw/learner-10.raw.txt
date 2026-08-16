@@ -1,0 +1,88 @@
+I expect the test to pass because the successful path for `test_single_integer` is the shortest path through the grammar: `expression` → `term` → `factor` → `primary`, which only needs to recognize a number. Since that test only passes a digit-only string, I can implement just that branch in `primary` and stub the other rules to still call `primary` with no operator — the test will still walk the full chain and get the literal result without needing any real arithmetic logic yet.
+
+```file:calc.py
+class ExpressionError(Exception):
+    pass
+
+
+def evaluate(expr):
+    if not expr.strip():
+        raise ExpressionError("Empty expression")
+
+    from token import Lexer
+
+    tokens = Lexer(expr).tokenize()
+
+    if not tokens:
+        raise ExpressionError("Could not parse")
+
+    position = 0
+
+    def peek():
+        global position
+        return tokens[position]
+
+    def consume():
+        global position
+        token = peek()
+        position += 1
+        return token
+
+    def expression():
+        left = term()
+        while position < len(tokens) and peek().type in ('PLUS', 'MINUS'):
+            op = consume()
+            right = term()
+            left = left + right if op.type == 'PLUS' else left - right
+
+        if position < len(tokens) and peek().type not in ('EOF', 'PLUS', 'MINUS'):
+            raise ExpressionError("Expected end of expression")
+
+        return left
+
+    def term():
+        left = factor()
+        while position < len(tokens) and peek().type in ('STAR', 'SLASH'):
+            op = consume()
+            right = factor()
+            if op.type == 'STAR':
+                left = left * right
+            else:
+                if right == 0:
+                    raise ExpressionError("Division by zero")
+                left = left / right
+
+        if position < len(tokens) and peek().type not in ('EOF', 'PLUS', 'MINUS', 'STAR', 'SLASH'):
+            raise ExpressionError("Expected end of term")
+
+        return left
+
+    def factor():
+        if peek().type == 'MINUS':
+            consume()
+            return - factor()
+        left = primary()
+        if position < len(tokens) and peek().type not in ('EOF', 'PLUS', 'MINUS', 'STAR', 'SLASH'):
+            raise ExpressionError("Expected end of factor")
+        return left
+
+    def primary():
+        token = peek()
+        if token.type == 'LPAREN':
+            consume()
+            result = expression()
+            if position >= len(tokens) or tokens[position].type != 'RPAREN':
+                raise ExpressionError("Unbalanced parentheses")
+            consume()
+            return result
+        elif token.type == 'NUMBER':
+            return consume()
+        else:
+            raise ExpressionError("Unexpected token")
+
+    result = expression()
+    if position != len(tokens):
+        raise ExpressionError("Trailing characters in expression")
+
+    return result
+```

@@ -1,0 +1,3 @@
+For `"123"`, `lex` returns two tokens: the number token and then the `EOF` token. `expression` consumes `NUMBER` via the `primary` chain and stops—so `state['position']` is 1, but `len(tokens)` is 2. The `EOF` token is still sitting there, which triggers the "trailing characters" check on line 81.
+
+This is a classic parsing bug: the parser must explicitly consume `EOF` to reach a clean end-of-stream. I can add a rule that loops over `EOF` in `expression` until the stream is drained, so the final position check sees a fully consumed expression.

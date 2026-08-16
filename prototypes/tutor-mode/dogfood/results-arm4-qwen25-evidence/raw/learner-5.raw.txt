@@ -1,0 +1,21 @@
+I see. Let's tackle these requirements:
+
+1. **Parentheses and Unary Minus**: The current token set of `NUMBER`, `PLUS`, `MINUS`, `TIMES`, and `DIVIDE` will need adjustments. For parentheses, we can add a `LPAREN` and `RPAREN` token. For unary minus, we can reuse the `MINUS` token but change its meaning based on context. So, `MINUS` will represent both binary subtraction and unary negation.
+
+2. **Test First**: Let's write the failing test for the expression `"1+2"`.
+
+Here's the failing test in `test_calc.py`:
+
+```file:test_calc.py
+from calc import evaluate
+
+def test_evaluate_simple_expression():
+    try:
+        evaluate("1+2")
+    except ExpressionError as e:
+        assert False, f"Expected no exception, but got {e}"
+    else:
+        assert True, "No exception was raised as expected"
+```
+
+When we run this test, we expect it to fail because `evaluate("1+2")` will currently raise a `NameError` due to the use of `eval()`. Let's go ahead and write the test to see the failure.

@@ -1,0 +1,71 @@
+{
+  "schema_version": 2,
+  "run_id": "gemma4-12b-coder-20260816-024407",
+  "run_date": "2026-08-16 03:01:15 -0600",
+  "host": "Darwin Stevens-MacBook-Pro.local 27.0.0 Darwin Kernel Version 27.0.0: Wed Aug  5 22:04:40 PDT 2026; root:xnu-13432.1.6.501.1~1/RELEASE_ARM64_T6050 arm64",
+  "versions": {
+    "claude": "2.1.233 (Claude Code)",
+    "python": "Python 3.14.4"
+  },
+  "config": {
+    "run_id_prefix": "gemma4-12b-coder",
+    "learner": {
+      "model": "gemma-4-12B-coder-fable5-composer2.5-v1-OptiQ-4bit",
+      "endpoint": "http://localhost:42069",
+      "max_tokens": 3000
+    },
+    "tutor": {
+      "model": "sonnet",
+      "output_style": "Tutor"
+    },
+    "task": "calc-102",
+    "max_turns": 30,
+    "notes": "12B coder merge at 4-bit (OptiQ), loaded in the 2026-08-16 roster. Between the 7B tier (0-for-2 at cap 20) and the 35B tier (DONE in 13); cap 30 per the small-tier guideline since 4-bit quant tends toward the lower behavior class."
+  },
+  "task": "calc-102",
+  "max_turns_effective": 30,
+  "workspace": "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407",
+  "tutor_session": {
+    "id": "80ccdb99-8865-402e-ac3c-0deb70dba7a2",
+    "continuous": true,
+    "tool_uses": 14
+  },
+  "outcome": {
+    "learner_done": true,
+    "tutor_mutations": 0,
+    "acceptance": {
+      "all_pass": true,
+      "passed": 14,
+      "total": 14
+    }
+  },
+  "metrics": {
+    "turns_learner": 28,
+    "turns_tutor": 27,
+    "tutor_cost_usd": 10.9369992,
+    "learner_tokens_in": 204870,
+    "learner_tokens_out": 15394,
+    "wall_s": 1026.83,
+    "mutations": 0,
+    "final_tests": {
+      "ran": 9,
+      "failures": 0,
+      "errors": 0,
+      "ok": true
+    }
+  },
+  "valid": true,
+  "evidence": {
+    "transcript": "transcript.md",
+    "metrics_events": "metrics.jsonl",
+    "metrics_summary": "metrics.json",
+    "acceptance": "acceptance.json",
+    "per_turn_raw": "raw/",
+    "exhibits": "exhibits/",
+    "tutor_session_dir": "tutor-session/",
+    "workspace_copy": "workspace/",
+    "workspace_diffs": "workspace-history.patch",
+    "learner_full_history": "learner-history.json",
+    "checksums": "SHA256SUMS"
+  }
+}

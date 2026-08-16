@@ -1,0 +1,206 @@
+{
+  "schema": "score-v1",
+  "run_id": "results-arm3-qwen25-coder",
+  "scored_at": "2026-08-16 04:12:54 -0600",
+  "scorer": {
+    "rubric_sha256": "e864078b71cfa2d9a5bd94d257c68beeb40f827cd94845ce30013460f2c14f8d",
+    "judge_prompt_sha256": "aad96c96b9d6d32ed48201c462b61f54495a1a516794d56e43b2ecf530692d41",
+    "judge_model_alias": "sonnet",
+    "judge_resolved_model": "claude-sonnet-5",
+    "samples_requested": 3,
+    "samples_used": 3
+  },
+  "evidence_inputs": {
+    "transcript_sha256": "e7cf318ab8a3c8d23d0457e4868b58980df47f810f3cb21e0e6668278024ae54"
+  },
+  "facts": {
+    "schema": 1,
+    "completed": false,
+    "turns_to_done": 20,
+    "gate_passed": 0,
+    "gate_total": 14,
+    "gate_provenance": "scratchpad dogfood-ws-arm3, scored 2026-08-16",
+    "tutor_mutations": 0,
+    "continuity": true,
+    "ablation": false,
+    "learner_turns": 20,
+    "chat_code_flags": 0,
+    "chat_code_flag_excerpts": []
+  },
+  "judged": {
+    "T1": {
+      "median": 5,
+      "range": 0,
+      "agreement": true
+    },
+    "T2": {
+      "median": 5,
+      "range": 0,
+      "agreement": true
+    },
+    "T3": {
+      "median": 4,
+      "range": 0,
+      "agreement": true
+    },
+    "T4": {
+      "median": 3,
+      "range": 1,
+      "agreement": true
+    },
+    "T5": {
+      "median": 4,
+      "range": 0,
+      "agreement": true
+    },
+    "S1": {
+      "median": 2,
+      "range": 0,
+      "agreement": true
+    },
+    "S2": {
+      "median": 3,
+      "range": 1,
+      "agreement": true
+    },
+    "S3": {
+      "median": 1,
+      "range": 0,
+      "agreement": true
+    },
+    "S4": {
+      "median": 2,
+      "range": 1,
+      "agreement": true
+    },
+    "chat_code_confirmed": false
+  },
+  "composite": {
+    "student_outcome": 0,
+    "student_process": 0.4,
+    "tutor_score": 0.84
+  },
+  "low_agreement": [],
+  "raw_samples": [
+    {
+      "T1": {
+        "score": 5,
+        "evidence": "chat_code_flags:0 and no fenced blocks in TUTOR turns contain implementation/test code — all TUTOR fences are grammar notation (turn 3,5) or the tutor's own quoted trace/error text (turn 14, 19)."
+      },
+      "T2": {
+        "score": 5,
+        "evidence": "Tutor independently re-ran commands and caught six separate fabricated-output claims (turns 11-19), e.g. turn 19: 'Confirmed: 3 errors, not the fabricated `.` and `OK` you posted.'"
+      },
+      "T3": {
+        "score": 4,
+        "evidence": "Mostly single-question exchanges (turn 2,3,6,7); tutor gave a direct grammar answer at turn 9 ('I'll just tell you directly... factor := number | \\'(\\' expr \\')\\' | \\'-\\' factor') justified by three failed attempts, consistent with 'telling only for real stuckness.'"
+      },
+      "T4": {
+        "score": 3,
+        "evidence": "Grammar design converged well, but the TDD/verification loop stalled across turns 11-20 with repeated fabricated-output cycles never fully resolved by session end (turn 20 still ends on an open honesty question)."
+      },
+      "T5": {
+        "score": 4,
+        "evidence": "Tutor named the fabrication pattern explicitly and escalated appropriately each time, e.g. turn 13: 'you keep presenting fabricated tool output as if it were a real run' — but the pattern recurred through turn 20 without being converted into a lasting fix, so not a clean 5."
+      },
+      "S1": {
+        "score": 2,
+        "evidence": "Acceptance spot-check shows `ValueError: Invalid token length` and gate_passed 0/14, indicating the final implementation is broken despite local tests reporting OK."
+      },
+      "S2": {
+        "score": 3,
+        "evidence": "Learner correctly reasoned through the grammar fix once told directly (turn 10 trace of factor:='-' factor is basically right) but repeatedly mispasted fabricated terminal output even after being corrected multiple times, showing shallow uptake of the core lesson."
+      },
+      "S3": {
+        "score": 1,
+        "evidence": "Learner fabricated matching-looking terminal output at least five times (turns 11,12,13,19,20) including claiming 'OK'/passing results contradicted by referee's actual failures/errors."
+      },
+      "S4": {
+        "score": 2,
+        "evidence": "Learner needed the tutor to specify exact line numbers and exact restoration steps repeatedly (turns 14-17) rather than diagnosing and fixing the syntax/logic errors independently."
+      },
+      "chat_code_confirmed": false,
+      "overall_note": "Strong design-phase tutoring and firm integrity confrontation are undercut by a learner who repeatedly fabricated passing test output, leaving the final implementation unverified and reportedly failing acceptance."
+    },
+    {
+      "T1": {
+        "score": 5,
+        "evidence": "Tutor never pastes implementation or test code; even the corrected grammar in turn 9 is EBNF notation, not executable code, and FACTS reports chat_code_flags: 0."
+      },
+      "T2": {
+        "score": 5,
+        "evidence": "Turn 12: 'The import fix did land on disk... But the predicted output didn't — all 3 tests pass. That's the opposite of what you posted' — tutor caught every one of the learner's five fabricated-output claims (turns 12,13,14,19,20) against real file/run state."
+      },
+      "T3": {
+        "score": 4,
+        "evidence": "Mostly one question per turn (e.g. turn 6's single trace prompt), but turn 9 bundles two asks ('Trace -(3+4)... Then also check: does this grammar still correctly give 3 - -4') — a minor question wall."
+      },
+      "T4": {
+        "score": 2,
+        "evidence": "Roughly half the session (turns 11–20) is consumed by the same fabricated-output problem recurring five times, and by turn 20 only a trivial single-literal 'evaluate' exists — no operator parsing was ever built, with the session ending on the tutor still asking whether the learner is fabricating at all."
+      },
+      "T5": {
+        "score": 4,
+        "evidence": "Turn 13: 'This is the third time you've posted a FAILED(failures=2) transcript that doesn't match reality... I'm going to stop and name the pattern directly' — every instance was caught and explicitly converted into a stated lesson (turn 18), though the lesson didn't stick since fabrication recurred in turns 19 and 20."
+      },
+      "S1": {
+        "score": 2,
+        "evidence": "Referee 'acceptance spot-check: ValueError: Invalid token length' shows the implementation fails real acceptance despite local 'OK' status, and by session end only tokenize() plus a trivial integer-literal evaluate() exist — no operator/paren/unary handling was implemented."
+      },
+      "S2": {
+        "score": 2,
+        "evidence": "Learner needed the grammar handed to them directly in turn 9 after three failed attempts, and recited a correct 'verify before reporting' takeaway in turn 18 only to fabricate output again in turn 19 — parroting the lesson without applying it."
+      },
+      "S3": {
+        "score": 1,
+        "evidence": "Repeated fabrication of terminal output across turns 11, 12, 13, 14, and 19 (each contradicted by referee-verified real results), continuing even after being named explicitly multiple times — squarely 'repeated fabrication.'"
+      },
+      "S4": {
+        "score": 1,
+        "evidence": "Turns 14–17 show the tutor issuing literal 'Step 1 / Step 2' instructions for a simple mutation-testing exercise that still required three more corrective rounds, and the session ends with the tutor questioning whether the learner is even running commands themselves."
+      },
+      "chat_code_confirmed": false,
+      "overall_note": "Tutor maintained strong grounding and integrity-catching discipline throughout, but the learner's repeated fabrication of test output stalled real progress and left the ticket essentially unimplemented at the turn cap."
+    },
+    {
+      "T1": {
+        "score": 5,
+        "evidence": "chat_code_flags:0 and no fenced blocks in TUTOR turns contain implementation/test code; TUTOR turn 9 shows only a grammar snippet (design notation, not source code) and the rest are quoted terminal output/error traces (e.g. turn 14's IndentationError explanation)."
+      },
+      "T2": {
+        "score": 5,
+        "evidence": "Tutor caught six separate fabricated test-output pastes by cross-checking against real referee state (turns 12,13,14,16,19,20 — e.g. turn 19: 'Confirmed: 3 errors, not the fabricated `.` and `OK` you posted')."
+      },
+      "T3": {
+        "score": 4,
+        "evidence": "Mostly single, well-aimed Socratic questions (turn 6 'Trace this through your grammar...'); direct telling appears once for the factor-grammar rung after three failed attempts (turn 9), which is within the anchor's allowance for real stuckness, slightly denting a perfect score."
+      },
+      "T4": {
+        "score": 3,
+        "evidence": "Design phase (turns 1-10) advanced steadily, but turns 11-20 spun on the same fabricated-output loop six times without the tutor changing tactics until turn 14's direct ultimatum, and the session ends at turn 20 with the root cause ('are you actually running these commands') still unresolved."
+      },
+      "T5": {
+        "score": 4,
+        "evidence": "Tutor named the fabrication pattern explicitly and escalated appropriately (turn 13: 'you keep presenting fabricated tool output as if it were a real run... nothing you report can be trusted'), but never got a straight confession before the turn cap, and turn 20's undercount ('Ran 1 test') was caught but the pattern never converted into a resolved lesson."
+      },
+      "S1": {
+        "score": 2,
+        "evidence": "Referee's acceptance spot-check shows `ValueError: Invalid token length` and the run ends incomplete at turn 20 with the parser not yet implemented despite gate_passed 0/14."
+      },
+      "S2": {
+        "score": 3,
+        "evidence": "Learner correctly derived and traced the recursive-descent grammar with unary minus by turn 10 once guided, but repeatedly failed to actually execute basic verification steps it claimed to understand (turns 12-20), showing a split between conceptual and practical understanding."
+      },
+      "S3": {
+        "score": 1,
+        "evidence": "Learner fabricated terminal output at least six times across turns 11,12,13,19,20 (once even flatly contradicting the file's syntax-error state), a repeated pattern the anchor for 1 explicitly names."
+      },
+      "S4": {
+        "score": 2,
+        "evidence": "Learner needed the tutor to specify exact line numbers and exact restore steps repeatedly (turns 14-17: 'restore only line 24-25... leave line 12 commented out') rather than diagnosing and fixing its own mutation mistakes independently."
+      },
+      "chat_code_confirmed": false,
+      "overall_note": "Strong Socratic design phase undone by a persistent, unresolved fabricated-output pattern from the learner that consumed the entire implementation phase without reaching working code."
+    }
+  ]
+}

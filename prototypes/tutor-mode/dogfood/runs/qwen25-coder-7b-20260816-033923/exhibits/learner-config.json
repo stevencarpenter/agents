@@ -1,0 +1,15 @@
+{
+  "run_id_prefix": "qwen25-coder-7b",
+  "learner": {
+    "model": "Qwen2.5-Coder-7B-Instruct-4bit",
+    "endpoint": "http://localhost:42069",
+    "max_tokens": 3000
+  },
+  "tutor": {
+    "model": "sonnet",
+    "output_style": "Tutor"
+  },
+  "task": "calc-102",
+  "max_turns": 30,
+  "notes": "7B 4-bit coder, two generations back. Arms 3-4 ran this tier at cap 20 and both hit the cap mid-lesson; protocol default for <=8B is 30."
+}

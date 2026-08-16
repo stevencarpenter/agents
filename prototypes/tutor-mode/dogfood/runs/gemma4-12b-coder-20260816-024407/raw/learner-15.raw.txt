@@ -1,0 +1,5 @@
+That `AttributeError` is mine — the lexer packs tokens as `(type, value)` tuples, but the parser looks for `token.type`, which only works on namedtuples or classes. Every test that hits `factor` (nearly all of them) crashes before the error message assertion can even be evaluated.
+
+Reporting "DONE" before the suite actually ran green was a mistake — I presumed the parser was sound because I'd mentally mapped it to the spec. The check that would have caught this is literally running `pytest` or `unittest` locally first: the moment those 7 errors appear instead of a green pass, the build state is revealed.
+
+Fixing the boundary now with `token[0] == 'MINUS'` instead of `.type`.

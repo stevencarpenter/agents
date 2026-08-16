@@ -1,0 +1,71 @@
+{
+  "schema_version": 2,
+  "run_id": "qwen25-coder-7b-20260816-020509",
+  "run_date": "2026-08-16 02:06:14 -0600",
+  "host": "Darwin Stevens-MacBook-Pro.local 27.0.0 Darwin Kernel Version 27.0.0: Wed Aug  5 22:04:40 PDT 2026; root:xnu-13432.1.6.501.1~1/RELEASE_ARM64_T6050 arm64",
+  "versions": {
+    "claude": "2.1.233 (Claude Code)",
+    "python": "Python 3.14.4"
+  },
+  "config": {
+    "run_id_prefix": "qwen25-coder-7b",
+    "learner": {
+      "model": "Qwen2.5-Coder-7B-Instruct-4bit",
+      "endpoint": "http://localhost:42069",
+      "max_tokens": 3000
+    },
+    "tutor": {
+      "model": "sonnet",
+      "output_style": "Tutor"
+    },
+    "task": "calc-102",
+    "max_turns": 30,
+    "notes": "7B 4-bit coder, two generations back. Arms 3-4 ran this tier at cap 20 and both hit the cap mid-lesson; protocol default for <=8B is 30."
+  },
+  "task": "calc-102",
+  "max_turns_effective": 2,
+  "workspace": "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-qwen25-coder-7b-20260816-020509",
+  "tutor_session": {
+    "id": "5e8bf41c-5de8-497f-a532-f62f7a38becb",
+    "continuous": true,
+    "tool_uses": 4
+  },
+  "outcome": {
+    "learner_done": false,
+    "tutor_mutations": 0,
+    "acceptance": {
+      "all_pass": false,
+      "passed": 0,
+      "total": 14
+    }
+  },
+  "metrics": {
+    "turns_learner": 2,
+    "turns_tutor": 2,
+    "tutor_cost_usd": 0.6322019999999999,
+    "learner_tokens_in": 1235,
+    "learner_tokens_out": 324,
+    "wall_s": 64.36,
+    "mutations": 0,
+    "final_tests": {
+      "ran": 0,
+      "failures": 0,
+      "errors": 0,
+      "ok": false
+    }
+  },
+  "valid": true,
+  "evidence": {
+    "transcript": "transcript.md",
+    "metrics_events": "metrics.jsonl",
+    "metrics_summary": "metrics.json",
+    "acceptance": "acceptance.json",
+    "per_turn_raw": "raw/",
+    "exhibits": "exhibits/",
+    "tutor_session_dir": "tutor-session/",
+    "workspace_copy": "workspace/",
+    "workspace_diffs": "workspace-history.patch",
+    "learner_full_history": "learner-history.json",
+    "checksums": "SHA256SUMS"
+  }
+}

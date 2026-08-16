@@ -1,0 +1,30 @@
+I see now. The `ExpressionError` class should be defined or imported in `calc.py`. Let's add it and ensure it's properly imported in the test.
+
+Here's the corrected `calc.py`:
+
+```file:calc.py
+class ExpressionError(Exception):
+    pass
+
+def evaluate(expr: str) -> float:
+    try:
+        return eval(expr)
+    except Exception as e:
+        raise ExpressionError(f"Malformed expression: {expr}")
+```
+
+Now, let's write the failing test again:
+
+```file:test_calc.py
+from calc import evaluate, ExpressionError
+
+def test_evaluate_empty_expression():
+    try:
+        result = evaluate("")
+    except ExpressionError as e:
+        assert False, f"Expected no exception, but got {e}"
+    else:
+        assert result == 0, "Expected result to be 0 for empty expression"
+```
+
+Let's run this test and see the failure.

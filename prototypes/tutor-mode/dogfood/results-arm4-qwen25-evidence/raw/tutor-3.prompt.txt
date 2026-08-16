@@ -1,0 +1,9 @@
+I haven't worked with any of those parsers before, but I'm curious about the shunting-yard algorithm. It seems like a solid choice for its simplicity and efficiency in handling operator precedence.
+
+Let's start by designing the parser and evaluator step by step:
+
+1. **Tokenization**: Convert the input string into a list of tokens.
+2. **Parsing**: Use the shunting-yard algorithm to convert the infix expression into a postfix expression (Reverse Polish Notation).
+3. **Evaluation**: Evaluate the postfix expression.
+
+I'll implement these steps and see how it goes. Any preferences or suggestions for the initial tokenization step?
