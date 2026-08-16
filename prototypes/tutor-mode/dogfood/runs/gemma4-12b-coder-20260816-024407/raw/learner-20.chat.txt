@@ -1,0 +1,3 @@
+I want B — change the check to verify that the next token is `EOF` instead of comparing position to `len(tokens)`.
+
+After all the grammar handles the structural end of the expression, a one-token `EOF` sentinel is exactly what the lexer guarantees. Consuming it inside `evaluate` before checking would make the parser's upper bound ambiguous — the parser should own the consumption of the sentence, the final check only validates that the sentence ended cleanly. By checking `tokens[state['position']].type != 'EOF'`, the test succeeds when the parser stops naturally at the literal end of the expression, and fails only on actual garbage, which is exactly what the "trailing characters" requirement wants.

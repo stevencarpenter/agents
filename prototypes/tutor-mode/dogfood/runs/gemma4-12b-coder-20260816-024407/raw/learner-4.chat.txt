@@ -1,0 +1,1 @@
+The smallest piece is a single integer literal: a non-empty string of only digits should evaluate to its float value. I'll write `test_single_integer` that asserts `evaluate("123") == 123.0` and leave the implementation as a stub that raises `ExpressionError`, so the test fails until the lexer/parser is actually hooked up.

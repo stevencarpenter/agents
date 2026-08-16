@@ -1,0 +1,8 @@
+The call stack mirrors precedence, with each level delegating to the next higher rule for its subexpressions. Grammar sketch:
+
+- `expression` → `term` (+ and -)
+- `term` → `factor` (* and /)
+- `factor` → unary minus, or `primary`
+- `primary` → parens (recurse to `expression`), or a number literal
+
+Each level parses what the rule below it cannot, then binds the results with the appropriate operator.

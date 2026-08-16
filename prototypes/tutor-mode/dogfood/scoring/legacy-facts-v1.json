@@ -1,0 +1,38 @@
+{
+  "_provenance": "Gate results computed 2026-08-16 with tasks/calc-102/acceptance.py against each run's final workspace: arm 4 from its archived results workspace; arms 1-3 from the still-present scratchpad workspaces (dogfood-ws, dogfood-ws-local, dogfood-ws-arm3). Continuity from raw tutor JSONs (session-id count).",
+  "results": {
+    "gate_passed": 14,
+    "gate_total": 14,
+    "provenance": "scratchpad dogfood-ws, scored 2026-08-16",
+    "continuity": true,
+    "ablation": false
+  },
+  "results-local-memoryless": {
+    "gate_passed": null,
+    "gate_total": 14,
+    "provenance": "final workspace destroyed when the stateful rerun reused dogfood-ws-local; transcript's 4-example spot-check passed, 14-case gate NOT computable; 9 distinct tutor sessions (driver bug)",
+    "continuity": false,
+    "ablation": true
+  },
+  "results-local": {
+    "gate_passed": 14,
+    "gate_total": 14,
+    "provenance": "scratchpad dogfood-ws-local, scored 2026-08-16",
+    "continuity": true,
+    "ablation": false
+  },
+  "results-arm3-qwen25-coder": {
+    "gate_passed": 0,
+    "gate_total": 14,
+    "provenance": "scratchpad dogfood-ws-arm3, scored 2026-08-16",
+    "continuity": true,
+    "ablation": false
+  },
+  "results-arm4-qwen25-evidence": {
+    "gate_passed": 8,
+    "gate_total": 14,
+    "provenance": "archived results-arm4-qwen25-evidence/workspace, scored 2026-08-16",
+    "continuity": true,
+    "ablation": false
+  }
+}

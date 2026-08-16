@@ -1,0 +1,16 @@
+E
+======================================================================
+ERROR: test_single_integer (test_calc.TestCalc.test_single_integer)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/test_calc.py", line 7, in test_single_integer
+    self.assertEqual(evaluate("123"), 123.0)
+                     ~~~~~~~~^^^^^^^
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 6, in evaluate
+    raise ExpressionError("Not implemented yet")
+calc.ExpressionError: Not implemented yet
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (errors=1)

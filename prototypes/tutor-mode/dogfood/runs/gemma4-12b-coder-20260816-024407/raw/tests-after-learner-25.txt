@@ -1,0 +1,23 @@
+E
+======================================================================
+ERROR: test_calc (unittest.loader._FailedTest.test_calc)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_calc
+Traceback (most recent call last):
+  File "/nix/store/bz7r3a1x3xby7ilac2ngzwr0szf3yzxc-python3-3.14.4/lib/python3.14/unittest/loader.py", line 426, in _find_test_path
+    module = self._get_module_from_name(name)
+  File "/nix/store/bz7r3a1x3xby7ilac2ngzwr0szf3yzxc-python3-3.14.4/lib/python3.14/unittest/loader.py", line 367, in _get_module_from_name
+    __import__(name)
+    ~~~~~~~~~~^^^^^^
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/test_calc.py", line 2, in <module>
+    from calc import evaluate, ExpressionError
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 1
+    from collections import import namedtuple
+                            ^^^^^^
+SyntaxError: invalid syntax
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (errors=1)

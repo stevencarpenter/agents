@@ -1,0 +1,18 @@
+[
+  {
+    "role": "user",
+    "content": "You're at your desk, repo open with just TICKET.md, tutor chat connected. Send your opening message to the tutor."
+  },
+  {
+    "role": "assistant",
+    "content": "Hi! I'm looking at CALC-102. It wants to evaluate arithmetic strings. Since I haven't written a parser from scratch before, I'm going to rely on Python's built-in `eval()` function.\n\nIt handles standard operator precedence, parentheses, and literals out of the box. My plan is to:\n1. Define a custom `ExpressionError`.\n2. Wrap `eval()` to catch errors (like `SyntaxError` or `ZeroDivisionError`) and re-raise them as `ExpressionError`.\n3. Ensure the result is cast to `float`.\n\nI think this covers `2+3*4` and `(1+2.5)*-3` easily. I'll add some unit tests too. Does that approach work for you?"
+  },
+  {
+    "role": "user",
+    "content": "[tutor] That's a real security hole, not a style nitpick — I'll show you directly. The ticket says this evaluates **user-typed formula fields**. `eval()` doesn't parse arithmetic, it executes Python:\n\n```\n>>> eval('__import__(\"os\").getcwd()')\n'/private/tmp/.../tutor-bench-ws-qwen25-coder-7b-20260816-033923'\n```\n\nAny user who can type into a settings field can run arbitrary Python — read files, spawn processes, whatever the process's permissions allow. Restricting `eval`'s globals (`eval(expr, {\"__builtins__\": {}})`) closes the obvious `__import__` route, but sandboxing `eval` against a determined attacker is a well-known rabbit hole (attribute-chain tricks to reach `__builtins__` back out through object internals) — not something to lean on for untrusted input.\n\nThere's also a spec-fit problem independent of security: the ticket requires \"unexpected characters\" to raise `ExpressionError` pointing at the problem, and only wants `+ - * / ( )` and numeric literals. `eval` accepts the entire Python expression grammar — `2+3 if True else 4`, `[1,2,3]`, `x=5` (well, not as an expression, but plenty else) — so you'd need a pre-validation pass to reject anything outside arithmetic *before* handing it to `eval`, and that pass is most of the work of a real parser anyway.\n\nGiven that, do you want to keep pursuing an `eval`-based approach with a hardened pre-validator, or write a small parser directly? What's your read on the tradeoff now that you've seen the injection?"
+  },
+  {
+    "role": "assistant",
+    "content": "You're right—`eval` is overkill and brittle here. Given the strict token set and precedence rules, a simple recursive descent parser feels safer and aligns better with the spec. I've never written one from scratch, so I'll start with a tokenizer to strip whitespace and validate tokens, then a recursive descent parser handling precedence (Expr → Term → Factor). I'll map `*`/`/` to higher precedence levels than `+`/`-`, and handle unary minus in the factor level. Want me to draft the tokenizer and parser structure, or should I just jump into the full `evaluate()` implementation?"
+  }
+]

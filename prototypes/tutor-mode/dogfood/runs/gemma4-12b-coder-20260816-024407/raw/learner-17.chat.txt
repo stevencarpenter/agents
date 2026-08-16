@@ -1,0 +1,1 @@
+I broke scope with `position = 0` inside `evaluate()`—the nested functions try to increment it but think `position` is a local variable. The standard fix for Python 2/3 would be a list wrapper or a class, but here I can just lift `position` one level up so the inner functions treat it as a non-local.

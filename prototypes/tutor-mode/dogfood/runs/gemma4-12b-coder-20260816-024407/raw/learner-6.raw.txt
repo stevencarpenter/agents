@@ -1,0 +1,3 @@
+That is because `unittest.discover` scans directories for `test_*.py` files, and I haven't created any tests yet.
+
+The `ExpressionError` is in `calc.py`, so I need to create a test file so the runner actually sees anything to run. I'll add `test_single_integer` asserting `evaluate("123") == 123.0` in `test_calc.py`, which should now fail with my deliberate `ExpressionError` instead of an `ImportError`.

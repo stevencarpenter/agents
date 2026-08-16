@@ -1,0 +1,8 @@
+Hi! I'm looking at CALC-102. It wants to evaluate arithmetic strings. Since I haven't written a parser from scratch before, I'm going to rely on Python's built-in `eval()` function.
+
+It handles standard operator precedence, parentheses, and literals out of the box. My plan is to:
+1. Define a custom `ExpressionError`.
+2. Wrap `eval()` to catch errors (like `SyntaxError` or `ZeroDivisionError`) and re-raise them as `ExpressionError`.
+3. Ensure the result is cast to `float`.
+
+I think this covers `2+3*4` and `(1+2.5)*-3` easily. I'll add some unit tests too. Does that approach work for you?

@@ -1,0 +1,162 @@
+EEE.EE.EE
+======================================================================
+ERROR: test_addition_multiplication (test_calc.TestCalc.test_addition_multiplication)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/test_calc.py", line 10, in test_addition_multiplication
+    self.assertEqual(evaluate("2+3*4"), 14.0)
+                     ~~~~~~~~^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 80, in evaluate
+    result = expression()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 29, in expression
+    left = term()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 41, in term
+    left = factor()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 61, in factor
+    left = primary()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 76, in primary
+    return consume().value
+           ~~~~~~~^^
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 25, in consume
+    position += 1
+    ^^^^^^^^
+UnboundLocalError: cannot access local variable 'position' where it is not associated with a value
+
+======================================================================
+ERROR: test_division (test_calc.TestCalc.test_division)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/test_calc.py", line 16, in test_division
+    self.assertEqual(evaluate("10/4"), 2.5)
+                     ~~~~~~~~^^^^^^^^
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 80, in evaluate
+    result = expression()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 29, in expression
+    left = term()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 41, in term
+    left = factor()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 61, in factor
+    left = primary()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 76, in primary
+    return consume().value
+           ~~~~~~~^^
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 25, in consume
+    position += 1
+    ^^^^^^^^
+UnboundLocalError: cannot access local variable 'position' where it is not associated with a value
+
+======================================================================
+ERROR: test_division_by_zero (test_calc.TestCalc.test_division_by_zero)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/test_calc.py", line 23, in test_division_by_zero
+    evaluate("10/0")
+    ~~~~~~~~^^^^^^^^
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 80, in evaluate
+    result = expression()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 29, in expression
+    left = term()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 41, in term
+    left = factor()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 61, in factor
+    left = primary()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 76, in primary
+    return consume().value
+           ~~~~~~~^^
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 25, in consume
+    position += 1
+    ^^^^^^^^
+UnboundLocalError: cannot access local variable 'position' where it is not associated with a value
+
+======================================================================
+ERROR: test_parentheses_and_negation (test_calc.TestCalc.test_parentheses_and_negation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/test_calc.py", line 13, in test_parentheses_and_negation
+    self.assertEqual(evaluate("(1+2.5)*-3"), -10.5)
+                     ~~~~~~~~^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 80, in evaluate
+    result = expression()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 29, in expression
+    left = term()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 41, in term
+    left = factor()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 61, in factor
+    left = primary()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 69, in primary
+    consume()
+    ~~~~~~~^^
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 25, in consume
+    position += 1
+    ^^^^^^^^
+UnboundLocalError: cannot access local variable 'position' where it is not associated with a value
+
+======================================================================
+ERROR: test_single_integer (test_calc.TestCalc.test_single_integer)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/test_calc.py", line 7, in test_single_integer
+    self.assertEqual(evaluate("123"), 123.0)
+                     ~~~~~~~~^^^^^^^
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 80, in evaluate
+    result = expression()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 29, in expression
+    left = term()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 41, in term
+    left = factor()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 61, in factor
+    left = primary()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 76, in primary
+    return consume().value
+           ~~~~~~~^^
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 25, in consume
+    position += 1
+    ^^^^^^^^
+UnboundLocalError: cannot access local variable 'position' where it is not associated with a value
+
+======================================================================
+ERROR: test_unary_minus (test_calc.TestCalc.test_unary_minus)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/test_calc.py", line 19, in test_unary_minus
+    self.assertEqual(evaluate("-5+10"), 5.0)
+                     ~~~~~~~~^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 80, in evaluate
+    result = expression()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 29, in expression
+    left = term()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 41, in term
+    left = factor()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 61, in factor
+    left = primary()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 78, in primary
+    raise ExpressionError("Unexpected token")
+calc.ExpressionError: Unexpected token
+
+======================================================================
+ERROR: test_unbalanced_parentheses (test_calc.TestCalc.test_unbalanced_parentheses)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/test_calc.py", line 35, in test_unbalanced_parentheses
+    evaluate("(1+2")
+    ~~~~~~~~^^^^^^^^
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 80, in evaluate
+    result = expression()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 29, in expression
+    left = term()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 41, in term
+    left = factor()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 61, in factor
+    left = primary()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 69, in primary
+    consume()
+    ~~~~~~~^^
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 25, in consume
+    position += 1
+    ^^^^^^^^
+UnboundLocalError: cannot access local variable 'position' where it is not associated with a value
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.003s
+
+FAILED (errors=7)

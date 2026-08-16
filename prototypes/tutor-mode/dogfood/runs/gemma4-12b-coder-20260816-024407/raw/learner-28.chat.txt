@@ -1,0 +1,3 @@
+The nested whitelists were indeed redundant — the tree already enforces the grammar structure, and the boundary guards (`primary`'s parens and `evaluate`'s EOF) catch the semantic malformations (`"2 3"`, `"(1+2"`). Removing them simplifies the code without losing any error detection. All tests green.
+
+DONE

@@ -1,0 +1,3 @@
+The `UnboundLocalError` would return if `expression()` consumed the `EOF` token and the `while` loop made `state['position']` equal `len(tokens)`, because the `evaluate()` final check on line 81 is designed to reject *any* token remaining after `expression()`.
+
+The only place that legitimately owns the stream end is `expression()`, and it should stop exactly after the last operator/number/parens—the lexer provides the terminator, so the parser should just walk to it, not try to consume past it. The parser already raises "Expected end of expression" when it sees anything that isn't EOF, so `expression()` is complete when no more ops/factors remain; `evaluate()`'s check is already the correct final verification that the expression was fully consumed.

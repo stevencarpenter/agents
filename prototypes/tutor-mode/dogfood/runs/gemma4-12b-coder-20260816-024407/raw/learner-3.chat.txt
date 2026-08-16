@@ -1,0 +1,3 @@
+The recursive-descent parser gives much better control. You walk the token stream and can pinpoint exactly where it fails (token position, missing paren, trailing op) to build those specific error messages. `ast.parse` just raises a generic SyntaxError with a line/offset that isn't always easy to translate into a user-friendly "here is why it's wrong" message for this spec.
+
+I'll go with the hand-written parser then — seems like the cleanest way to meet every requirement.

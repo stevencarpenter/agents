@@ -1,0 +1,15 @@
+{
+  "run_id_prefix": "nemotron-30b-a3b",
+  "learner": {
+    "model": "NVIDIA-Nemotron-3.5-Lightning-30B-A3B-bf16",
+    "endpoint": "http://localhost:42069",
+    "max_tokens": 3000
+  },
+  "tutor": {
+    "model": "sonnet",
+    "output_style": "Tutor"
+  },
+  "task": "calc-102",
+  "max_turns": 20,
+  "notes": "Untested tier — loaded in the 2026-08-16 oMLX roster. Comparable scale to the Qwen3.6 A3B tier."
+}
