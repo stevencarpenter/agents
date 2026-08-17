@@ -1,0 +1,36 @@
+Here is the updated `calc.py` and the corresponding test in `test_calc.py`:
+
+```file:calc.py
+class ExpressionError(Exception):
+    pass
+
+def evaluate(expr: str) -> float:
+    if not expr:
+        raise ExpressionError("Malformed expression: empty input")
+    allowed_chars = "0123456789+-*/(). "
+    if any(char not in allowed_chars for char in expr):
+        raise ExpressionError(f"Malformed expression: invalid characters in input")
+    try:
+        return eval(expr)
+    except Exception as e:
+        raise ExpressionError(f"Malformed expression: {expr}")
+```
+
+```file:test_calc.py
+import unittest
+from calc import evaluate, ExpressionError
+
+class TestCalculate(unittest.TestCase):
+    def test_evaluate_empty_expression(self):
+        with self.assertRaises(ExpressionError):
+            result = evaluate("")
+
+    def test_evaluate_string_literal(self):
+        with self.assertRaises(ExpressionError):
+            result = evaluate('"42"')
+
+if __name__ == '__main__':
+    unittest.main()
+```
+
+Now, let's run the full suite of tests to ensure they pass.

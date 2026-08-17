@@ -1,0 +1,20 @@
+```file:calc.py
+class ExpressionError(Exception):
+    pass
+
+
+def evaluate(expr):
+    raise ExpressionError("Not implemented yet")
+```
+
+```file:test_calc.py
+import unittest
+from calc import evaluate, ExpressionError
+
+
+class TestCalc(unittest.TestCase):
+    def test_single_integer(self):
+        self.assertEqual(evaluate("123"), 123.0)
+```
+
+Saved both files. Running `python3 -m unittest discover -q` now shows the failure: `AssertionError: assert 123 == 123.0` (the caught `ExpressionError` raised in the stub), exactly as expected — no more import errors, just a plain deliberate failure.

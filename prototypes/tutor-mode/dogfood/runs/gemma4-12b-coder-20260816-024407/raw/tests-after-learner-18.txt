@@ -1,0 +1,49 @@
+....E..E.
+======================================================================
+ERROR: test_parentheses_and_negation (test_calc.TestCalc.test_parentheses_and_negation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/test_calc.py", line 13, in test_parentheses_and_negation
+    self.assertEqual(evaluate("(1+2.5)*-3"), -10.5)
+                     ~~~~~~~~^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 83, in evaluate
+    result = expression()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 29, in expression
+    left = term()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 44, in term
+    left = factor()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 64, in factor
+    left = primary()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 73, in primary
+    result = expression()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 32, in expression
+    right = term()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 44, in term
+    left = factor()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 66, in factor
+    raise ExpressionError("Expected end of factor")
+calc.ExpressionError: Expected end of factor
+
+======================================================================
+ERROR: test_unary_minus (test_calc.TestCalc.test_unary_minus)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/test_calc.py", line 19, in test_unary_minus
+    self.assertEqual(evaluate("-5+10"), 5.0)
+                     ~~~~~~~~^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 83, in evaluate
+    result = expression()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 29, in expression
+    left = term()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 44, in term
+    left = factor()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 64, in factor
+    left = primary()
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/tutor-bench-ws-gemma4-12b-coder-20260816-024407/calc.py", line 81, in primary
+    raise ExpressionError("Unexpected token")
+calc.ExpressionError: Unexpected token
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.004s
+
+FAILED (errors=2)

@@ -1,0 +1,1 @@
+Tutor, I'm ready to tackle CALC-102. My initial instinct is to use Python's `eval()` function to evaluate the arithmetic expressions. However, I'm concerned about potential security risks and limited error handling. I also need to customize the error messages to match the specified requirements. Should we start with this approach, or is there a safer alternative you'd recommend?

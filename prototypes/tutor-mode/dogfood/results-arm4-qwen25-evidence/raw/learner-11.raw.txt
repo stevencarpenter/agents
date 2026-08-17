@@ -1,0 +1,26 @@
+I see now. Let's address the issues you pointed out:
+
+1. `unittest` discovers tests by looking for test methods on `unittest.TestCase` subclasses. Our test is a standalone function, which is not found by `unittest`.
+2. Even if our test were discovered, it always asserts `True` because `eval("")` raises an exception, which is caught by the `except` block, and the assertion inside the `except` block always passes.
+
+To fix these issues, we need to:
+
+1. Convert our test function into a method of a `unittest.TestCase` subclass.
+2. Modify the assertion inside the `except` block to check for the correct `ExpressionError`.
+
+Here's the corrected `test_calc.py`:
+
+```file:test_calc.py
+import unittest
+from calc import evaluate, ExpressionError
+
+class TestCalculate(unittest.TestCase):
+    def test_evaluate_empty_expression(self):
+        with self.assertRaises(ExpressionError):
+            result = evaluate("")
+
+if __name__ == '__main__':
+    unittest.main()
+```
+
+Now, let's run the tests again and see the failure.

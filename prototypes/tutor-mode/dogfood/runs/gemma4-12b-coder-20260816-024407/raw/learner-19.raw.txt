@@ -1,0 +1,131 @@
+The `UnboundLocalError` would return if `expression()` consumed the `EOF` token and the `while` loop made `state['position']` equal `len(tokens)`, because the `evaluate()` final check on line 81 is designed to reject *any* token remaining after `expression()`.
+
+The only place that legitimately owns the stream end is `expression()`, and it should stop exactly after the last operator/number/parens—the lexer provides the terminator, so the parser should just walk to it, not try to consume past it. The parser already raises "Expected end of expression" when it sees anything that isn't EOF, so `expression()` is complete when no more ops/factors remain; `evaluate()`'s check is already the correct final verification that the expression was fully consumed.
+
+```file:calc.py
+from collections import namedtuple
+
+Token = namedtuple('Token', ['type', 'value'])
+
+class ExpressionError(Exception):
+    pass
+
+
+def evaluate(expr):
+    if not expr.strip():
+        raise ExpressionError("Empty expression")
+
+    tokens = lex(expr)
+
+    if not tokens:
+        raise ExpressionError("Could not parse")
+
+    state = {'position': 0}
+
+    def peek():
+        return tokens[state['position']]
+
+    def consume():
+        token = peek()
+        state['position'] += 1
+        return token
+
+    def expression():
+        left = term()
+        while state['position'] < len(tokens) and peek().type in ('PLUS', 'MINUS'):
+            op = consume()
+            right = term()
+            left = left + right if op.type == 'PLUS' else left - right
+
+        if state['position'] < len(tokens) and peek().type not in ('EOF', 'PLUS', 'MINUS'):
+            raise ExpressionError("Expected end of expression")
+
+        return left
+
+    def term():
+        left = factor()
+        while state['position'] < len(tokens) and peek().type in ('STAR', 'SLASH'):
+            op = consume()
+            right = factor()
+            if op.type == 'STAR':
+                left = left * right
+            else:
+                if right == 0:
+                    raise ExpressionError("Division by zero")
+                left = left / right
+
+        if state['position'] < len(tokens) and peek().type not in ('EOF', 'PLUS', 'MINUS', 'STAR', 'SLASH'):
+            raise ExpressionError("Expected end of term")
+
+        return left
+
+    def factor():
+        if peek().type == 'MINUS':
+            consume()
+            return - factor()
+        left = primary()
+        if state['position'] < len(tokens) and peek().type not in ('EOF', 'PLUS', 'MINUS', 'STAR', 'SLASH'):
+            raise ExpressionError("Expected end of factor")
+        return left
+
+    def primary():
+        token = peek()
+        if token.type == 'LPAREN':
+            consume()
+            result = expression()
+            if state['position'] >= len(tokens) or tokens[state['position']].type != 'RPAREN':
+                raise ExpressionError("Unbalanced parentheses")
+            consume()
+            return result
+        elif token.type == 'NUMBER':
+            return consume().value
+        else:
+            raise ExpressionError("Unexpected token")
+
+    result = expression()
+    if state['position'] != len(tokens):
+        raise ExpressionError("Trailing characters in expression")
+
+    return result
+
+
+def lex(expr):
+    tokens = []
+    i = 0
+    while i < len(expr):
+        char = expr[i]
+        if char.isspace():
+            i += 1
+        elif char.isdigit() or char == '.':
+            num = ""
+            while i < len(expr) and (expr[i].isdigit() or expr[i] == '.'):
+                num += expr[i]
+                i += 1
+            tokens.append(Token('NUMBER', float(num)))
+        elif char == '+':
+            tokens.append(Token('PLUS', '+'))
+            i += 1
+        elif char == '-':
+            if tokens and tokens[-1].type == 'NUMBER':
+                tokens.append(Token('MINUS', '-'))
+                i += 1
+            else:
+                tokens.append(Token('NEGATIVE', '-'))
+                i += 1
+        elif char == '*':
+            tokens.append(Token('STAR', '*'))
+            i += 1
+        elif char == '/':
+            tokens.append(Token('SLASH', '/'))
+            i += 1
+        elif char == '(':
+            tokens.append(Token('LPAREN', '('))
+            i += 1
+        elif char == ')':
+            tokens.append(Token('RPAREN', ')'))
+            i += 1
+        else:
+            raise ExpressionError(f"Unexpected character: {char}")
+    tokens.append(Token('EOF', 'EOF'))
+    return tokens
+```

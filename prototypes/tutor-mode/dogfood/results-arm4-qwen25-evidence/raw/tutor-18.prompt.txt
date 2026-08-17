@@ -1,0 +1,8 @@
+I see now that the test is correctly failing with `ExpressionError not raised`.
+
+Let's settle on the empty expression case before moving forward:
+
+1. **Restore the empty expression case**: This was dropped earlier, and it's a valid test case as per the ticket requirements. We should restore it as a second test method.
+2. **Intermediate step**: Given the current failure, we can start by implementing a basic rejection mechanism that checks if any characters in the input are not part of the allowed set (numbers, `+`, `-`, `*`, `/`, `(`, `)`). This will turn the specific test green.
+
+Let's add the empty expression test and the character rejection mechanism.

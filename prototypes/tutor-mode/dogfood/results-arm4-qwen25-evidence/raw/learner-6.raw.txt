@@ -1,0 +1,27 @@
+Let's trace through the current `calc.py` with the input `"1+2"`:
+
+1. `evaluate("1+2")` calls `eval("1+2")`, which evaluates the expression and returns `3`.
+2. Since no exception is raised, the `except` block is skipped.
+3. The function returns `3`.
+
+The `except` block with `ExpressionError` will never be touched in this case.
+
+Given this, the test should fail because it expects no exception, but `evaluate("1+2")` does not raise an exception. 
+
+Now, to address your question about which test to write first, I think we should write the failing test for the `evaluate()` function first, then run it to see the failure. This will help us identify where the problem lies and guide our next steps in the implementation.
+
+Here's the failing test again:
+
+```file:test_calc.py
+from calc import evaluate
+
+def test_evaluate_simple_expression():
+    try:
+        evaluate("1+2")
+    except ExpressionError as e:
+        assert False, f"Expected no exception, but got {e}"
+    else:
+        assert True, "No exception was raised as expected"
+```
+
+Let's run this test to see the failure.

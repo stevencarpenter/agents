@@ -1,0 +1,9 @@
+I was thinking of using `eval()` for simplicity, but your question about where these expressions come from makes sense. They are probably coming from end users, so we need to be careful about security and proper input validation.
+
+Let's take a step back and think about how we can safely evaluate these expressions without using `eval()`. We need to handle:
+
+1. Parsing the expression.
+2. Handling arithmetic operations with correct precedence.
+3. Error handling for malformed expressions and division by zero.
+
+I think implementing a custom parser and evaluator would be a more secure and maintainable approach. What do you think about that?

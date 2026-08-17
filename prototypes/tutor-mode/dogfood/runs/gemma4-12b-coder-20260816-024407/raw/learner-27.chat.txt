@@ -1,0 +1,3 @@
+The anvil: a sequence that is legally a `factor` but is semantically garbage on the boundary of a `term` — like `(5+2) <binary op here instead of factor>` when the code expects only what a primary/factor may genuinely produce. The check flags the mismatch exactly where the grammar rule's topology disagrees with the token stream.
+
+Removing them now: the tests are green and the grammar is fully recursive, so the validation survives. The boundary guards (`evaluate`'s EOF and `primary`'s RPAREN) enforce the overall sentence, so the fat whitelists are dead weight and can be purged without changing behavior.

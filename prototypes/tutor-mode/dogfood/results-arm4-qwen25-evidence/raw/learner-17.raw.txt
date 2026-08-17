@@ -1,0 +1,18 @@
+I apologize for the confusion. Let's ensure the test correctly asserts that an `ExpressionError` is raised when evaluating a string literal.
+
+Here is the updated `test_calc.py`:
+
+```file:test_calc.py
+import unittest
+from calc import evaluate, ExpressionError
+
+class TestCalculate(unittest.TestCase):
+    def test_evaluate_string_literal(self):
+        with self.assertRaises(ExpressionError):
+            evaluate('"42"')
+
+if __name__ == '__main__':
+    unittest.main()
+```
+
+Now, let's run the tests again to confirm the test passes correctly.

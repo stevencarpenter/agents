@@ -1,0 +1,165 @@
+That's the core problem of TDD-in-reverse. I'll use the examples and edge cases from TICKET.md and the spec as the only source of truth: each new test is written with the expected float or the required `ExpressionError` message directly in the test body—if the code diverges from that, the test fails. For division by zero and malformed strings, I'll assert `with self.assertRaises(ExpressionError)` on the call itself, so the test can only pass if the code raises exactly what the spec demands as an error case.```file:calc.py
+class ExpressionError(Exception):
+    pass
+
+
+def evaluate(expr):
+    if not expr.strip():
+        raise ExpressionError("Empty expression")
+
+    tokens = lex(expr)
+
+    if not tokens:
+        raise ExpressionError("Could not parse")
+
+    position = 0
+
+    def peek():
+        return tokens[position]
+
+    def consume():
+        token = peek()
+        position += 1
+        return token
+
+    def expression():
+        left = term()
+        while position < len(tokens) and peek().type in ('PLUS', 'MINUS'):
+            op = consume()
+            right = term()
+            left = left + right if op.type == 'PLUS' else left - right
+
+        if position < len(tokens) and peek().type not in ('EOF', 'PLUS', 'MINUS'):
+            raise ExpressionError("Expected end of expression")
+
+        return left
+
+    def term():
+        left = factor()
+        while position < len(tokens) and peek().type in ('STAR', 'SLASH'):
+            op = consume()
+            right = factor()
+            if op.type == 'STAR':
+                left = left * right
+            else:
+                if right == 0:
+                    raise ExpressionError("Division by zero")
+                left = left / right
+
+        if position < len(tokens) and peek().type not in ('EOF', 'PLUS', 'MINUS', 'STAR', 'SLASH'):
+            raise ExpressionError("Expected end of term")
+
+        return left
+
+    def factor():
+        if peek().type == 'MINUS':
+            consume()
+            return - factor()
+        left = primary()
+        if position < len(tokens) and peek().type not in ('EOF', 'PLUS', 'MINUS', 'STAR', 'SLASH'):
+            raise ExpressionError("Expected end of factor")
+        return left
+
+    def primary():
+        token = peek()
+        if token.type == 'LPAREN':
+            consume()
+            result = expression()
+            if position >= len(tokens) or tokens[position].type != 'RPAREN':
+                raise ExpressionError("Unbalanced parentheses")
+            consume()
+            return result
+        elif token.type == 'NUMBER':
+            return consume()
+        else:
+            raise ExpressionError("Unexpected token")
+
+    result = expression()
+    if position != len(tokens):
+        raise ExpressionError("Trailing characters in expression")
+
+    return result
+
+
+def lex(expr):
+    tokens = []
+    i = 0
+    while i < len(expr):
+        char = expr[i]
+        if char.isspace():
+            i += 1
+        elif char.isdigit() or char == '.':
+            num = ""
+            while i < len(expr) and (expr[i].isdigit() or expr[i] == '.'):
+                num += expr[i]
+                i += 1
+            tokens.append(('NUMBER', float(num)))
+        elif char == '+':
+            tokens.append(('PLUS', '+'))
+            i += 1
+        elif char == '-':
+            if tokens and tokens[-1][0] == 'NUMBER':
+                tokens.append(('MINUS', '-'))
+                i += 1
+            else:
+                tokens.append(('NEGATIVE', '-'))
+                i += 1
+        elif char == '*':
+            tokens.append(('STAR', '*'))
+            i += 1
+        elif char == '/':
+            tokens.append(('SLASH', '/'))
+            i += 1
+        elif char == '(':
+            tokens.append(('LPAREN', '('))
+            i += 1
+        elif char == ')':
+            tokens.append(('RPAREN', ')'))
+            i += 1
+        else:
+            raise ExpressionError(f"Unexpected character: {char}")
+    tokens.append(('EOF', 'EOF'))
+    return tokens
+```
+
+```file:test_calc.py
+import unittest
+from calc import evaluate, ExpressionError
+
+
+class TestCalc(unittest.TestCase):
+    def test_single_integer(self):
+        self.assertEqual(evaluate("123"), 123.0)
+
+    def test_addition_multiplication(self):
+        self.assertEqual(evaluate("2+3*4"), 14.0)
+
+    def test_parentheses_and_negation(self):
+        self.assertEqual(evaluate("(1+2.5)*-3"), -10.5)
+
+    def test_division(self):
+        self.assertEqual(evaluate("10/4"), 2.5)
+
+    def test_unary_minus(self):
+        self.assertEqual(evaluate("-5+10"), 5.0)
+
+    def test_division_by_zero(self):
+        with self.assertRaisesRegex(ExpressionError, "Division by zero"):
+            evaluate("10/0")
+
+    def test_empty_expression(self):
+        with self.assertRaisesRegex(ExpressionError, "Empty expression"):
+            evaluate("")
+
+    def test_trailing_characters(self):
+        with self.assertRaisesRegex(ExpressionError, "Trailing characters in expression"):
+            evaluate("2+3abc")
+
+    def test_unbalanced_parentheses(self):
+        with self.assertRaisesRegex(ExpressionError, "Unbalanced parentheses"):
+            evaluate("(1+2")
+
+
+if __name__ == '__main__':
+    unittest.main()
+```
