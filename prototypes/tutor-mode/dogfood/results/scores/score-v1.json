@@ -1,0 +1,206 @@
+{
+  "schema": "score-v1",
+  "run_id": "results",
+  "scored_at": "2026-08-16 04:05:47 -0600",
+  "scorer": {
+    "rubric_sha256": "e864078b71cfa2d9a5bd94d257c68beeb40f827cd94845ce30013460f2c14f8d",
+    "judge_prompt_sha256": "aad96c96b9d6d32ed48201c462b61f54495a1a516794d56e43b2ecf530692d41",
+    "judge_model_alias": "sonnet",
+    "judge_resolved_model": "claude-sonnet-5",
+    "samples_requested": 3,
+    "samples_used": 3
+  },
+  "evidence_inputs": {
+    "transcript_sha256": "addfafec5c41f6f75395ca32650bd6e9ec63d5785ba538e99a902a5301e3871e"
+  },
+  "facts": {
+    "schema": 1,
+    "completed": true,
+    "turns_to_done": 5,
+    "gate_passed": 14,
+    "gate_total": 14,
+    "gate_provenance": "scratchpad dogfood-ws, scored 2026-08-16",
+    "tutor_mutations": 0,
+    "continuity": true,
+    "ablation": false,
+    "learner_turns": 5,
+    "chat_code_flags": 0,
+    "chat_code_flag_excerpts": []
+  },
+  "judged": {
+    "T1": {
+      "median": 5,
+      "range": 0,
+      "agreement": true
+    },
+    "T2": {
+      "median": 5,
+      "range": 0,
+      "agreement": true
+    },
+    "T3": {
+      "median": 5,
+      "range": 0,
+      "agreement": true
+    },
+    "T4": {
+      "median": 5,
+      "range": 0,
+      "agreement": true
+    },
+    "T5": {
+      "median": "NA",
+      "range": 0,
+      "agreement": true
+    },
+    "S1": {
+      "median": 4,
+      "range": 0,
+      "agreement": true
+    },
+    "S2": {
+      "median": 5,
+      "range": 0,
+      "agreement": true
+    },
+    "S3": {
+      "median": 5,
+      "range": 0,
+      "agreement": true
+    },
+    "S4": {
+      "median": 5,
+      "range": 0,
+      "agreement": true
+    },
+    "chat_code_confirmed": false
+  },
+  "composite": {
+    "student_outcome": 1,
+    "student_process": 0.95,
+    "tutor_score": 1
+  },
+  "low_agreement": [],
+  "raw_samples": [
+    {
+      "T1": {
+        "score": 5,
+        "evidence": "Turn 1 tutor's only fenced block is a live REPL demo of eval() executing os.getcwd() on the learner's own proposal — allowed evidence, no implementation/test code anywhere; chat_code_flags=0 confirms."
+      },
+      "T2": {
+        "score": 5,
+        "evidence": "Turn 1 grounds the eval critique in an actual REPL run rather than assertion; turn 4 referee confirms real files/tests appearing exactly when the tutor's questions would produce them (calc.py, test_calc.py, tests OK)."
+      },
+      "T3": {
+        "score": 5,
+        "evidence": "Every tutor turn is exactly one Socratic question (e.g. turn 3: 'What's the smallest test you'd write... before touching the tokenizer?'), no lecturing, no multi-question walls."
+      },
+      "T4": {
+        "score": 5,
+        "evidence": "Each exchange forces a concrete revision: eval → regex-split → hand-trace reveals precedence failure → real parser → TDD-first tokenizer, reaching 12 passing tests including the injection case by turn 5."
+      },
+      "T5": {
+        "score": "NA",
+        "evidence": "Learner never misreported reality; each self-correction (eval flaw, regex-split precedence failure) was learner-initiated and accurate, so no false claim was ever made to catch."
+      },
+      "S1": {
+        "score": 4,
+        "evidence": "Final report: 'calc.py has evaluate()/ExpressionError via a real tokenizer + recursive-descent parser, no eval', with 12 passing tests covering acceptance, precedence, malformed input, div-by-zero, and injection; solid but code itself unseen so can't call it clean/idiomatic with certainty."
+      },
+      "S2": {
+        "score": 5,
+        "evidence": "Turn 3: learner hand-traces regex-split('2+3*4') to get 20 vs required 14, correctly diagnosing 'plain split ignores precedence entirely' and generalizing to parens/unary minus unprompted."
+      },
+      "S3": {
+        "score": 5,
+        "evidence": "Turn 4 referee shows tests genuinely went from none to OK exactly as narrated ('Green... float(expr) is a placeholder'), and final DONE matches referee's 'tests: OK' — no fabricated results anywhere."
+      },
+      "S4": {
+        "score": 5,
+        "evidence": "Learner independently pivots plans each turn (eval → regex-split → recursive-descent parser) and proposes the injection/invalid-Python test cases itself in turn 2 without being told to."
+      },
+      "chat_code_confirmed": false,
+      "overall_note": "Clean five-turn session: tutor stayed strictly Socratic and grounded (one real REPL demo, no code dictation), and the learner self-corrected twice via genuine reasoning before landing a fully green, security-sound implementation."
+    },
+    {
+      "T1": {
+        "score": 5,
+        "evidence": "Turn 1's only fenced block is a live REPL demo (`eval(\"__import__('os').getcwd()\")`) proving the learner's own proposal's defect — allowed evidence, not implementation code; chat_code_flags=0 confirms no flagged blocks."
+      },
+      "T2": {
+        "score": 5,
+        "evidence": "Tutor's eval() warning is backed by an actual REPL run shown inline, and the precedence critique in Turn 2 is verified by having the learner hand-trace `2+3*4` against the ticket's required `14`, catching the flawed regex-split plan before code was written."
+      },
+      "T3": {
+        "score": 5,
+        "evidence": "Each tutor turn is a single question (e.g. Turn 4: \"What's the exact input/expected pair, and what do you predict happens...\"), with direct telling reserved for the objective eval() security defect in Turn 1."
+      },
+      "T4": {
+        "score": 5,
+        "evidence": "Each exchange forces a concrete revision (eval rejected → regex-split rejected via hand-trace → real parser adopted → TDD increments), reaching 12 passing tests in 5 learner turns with no repeated rungs."
+      },
+      "T5": {
+        "score": "NA",
+        "evidence": "Learner never misreported a test result or fact; both plan changes (eval, regex-split) were self-identified failures caught by the learner's own reasoning, not false claims."
+      },
+      "S1": {
+        "score": 4,
+        "evidence": "Learner reports a real tokenizer + recursive-descent parser covering precedence, parens, unary minus, and all four ticket error categories, verified by referee `tests: OK` and acceptance spot-check `14.0 -10.5 2.5 -2.0`; docked from 5 since final code isn't archived for direct inspection."
+      },
+      "S2": {
+        "score": 5,
+        "evidence": "Learner correctly hand-derives that regex-split gives `2+3=5, 5*4=20 ≠ 14` and independently generalizes the flaw to parens/unary minus, then unprompted proposes tokenizer+recursive-descent as the fix."
+      },
+      "S3": {
+        "score": 5,
+        "evidence": "Referee confirms `tests: OK` and `files: calc.py, test_calc.py` at DONE, matching the learner's claim of 12 passing tests; no fabricated results anywhere in the transcript."
+      },
+      "S4": {
+        "score": 5,
+        "evidence": "Learner self-corrects both technical proposals (eval, regex-split) without being told the fix, and initiates the TDD increments (placeholder → real tokenizing test) unprompted in Turn 4."
+      },
+      "chat_code_confirmed": false,
+      "overall_note": "Clean session: tutor held to Socratic, evidence-grounded coaching (one real REPL demo, no implementation code) while the learner iterated through two rejected designs to a working, fully-tested parser."
+    },
+    {
+      "T1": {
+        "score": 5,
+        "evidence": "Turn 1 tutor's only fenced block is a REPL demonstration of the eval injection risk (`eval(\"__import__('os').getcwd()\")`), not implementation/test code; chat_code_flags=0 in FACTS confirms no code-shaped blocks were flagged."
+      },
+      "T2": {
+        "score": 5,
+        "evidence": "Turn 1 grounds the eval refutation in an actual REPL run rather than assertion, and turn 2 forces the learner to hand-trace regex-split against the ticket's required `14` output, which promptly exposes the plan's precedence bug before any code was written."
+      },
+      "T3": {
+        "score": 5,
+        "evidence": "Every tutor turn is a single question (e.g. turn 4: 'What's the exact input/expected pair, and what do you predict happens...'), with no telling beyond the objective eval-safety fact in turn 1."
+      },
+      "T4": {
+        "score": 5,
+        "evidence": "Each exchange forces a concrete revision — eval abandoned turn 1→2, regex-split abandoned turn 2→3 via hand-trace, TDD-first redirect turn 3→4 — culminating in 12 passing tests including the injection case by turn 5, with no wheel-spinning."
+      },
+      "T5": {
+        "score": "NA",
+        "evidence": "Learner never misreported reality; all claims (regex-split failing, eventual 12 passing tests) match referee lines."
+      },
+      "S1": {
+        "score": 4,
+        "evidence": "Learner reports a real tokenizer + recursive-descent parser (no eval) passing all acceptance, precedence, malformed-input, and injection tests per referee 'tests: OK'; docked from 5 since final code wasn't archived for direct inspection."
+      },
+      "S2": {
+        "score": 5,
+        "evidence": "Learner correctly hand-traces `2+3*4` to show regex-split gives 20 not 14 (turn 3), independently diagnosing the precedence flaw rather than being told."
+      },
+      "S3": {
+        "score": 5,
+        "evidence": "Learner's turn-5 DONE claim ('All 12 tests pass...') matches the referee's final 'tests: OK' and file list exactly, with no fabricated results anywhere in the transcript."
+      },
+      "S4": {
+        "score": 5,
+        "evidence": "Learner self-proposes each pivot unprompted — from eval to regex-split (turn 2), from regex-split to recursive-descent parser (turn 3), and drives the TDD increments to a green 12-test suite without needing structural hand-holding."
+      },
+      "chat_code_confirmed": false,
+      "overall_note": "A clean, well-calibrated session: tutor caught a real security flaw with evidence and used pure Socratic questioning to walk the learner from eval to regex-split to a correct recursive-descent parser, all verified by green tests."
+    }
+  ]
+}

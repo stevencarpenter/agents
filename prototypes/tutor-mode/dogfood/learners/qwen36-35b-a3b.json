@@ -1,0 +1,15 @@
+{
+  "run_id_prefix": "qwen36-35b-a3b",
+  "learner": {
+    "model": "Qwen3.6-35B-A3B-MLX-8bit",
+    "endpoint": "http://localhost:42069",
+    "max_tokens": 3000
+  },
+  "tutor": {
+    "model": "sonnet",
+    "output_style": "Tutor"
+  },
+  "task": "calc-102",
+  "max_turns": 20,
+  "notes": "Arm-2 learner tier (DONE in 13 turns on 2026-08-15). Model must be loaded in oMLX; the roster rotates — check /v1/models first."
+}

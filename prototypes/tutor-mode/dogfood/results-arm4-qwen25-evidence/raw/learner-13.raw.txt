@@ -1,0 +1,20 @@
+Given the current implementation of `evaluate()` with `eval()`, we can write a test case where it gets the wrong answer or fails to raise `ExpressionError` when it should. Let's consider the requirement for handling division by zero:
+
+- The ticket states that division by zero should raise `ExpressionError`.
+
+Here's a test case that will fail for the current implementation:
+
+```file:test_calc.py
+import unittest
+from calc import evaluate, ExpressionError
+
+class TestCalculate(unittest.TestCase):
+    def test_evaluate_division_by_zero(self):
+        with self.assertRaises(ExpressionError):
+            result = evaluate("10/0")
+
+if __name__ == '__main__':
+    unittest.main()
+```
+
+This test will confirm that the current `eval()`-based implementation does not correctly handle division by zero and does not raise `ExpressionError` when it should. Let's run this test.

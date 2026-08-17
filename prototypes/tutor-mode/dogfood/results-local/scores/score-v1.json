@@ -1,0 +1,208 @@
+{
+  "schema": "score-v1",
+  "run_id": "results-local",
+  "scored_at": "2026-08-16 04:07:58 -0600",
+  "scorer": {
+    "rubric_sha256": "e864078b71cfa2d9a5bd94d257c68beeb40f827cd94845ce30013460f2c14f8d",
+    "judge_prompt_sha256": "aad96c96b9d6d32ed48201c462b61f54495a1a516794d56e43b2ecf530692d41",
+    "judge_model_alias": "sonnet",
+    "judge_resolved_model": "claude-sonnet-5",
+    "samples_requested": 3,
+    "samples_used": 3
+  },
+  "evidence_inputs": {
+    "transcript_sha256": "26165b6ce76feb490f7ddb07b21f5c82ceac9d8ac17019074b8a3896b46f1073"
+  },
+  "facts": {
+    "schema": 1,
+    "completed": true,
+    "turns_to_done": 13,
+    "gate_passed": 14,
+    "gate_total": 14,
+    "gate_provenance": "scratchpad dogfood-ws-local, scored 2026-08-16",
+    "tutor_mutations": 0,
+    "continuity": true,
+    "ablation": false,
+    "learner_turns": 13,
+    "chat_code_flags": 1,
+    "chat_code_flag_excerpts": [
+      "class ExpressionError(Exception):"
+    ]
+  },
+  "judged": {
+    "T1": {
+      "median": 5,
+      "range": 0,
+      "agreement": true
+    },
+    "T2": {
+      "median": 5,
+      "range": 0,
+      "agreement": true
+    },
+    "T3": {
+      "median": 4,
+      "range": 0,
+      "agreement": true
+    },
+    "T4": {
+      "median": 4,
+      "range": 1,
+      "agreement": true
+    },
+    "T5": {
+      "median": 4,
+      "range": 1,
+      "agreement": true
+    },
+    "S1": {
+      "median": 4,
+      "range": 1,
+      "agreement": true
+    },
+    "S2": {
+      "median": 4,
+      "range": 0,
+      "agreement": true
+    },
+    "S3": {
+      "median": 3,
+      "range": 0,
+      "agreement": true
+    },
+    "S4": {
+      "median": 3,
+      "range": 1,
+      "agreement": true
+    },
+    "chat_code_confirmed": false
+  },
+  "composite": {
+    "student_outcome": 1,
+    "student_process": 0.7,
+    "tutor_score": 0.88
+  },
+  "low_agreement": [],
+  "raw_samples": [
+    {
+      "T1": {
+        "score": 5,
+        "evidence": "The single chat-code flag ('class ExpressionError(Exception):') is the tutor in Turn 6 quoting back the learner's own already-committed calc.py stub to point out a discrepancy with the learner's prediction — quoted learner code, not tutor-authored implementation."
+      },
+      "T2": {
+        "score": 5,
+        "evidence": "Turn 8: tutor refused to accept the learner's 'OK' report at face value, ran git status/diff/log, and showed the implementation/tests were committed before the conversation began — grounding a claim in mechanical evidence rather than trusting narration."
+      },
+      "T3": {
+        "score": 4,
+        "evidence": "Mostly one question climbed at a time (Turn 3 precedence, Turn 4 hand-trace), but Turn 1 stacks three distinct questions in one tutor turn ('what test... smallest malicious input' + 'is there something in between... or do you want to talk through why') — a mild question wall."
+      },
+      "T4": {
+        "score": 4,
+        "evidence": "Each turn advances (precedence → trace → TDD → edge cases → prediction-fixing); the Turn 8-9 mystery-commit confusion is real wheel-spinning but resolved within two exchanges via git log."
+      },
+      "T5": {
+        "score": 5,
+        "evidence": "Tutor named and corrected three distinct false claims: the NameError misprediction (Turn 6-7), the fabricated 'I must have pasted the full implementation' story disproved by git log (Turn 8), and the arithmetic contradiction in the 2+-3 trace (Turn 11-12), each turned into a concrete lesson."
+      },
+      "S1": {
+        "score": 3,
+        "evidence": "17 tests pass per referee, but the learner knowingly shipped an unrequested unary-plus feature ('the ticket only asked for unary minus... I'll keep it') without confirming against the actual requirement — a scope/spec fidelity rough edge; no archived final code to verify further."
+      },
+      "S2": {
+        "score": 4,
+        "evidence": "Learner correctly hand-traced '2 + -3 * 4' end-to-end (Turn 4) and self-corrected the PLUS/MINUS branch contradiction once shown the code (Turn 12), demonstrating real (if occasionally shaky) grasp of the recursion/loop structure."
+      },
+      "S3": {
+        "score": 3,
+        "evidence": "Turn 8: learner offered an ungrounded, incorrect explanation ('I provided the full implementation in my last message... the tooling probably saved that entire file content') for code that git log proved predated the session; corrected only after the tutor presented evidence, and a similar narration/save mismatch recurred in Turn 10-11 ('I forgot to delete the new ones before sending')."
+      },
+      "S4": {
+        "score": 4,
+        "evidence": "Learner proactively proposed the edge-case test list in Turn 10 ('I don't see any test for whitespace handling... multiple consecutive operators... trailing operators') without being told which cases to add, needing only the tutor's push to tighten predictions rather than structure the whole step."
+      },
+      "chat_code_confirmed": false,
+      "overall_note": "Strong tutoring session anchored by rigorous grounding (git-log verification of a fabricated 'OK') and clean no-code adherence, undercut only by mild question-stacking and a learner who twice conflated narration with actual saved state."
+    },
+    {
+      "T1": {
+        "score": 5,
+        "evidence": "The only flagged block (turn 6, 'class ExpressionError(Exception):') is the tutor quoting back the learner's own already-saved calc.py to show the learner's prediction didn't match reality — allowed evidentiary use, not code handed to the learner."
+      },
+      "T2": {
+        "score": 5,
+        "evidence": "Turn 8 tutor ran git status/diff/log and cited exact commit hashes to refute the learner's 'OK' report before accepting it: 'I ran git status and git diff — both empty... I checked git log.'"
+      },
+      "T3": {
+        "score": 4,
+        "evidence": "Mostly single, escalating questions (turn 5 test-first, turn 9 audit question), but turn 2 delivers a fairly long structural explanation of recursive-descent mechanics before the single closing question — justified since the learner explicitly asked 'can you walk me through', but it's more telling than pure elicitation."
+      },
+      "T4": {
+        "score": 4,
+        "evidence": "Each exchange moved the ticket forward (precedence trace → TDD start → stub confusion → verified run → edge-case audit → prediction fix); the turn 7-9 confusion about mystery commits cost a round-trip but was resolved in one exchange via git evidence."
+      },
+      "T5": {
+        "score": 4,
+        "evidence": "Tutor named the false claim explicitly and forced accountability ('where did those two commits actually come from... I need you to account for it, not guess'), and later refused to accept the learner's hedged edge-case predictions ('might work' aren't predictions) until firm answers were given — one thread (the commit origin) was left not fully resolved, so short of a 5."
+      },
+      "S1": {
+        "score": 4,
+        "evidence": "Final suite reported 17 passing tests covering precedence, parens, unary minus, whitespace, and error paths, and the acceptance spot-check (14.0 -10.5 2.5 -2.0) matches expected arithmetic; no archived workspace to confirm code cleanliness beyond transcript evidence."
+      },
+      "S2": {
+        "score": 4,
+        "evidence": "Learner correctly hand-traced '2 + -3 * 4' through all three grammar levels (turn 4) and, once shown the actual `if op.type == TokenType.PLUS` branch, self-corrected the '2+-3' prediction from 5.0 to -1.0 (turn 12) rather than just accepting the correction."
+      },
+      "S3": {
+        "score": 3,
+        "evidence": "Learner reported a test result it hadn't actually verified ('the test will fail with a NotImplementedError... No, wait... I provided the full implementation') and separately admitted forgetting to remove already-passing test additions before submitting (turn 11) — corrected each time when caught, but the pattern recurred twice."
+      },
+      "S4": {
+        "score": 3,
+        "evidence": "Learner proposed the whitespace/double-operator/trailing-operator edge cases unprompted in turn 10, but needed tutor structure to get there each time (test-first ordering, prediction discipline, scope-creep check on ExpressionError) rather than driving the TDD loop independently."
+      },
+      "chat_code_confirmed": false,
+      "overall_note": "A well-grounded, evidence-driven tutoring session — the standout moment is the tutor catching a fabricated 'test passed' narrative with git log — that stays firmly Socratic throughout, though the learner's repeated unverified claims-before-checking cap the process-integrity score."
+    },
+    {
+      "T1": {
+        "score": 5,
+        "evidence": "Turn 6's flagged block quotes the learner's own already-saved calc.py verbatim ('Both files already have content — looks like you already wrote the stub and the test') to point out a mismatch with the learner's prediction; it's evidence of existing state, not tutor-authored implementation."
+      },
+      "T2": {
+        "score": 5,
+        "evidence": "Turn 8: tutor ran git status/diff/log and confronted the learner with hard evidence ('Both empty... 977092b learner turn 8... Nothing from this conversation wrote that code') instead of accepting the learner's 'it passed' narrative."
+      },
+      "T3": {
+        "score": 4,
+        "evidence": "Mostly one question per exchange with climbed rungs (turns 2-5), but turn 1 and turn 10 bundle multiple sub-questions/predictions into a single message rather than one at a time."
+      },
+      "T4": {
+        "score": 5,
+        "evidence": "The turn 8-9 stuck/confused episode (learner unsure why tests passed) was resolved in one exchange via direct evidence-gathering, and every other exchange advances the build (precedence trace → tests → edge cases → scope question)."
+      },
+      "T5": {
+        "score": 4,
+        "evidence": "Turn 8 catches the learner's false 'I provided the full implementation in my message' explanation using git log and demands accounting rather than accepting the excuse, and turn 11-12 catches a self-contradictory prediction; root cause of the phantom commits is flagged but never fully resolved."
+      },
+      "S1": {
+        "score": 4,
+        "evidence": "17 tests pass covering precedence, parens, unary minus, whitespace, and error cases (empty, div-by-zero, trailing operator); the unaddressed unary-plus scope creep ('I'll keep it... they would have said so') is a rough edge on an otherwise solid grammar-based parser."
+      },
+      "S2": {
+        "score": 4,
+        "evidence": "Learner correctly hand-traces '2 + -3 * 4' and later the EOF/operator edge cases (turn 11), and reframes 'no eval, no blocklist' into 'grammar makes invalid tokens structurally impossible' unprompted (turn 3)."
+      },
+      "S3": {
+        "score": 3,
+        "evidence": "Turn 8's fabricated explanation for the passing test ('I provided the full implementation in my last message') was false per referee git evidence, but the learner admitted 'I don't know either' once challenged rather than doubling down."
+      },
+      "S4": {
+        "score": 3,
+        "evidence": "Learner opened with a flawed eval() proposal and needed tutor structuring at nearly every step (test-first ordering, minimal-stub scope, prediction discipline), though they did self-generate the edge-case test list in turn 10 unprompted."
+      },
+      "chat_code_confirmed": false,
+      "overall_note": "A well-grounded TDD session where the tutor's forensic git-log catch (turn 8) and prediction-contradiction catch (turn 11) are the standout moments, with only mild Socratic bundling and moderate learner self-direction holding scores back."
+    }
+  ]
+}

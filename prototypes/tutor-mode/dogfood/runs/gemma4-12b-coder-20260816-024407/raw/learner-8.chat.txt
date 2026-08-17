@@ -1,0 +1,3 @@
+Ah, good catch — the failure came out as an error, not a failed assertion. That happens because `assertEqual` doesn't `try/except` the value being compared; when `evaluate` raises `ExpressionError`, the exception propagates out of the test method entirely, which `unittest` marks as an error rather than a failed assert.
+
+This actually confirms my stub is the correct "bad" state: the test never sees a computed result, only a halt via the exception I raised. It keeps the outcome clean — the test fails loudly and directly when the parser still isn't ready.

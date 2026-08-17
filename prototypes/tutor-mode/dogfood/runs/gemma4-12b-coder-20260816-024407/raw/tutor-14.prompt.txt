@@ -1,0 +1,3 @@
+The lexer's `else` block throws `"Unexpected character: a"` on `"2+3abc"`, so the error message in the test's `assertRaisesRegex` doesn't match — the test caught the exception but rejected the message. I'll align the test assertion to the error actually emitted by the lexer.
+
+DONE

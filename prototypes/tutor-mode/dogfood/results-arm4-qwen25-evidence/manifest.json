@@ -1,0 +1,30 @@
+{
+  "run_date": "2026-08-16 00:42:54 -0600",
+  "host": "Darwin Stevens-MacBook-Pro.local 27.0.0 Darwin Kernel Version 27.0.0: Wed Aug  5 22:04:40 PDT 2026; root:xnu-13432.1.6.501.1~1/RELEASE_ARM64_T6050 arm64",
+  "claude_version": "2.1.233 (Claude Code)",
+  "learner": {
+    "model": "Qwen2.5-Coder-7B-Instruct-4bit",
+    "endpoint": "http://localhost:42069",
+    "interface": "anthropic /v1/messages, chat-only with driver hands"
+  },
+  "tutor": {
+    "model": "sonnet",
+    "session_id": "59eff9cc-8876-4973-9087-27e4440ac35e",
+    "output_style": "Tutor",
+    "permission_mode": "bypassPermissions",
+    "hooks": "none"
+  },
+  "workspace": "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/dogfood-ws-arm4",
+  "max_turns": 20,
+  "learner_done": false,
+  "tutor_mutations": 0,
+  "evidence": {
+    "transcript": "transcript.md",
+    "per_turn_raw": "raw/",
+    "exhibits": "exhibits/",
+    "workspace_copy": "workspace/",
+    "workspace_diffs": "workspace-history.patch",
+    "learner_full_history": "learner-history.json",
+    "checksums": "SHA256SUMS"
+  }
+}

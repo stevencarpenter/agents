@@ -1,0 +1,20 @@
+Let's think about a valid Python expression that is not arithmetic and should be rejected by our parser but `eval()` will execute without raising an exception.
+
+One such expression is a string literal like `"42"`, which is a valid Python expression but not a valid arithmetic expression according to our requirements. `eval()` will evaluate this to the string `"42"`, which is a valid result, but it does not raise an exception.
+
+Here's a test case that will fail for the current implementation:
+
+```file:test_calc.py
+import unittest
+from calc import evaluate, ExpressionError
+
+class TestCalculate(unittest.TestCase):
+    def test_evaluate_string_literal(self):
+        with self.assertRaises(ExpressionError):
+            result = evaluate('"42"')
+
+if __name__ == '__main__':
+    unittest.main()
+```
+
+This test case should help us identify if the current implementation correctly handles string literals as unexpected characters. Let's run this test.

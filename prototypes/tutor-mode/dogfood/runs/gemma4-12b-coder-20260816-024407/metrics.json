@@ -1,0 +1,15 @@
+{
+  "turns_learner": 28,
+  "turns_tutor": 27,
+  "tutor_cost_usd": 10.9369992,
+  "learner_tokens_in": 204870,
+  "learner_tokens_out": 15394,
+  "wall_s": 1026.83,
+  "mutations": 0,
+  "final_tests": {
+    "ran": 9,
+    "failures": 0,
+    "errors": 0,
+    "ok": true
+  }
+}

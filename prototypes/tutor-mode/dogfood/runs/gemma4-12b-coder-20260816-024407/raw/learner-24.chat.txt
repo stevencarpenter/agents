@@ -1,0 +1,3 @@
+Still failing with `Expected end of factor`—the grammar has one hole: after a unary minus, the `factor()` rule returns but doesn't advance a token, so the top-level `evaluate()` sees the number literal still sitting at the current position and complains about it being a trailing character.
+
+The parser's job is to fully consume the expression it claims to evaluate; every recursive branch should consume its leaf token. I’ll add a `consume()` to the unary minus case so the unary token is cleared, and `factor()` continues past it. That keeps the entire expression under one paren, keeps the `factors` check valid, and lets `evaluate()` see a clean end-of-stream.

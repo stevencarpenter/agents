@@ -1,0 +1,407 @@
+commit c90595d78b5f90e9fc5415972514b9984e6e47e3
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:42:22 -0600
+
+    learner turn 20
+---
+ calc.py      | 5 +++++
+ test_calc.py | 6 +++++-
+ 2 files changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/calc.py b/calc.py
+index 12f3140..20fb517 100644
+--- a/calc.py
++++ b/calc.py
+@@ -2,6 +2,11 @@ class ExpressionError(Exception):
+     pass
+ 
+ def evaluate(expr: str) -> float:
++    if not expr:
++        raise ExpressionError("Malformed expression: empty input")
++    allowed_chars = "0123456789+-*/(). "
++    if any(char not in allowed_chars for char in expr):
++        raise ExpressionError(f"Malformed expression: invalid characters in input")
+     try:
+         return eval(expr)
+     except Exception as e:
+diff --git a/test_calc.py b/test_calc.py
+index 5150721..fde7a4c 100644
+--- a/test_calc.py
++++ b/test_calc.py
+@@ -2,9 +2,13 @@ import unittest
+ from calc import evaluate, ExpressionError
+ 
+ class TestCalculate(unittest.TestCase):
++    def test_evaluate_empty_expression(self):
++        with self.assertRaises(ExpressionError):
++            result = evaluate("")
++
+     def test_evaluate_string_literal(self):
+         with self.assertRaises(ExpressionError):
+-            evaluate('"42"')
++            result = evaluate('"42"')
+ 
+ if __name__ == '__main__':
+     unittest.main()
+
+commit c1a56ded5db3774df54ac5f3c5833c873c57c249
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:42:10 -0600
+
+    learner turn 19
+
+commit ff02cd93456c59ecd59215efb6dbccf111808c19
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:41:57 -0600
+
+    learner turn 18
+
+commit b5c50d4c778558261c2b2f05fa294ecc28a769e7
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:41:34 -0600
+
+    learner turn 17
+---
+ test_calc.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/test_calc.py b/test_calc.py
+index 04e6dcf..5150721 100644
+--- a/test_calc.py
++++ b/test_calc.py
+@@ -4,7 +4,7 @@ from calc import evaluate, ExpressionError
+ class TestCalculate(unittest.TestCase):
+     def test_evaluate_string_literal(self):
+         with self.assertRaises(ExpressionError):
+-            result = evaluate('"42"')
++            evaluate('"42"')
+ 
+ if __name__ == '__main__':
+     unittest.main()
+
+commit 33ee130ac9d016059684b22584bc9af10945683f
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:41:22 -0600
+
+    learner turn 16
+
+commit a31ddf2dbcce07b7f2cb28a62280c8d27c0c48cb
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:41:07 -0600
+
+    learner turn 15
+---
+ test_calc.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/test_calc.py b/test_calc.py
+index 0f6cc85..04e6dcf 100644
+--- a/test_calc.py
++++ b/test_calc.py
+@@ -2,9 +2,9 @@ import unittest
+ from calc import evaluate, ExpressionError
+ 
+ class TestCalculate(unittest.TestCase):
+-    def test_evaluate_invalid_expression(self):
++    def test_evaluate_string_literal(self):
+         with self.assertRaises(ExpressionError):
+-            result = evaluate("1 //")
++            result = evaluate('"42"')
+ 
+ if __name__ == '__main__':
+     unittest.main()
+
+commit 080c5afb1c5db925a46f71e3f5ae1eefe6b5dee9
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:40:51 -0600
+
+    learner turn 14
+---
+ test_calc.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/test_calc.py b/test_calc.py
+index aa98b89..0f6cc85 100644
+--- a/test_calc.py
++++ b/test_calc.py
+@@ -2,9 +2,9 @@ import unittest
+ from calc import evaluate, ExpressionError
+ 
+ class TestCalculate(unittest.TestCase):
+-    def test_evaluate_division_by_zero(self):
++    def test_evaluate_invalid_expression(self):
+         with self.assertRaises(ExpressionError):
+-            result = evaluate("10/0")
++            result = evaluate("1 //")
+ 
+ if __name__ == '__main__':
+     unittest.main()
+
+commit 8d736d185b022737eb8d32e1f7e5fcc61ebc3173
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:40:23 -0600
+
+    learner turn 13
+---
+ test_calc.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/test_calc.py b/test_calc.py
+index 067fe7b..aa98b89 100644
+--- a/test_calc.py
++++ b/test_calc.py
+@@ -2,9 +2,9 @@ import unittest
+ from calc import evaluate, ExpressionError
+ 
+ class TestCalculate(unittest.TestCase):
+-    def test_evaluate_empty_expression(self):
++    def test_evaluate_division_by_zero(self):
+         with self.assertRaises(ExpressionError):
+-            result = evaluate("")
++            result = evaluate("10/0")
+ 
+ if __name__ == '__main__':
+     unittest.main()
+
+commit 5732a2e19826b177171b58f751db2576c63b90c0
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:40:08 -0600
+
+    learner turn 12
+
+commit 52761b11fc2fb26d573cc5b91377bb1ce0e9b950
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:39:52 -0600
+
+    learner turn 11
+---
+ test_calc.py | 15 ++++++++-------
+ 1 file changed, 8 insertions(+), 7 deletions(-)
+
+diff --git a/test_calc.py b/test_calc.py
+index a800743..067fe7b 100644
+--- a/test_calc.py
++++ b/test_calc.py
+@@ -1,9 +1,10 @@
++import unittest
+ from calc import evaluate, ExpressionError
+ 
+-def test_evaluate_empty_expression():
+-    try:
+-        result = evaluate("")
+-    except ExpressionError as e:
+-        assert True, f"Expected ExpressionError, but got {e}"
+-    else:
+-        assert False, "Expected exception to be raised for empty expression"
++class TestCalculate(unittest.TestCase):
++    def test_evaluate_empty_expression(self):
++        with self.assertRaises(ExpressionError):
++            result = evaluate("")
++
++if __name__ == '__main__':
++    unittest.main()
+
+commit ebdfc74b8fc125ca1101d367b15053d36d0a24e2
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:39:22 -0600
+
+    learner turn 10
+---
+ test_calc.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/test_calc.py b/test_calc.py
+index 466515d..a800743 100644
+--- a/test_calc.py
++++ b/test_calc.py
+@@ -4,6 +4,6 @@ def test_evaluate_empty_expression():
+     try:
+         result = evaluate("")
+     except ExpressionError as e:
+-        assert False, f"Expected no exception, but got {e}"
++        assert True, f"Expected ExpressionError, but got {e}"
+     else:
+-        assert result == 0, "Expected result to be 0 for empty expression"
++        assert False, "Expected exception to be raised for empty expression"
+
+commit 9fd85d7b576edec168aa025f8936a7c0e71228ec
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:39:02 -0600
+
+    learner turn 9
+
+commit 27f2854d4b2f2e8de56cc7e3ed6467ab75f3b754
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:38:42 -0600
+
+    learner turn 8
+---
+ calc.py      | 3 +++
+ test_calc.py | 2 +-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/calc.py b/calc.py
+index 7cdfb9b..12f3140 100644
+--- a/calc.py
++++ b/calc.py
+@@ -1,3 +1,6 @@
++class ExpressionError(Exception):
++    pass
++
+ def evaluate(expr: str) -> float:
+     try:
+         return eval(expr)
+diff --git a/test_calc.py b/test_calc.py
+index 2424081..466515d 100644
+--- a/test_calc.py
++++ b/test_calc.py
+@@ -1,4 +1,4 @@
+-from calc import evaluate
++from calc import evaluate, ExpressionError
+ 
+ def test_evaluate_empty_expression():
+     try:
+
+commit 2cfd74ae98494cf4b3a8d8e9d93478172092ba77
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:38:28 -0600
+
+    learner turn 7
+---
+ test_calc.py | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/test_calc.py b/test_calc.py
+index b1544c9..2424081 100644
+--- a/test_calc.py
++++ b/test_calc.py
+@@ -1,9 +1,9 @@
+ from calc import evaluate
+ 
+-def test_evaluate_simple_expression():
++def test_evaluate_empty_expression():
+     try:
+-        evaluate("1+2")
++        result = evaluate("")
+     except ExpressionError as e:
+         assert False, f"Expected no exception, but got {e}"
+     else:
+-        assert True, "No exception was raised as expected"
++        assert result == 0, "Expected result to be 0 for empty expression"
+
+commit 601a0502118e9eb81f83edfd1995afe14856db61
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:38:07 -0600
+
+    learner turn 6
+
+commit df60f2b4ecc687492aae3c0ce9315bb5fea8e9d0
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:37:37 -0600
+
+    learner turn 5
+---
+ test_calc.py | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/test_calc.py b/test_calc.py
+new file mode 100644
+index 0000000..b1544c9
+--- /dev/null
++++ b/test_calc.py
+@@ -0,0 +1,9 @@
++from calc import evaluate
++
++def test_evaluate_simple_expression():
++    try:
++        evaluate("1+2")
++    except ExpressionError as e:
++        assert False, f"Expected no exception, but got {e}"
++    else:
++        assert True, "No exception was raised as expected"
+
+commit 3de1892ff8e16df339ed51454351eea016fb3b02
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:37:12 -0600
+
+    learner turn 4
+
+commit 8554817477b0d893cc3ce1dc7ae12fb0b6e0dfa6
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:36:58 -0600
+
+    learner turn 3
+
+commit 20fdbabfd5a92fc9be8aea2bad096144d39a6c6e
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:36:48 -0600
+
+    learner turn 2
+
+commit f6c04a5ffbc9868321dc9e3fb61195042dbd7191
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:36:31 -0600
+
+    learner turn 1
+---
+ calc.py | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/calc.py b/calc.py
+new file mode 100644
+index 0000000..7cdfb9b
+--- /dev/null
++++ b/calc.py
+@@ -0,0 +1,5 @@
++def evaluate(expr: str) -> float:
++    try:
++        return eval(expr)
++    except Exception as e:
++        raise ExpressionError(f"Malformed expression: {expr}")
+
+commit e77d5319d9e208f8f8d620539ce20e1f6dbd78a6
+Author: Steven Carpenter <13987584+stevencarpenter@users.noreply.github.com>
+Date:   2026-08-16 00:36:30 -0600
+
+    workspace init
+---
+ .gitignore |  3 +++
+ TICKET.md  | 21 +++++++++++++++++++++
+ 2 files changed, 24 insertions(+)
+
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..4ac4dc3
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,3 @@
++__pycache__/
++*.pyc
++.claude/
+diff --git a/TICKET.md b/TICKET.md
+new file mode 100644
+index 0000000..565a9ae
+--- /dev/null
++++ b/TICKET.md
+@@ -0,0 +1,21 @@
++# CALC-102: Formula fields need arithmetic evaluation
++
++Numeric settings fields should accept arithmetic, not just literals. Users type
++things like `2+3*4`, `(1+2.5)*-3`, `10/4` and expect the computed value.
++
++## Requirements
++
++- `evaluate(expr: str) -> float` in `calc.py` at the repo root.
++- Operators `+ - * /` with standard precedence; parentheses; unary minus;
++  integer and decimal literals; whitespace anywhere.
++- Malformed input (empty, unbalanced parentheses, trailing operators,
++  unexpected characters) raises `ExpressionError` with a message that points
++  at the problem.
++- Division by zero raises `ExpressionError`.
++- Tests included and green under `python3 -m unittest`.
++
++## Acceptance examples
++
++- `evaluate("2+3*4")` → `14`
++- `evaluate("(1+2.5)*-3")` → `-10.5`
++- `evaluate("10/4")` → `2.5`
