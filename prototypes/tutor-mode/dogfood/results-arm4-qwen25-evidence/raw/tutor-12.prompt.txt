@@ -1,0 +1,7 @@
+Let's predict what will happen:
+
+1. `evaluate("")` raises `ExpressionError` because `eval("")` raises a `SyntaxError` (empty string is not a valid Python expression), which is then caught and re-raised as `ExpressionError`.
+2. The test `test_evaluate_empty_expression` will correctly assert that `evaluate("")` raises `ExpressionError`, causing the test to pass.
+3. `python3 -m unittest discover -q` should report a pass.
+
+Let's run the tests to confirm our prediction.

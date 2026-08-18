@@ -1,0 +1,14 @@
+F
+======================================================================
+FAIL: test_evaluate_string_literal (test_calc.TestCalculate.test_evaluate_string_literal)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-carpenter-projects-agents/5cee1d1f-d910-433e-b809-0d9716f91137/scratchpad/dogfood-ws-arm4/test_calc.py", line 6, in test_evaluate_string_literal
+    with self.assertRaises(ExpressionError):
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+AssertionError: ExpressionError not raised
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (failures=1)

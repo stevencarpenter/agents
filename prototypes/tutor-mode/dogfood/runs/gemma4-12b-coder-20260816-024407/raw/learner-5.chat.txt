@@ -1,0 +1,3 @@
+Right now it'll just error on `ImportError` because `calc.py` isn't there at all. For a proper first fail, I need `calc.py` with the function signature and the `ExpressionError` class.
+
+Then `unittest` imports the file, calls `evaluate("123")`, and gets my deliberate `ExpressionError` instead of a file error.

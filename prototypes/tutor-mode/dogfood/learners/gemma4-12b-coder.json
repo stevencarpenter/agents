@@ -1,0 +1,15 @@
+{
+  "run_id_prefix": "gemma4-12b-coder",
+  "learner": {
+    "model": "gemma-4-12B-coder-fable5-composer2.5-v1-OptiQ-4bit",
+    "endpoint": "http://localhost:42069",
+    "max_tokens": 3000
+  },
+  "tutor": {
+    "model": "sonnet",
+    "output_style": "Tutor"
+  },
+  "task": "calc-102",
+  "max_turns": 30,
+  "notes": "12B coder merge at 4-bit (OptiQ), loaded in the 2026-08-16 roster. Between the 7B tier (0-for-2 at cap 20) and the 35B tier (DONE in 13); cap 30 per the small-tier guideline since 4-bit quant tends toward the lower behavior class."
+}

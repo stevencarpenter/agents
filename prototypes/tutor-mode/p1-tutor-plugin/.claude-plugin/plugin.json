@@ -1,0 +1,9 @@
+{
+  "name": "tutor-mode",
+  "description": "Switchable tutor mode: hook-enforced no-code coaching. The learner writes every line; Claude coaches Socratically with TDD shaping.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Steven Carpenter"
+  },
+  "license": "MIT"
+}

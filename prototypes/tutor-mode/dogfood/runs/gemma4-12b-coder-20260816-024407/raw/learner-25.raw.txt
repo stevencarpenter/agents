@@ -1,0 +1,125 @@
+The traceback on `(1+2.5)*-3` reveals a literal grammar hole: after `factor` consumes `2.5`, the next token is the closing paren `)`. My whitelist for `factor` explicitly excludes `RPAREN`, so the validator rejects the valid parenthesis as a factor failure. `RPAREN` is the only missing type for a factor's expected successor.
+
+```file:calc.py
+from collections import import namedtuple
+
+Token = namedtuple('Token', ['type', 'value'])
+
+class ExpressionError(Exception):
+    pass
+
+
+def evaluate(expr):
+    if not expr.strip():
+        raise ExpressionError("Empty expression")
+
+    tokens = lex(expr)
+
+    if not tokens:
+        raise ExpressionError("Could not parse")
+
+    state = {'position': 0}
+
+    def peek():
+        return tokens[state['position']]
+
+    def consume():
+        token = peek()
+        state['position'] += 1
+        return token
+
+    def expression():
+        left = term()
+        while state['position'] < len(tokens) and peek().type in ('PLUS', 'MINUS'):
+            op = consume()
+            right = term()
+            left = left + right if op.type == 'PLUS' else left - right
+
+        if state['position'] < len(tokens) and peek().type not in ('EOF', 'PLUS', 'MINUS'):
+            raise ExpressionError("Expected end of expression")
+
+        return left
+
+    def term():
+        left = factor()
+        while state['position'] < len(tokens) and peek().type in ('STAR', 'SLASH'):
+            op = consume()
+            right = factor()
+            if op.type == 'STAR':
+                left = left * right
+            else:
+                if right == 0:
+                    raise ExpressionError("Division by zero")
+                left = left / right
+
+        if state['position'] < len(tokens) and peek().type not in ('EOF', 'PLUS', 'MINUS', 'STAR', 'SLASH'):
+            raise ExpressionError("Expected end of term")
+
+        return left
+
+    def factor():
+        if peek().type == 'MINUS':
+            consume()
+            return - factor()
+        left = primary()
+        if state['position'] < len(tokens) and peek().type not in ('EOF', 'PLUS', 'MINUS', 'STAR', 'SLASH', 'RPAREN'):
+            raise ExpressionError("Expected end of factor")
+        return left
+
+    def primary():
+        token = peek()
+        if token.type == 'LPAREN':
+            consume()
+            result = expression()
+            if state['position'] >= len(tokens) or tokens[state['position']].type != 'RPAREN':
+                raise ExpressionError("Unbalanced parentheses")
+            consume()
+            return result
+        elif token.type == 'NUMBER':
+            return consume().value
+        else:
+            raise ExpressionError("Unexpected token")
+
+    result = expression()
+    if tokens[state['position']].type != 'EOF':
+        raise ExpressionError("Trailing characters in expression")
+
+    return result
+
+
+def lex(expr):
+    tokens = []
+    i = 0
+    while i < len(expr):
+        char = expr[i]
+        if char.isspace():
+            i += 1
+        elif char.isdigit() or char == '.':
+            num = ""
+            while i < len(expr) and (expr[i].isdigit() or expr[i] == '.'):
+                num += expr[i]
+                i += 1
+            tokens.append(Token('NUMBER', float(num)))
+        elif char == '+':
+            tokens.append(Token('PLUS', '+'))
+            i += 1
+        elif char == '-':
+            tokens.append(Token('MINUS', '-'))
+            i += 1
+        elif char == '*':
+            tokens.append(Token('STAR', '*'))
+            i += 1
+        elif char == '/':
+            tokens.append(Token('SLASH', '/'))
+            i += 1
+        elif char == '(':
+            tokens.append(Token('LPAREN', '('))
+            i += 1
+        elif char == ')':
+            tokens.append(Token('RPAREN', ')'))
+            i += 1
+        else:
+            raise ExpressionError(f"Unexpected character: {char}")
+    tokens.append(Token('EOF', 'EOF'))
+    return tokens
+```

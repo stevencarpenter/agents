@@ -1,0 +1,13 @@
+Good point. Let's start with a simple tokenizer that can handle integer literals and basic arithmetic operators (`+`, `-`, `*`, `/`) as the simplest input. The first test we should write would be to ensure that it correctly tokenizes a simple expression like `"1+2"`.
+
+Here's the expected token list for that input:
+
+```json
+[
+    { "type": "NUMBER", "value": 1 },
+    { "type": "PLUS", "value": "+" },
+    { "type": "NUMBER", "value": 2 }
+]
+```
+
+Let's implement this tokenizer in `calc.py` and then write the corresponding test in `test_calc.py`.

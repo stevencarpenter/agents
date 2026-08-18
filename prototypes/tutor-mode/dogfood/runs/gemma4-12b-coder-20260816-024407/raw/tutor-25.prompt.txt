@@ -1,0 +1,1 @@
+The traceback on `(1+2.5)*-3` reveals a literal grammar hole: after `factor` consumes `2.5`, the next token is the closing paren `)`. My whitelist for `factor` explicitly excludes `RPAREN`, so the validator rejects the valid parenthesis as a factor failure. `RPAREN` is the only missing type for a factor's expected successor.

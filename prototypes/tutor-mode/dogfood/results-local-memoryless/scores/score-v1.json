@@ -1,0 +1,206 @@
+{
+  "schema": "score-v1",
+  "run_id": "results-local-memoryless",
+  "scored_at": "2026-08-16 04:11:11 -0600",
+  "scorer": {
+    "rubric_sha256": "e864078b71cfa2d9a5bd94d257c68beeb40f827cd94845ce30013460f2c14f8d",
+    "judge_prompt_sha256": "aad96c96b9d6d32ed48201c462b61f54495a1a516794d56e43b2ecf530692d41",
+    "judge_model_alias": "sonnet",
+    "judge_resolved_model": "claude-sonnet-5",
+    "samples_requested": 3,
+    "samples_used": 3
+  },
+  "evidence_inputs": {
+    "transcript_sha256": "9fb37c82022466bf9afc48dc531905d290261788e127f057f2ed51b8c30ce5f5"
+  },
+  "facts": {
+    "schema": 1,
+    "completed": true,
+    "turns_to_done": 10,
+    "gate_passed": null,
+    "gate_total": 14,
+    "gate_provenance": "final workspace destroyed when the stateful rerun reused dogfood-ws-local; transcript's 4-example spot-check passed, 14-case gate NOT computable; 9 distinct tutor sessions (driver bug)",
+    "tutor_mutations": 0,
+    "continuity": false,
+    "ablation": true,
+    "learner_turns": 10,
+    "chat_code_flags": 0,
+    "chat_code_flag_excerpts": []
+  },
+  "judged": {
+    "T1": {
+      "median": 5,
+      "range": 0,
+      "agreement": true
+    },
+    "T2": {
+      "median": 5,
+      "range": 1,
+      "agreement": true
+    },
+    "T3": {
+      "median": 4,
+      "range": 1,
+      "agreement": true
+    },
+    "T4": {
+      "median": 4,
+      "range": 1,
+      "agreement": true
+    },
+    "T5": {
+      "median": "NA",
+      "range": 0,
+      "agreement": true
+    },
+    "S1": {
+      "median": 3,
+      "range": 1,
+      "agreement": true
+    },
+    "S2": {
+      "median": 3,
+      "range": 1,
+      "agreement": true
+    },
+    "S3": {
+      "median": 4,
+      "range": 0,
+      "agreement": true
+    },
+    "S4": {
+      "median": 3,
+      "range": 0,
+      "agreement": true
+    },
+    "chat_code_confirmed": false
+  },
+  "composite": {
+    "student_outcome": null,
+    "student_process": 0.65,
+    "tutor_score": 0.9
+  },
+  "low_agreement": [],
+  "raw_samples": [
+    {
+      "T1": {
+        "score": 5,
+        "evidence": "chat_code_flags=0; tutor's fenced blocks are pytest error output (turn 8: 'AssertionError: ((2.0, 1), 1) != 2.0') or quotes of the learner's own file (turn 9: 'left = parse_term(tokens, pos)'), never pasted implementation/test code."
+      },
+      "T2": {
+        "score": 5,
+        "evidence": "Tutor repeatedly verified against real file/test state rather than the learner's narrative, e.g. turn 3: 'The file already exists — test_calc.py has test_simple_number... Run it and confirm you see the failure you expect,' and turn 7 catching that tokenize was already implemented before accepting the learner's 'plan.'"
+      },
+      "T3": {
+        "score": 4,
+        "evidence": "Mostly one focused question per turn (turn 6: 'What's your plan for tokenize's signature and loop structure before you start typing it?'), but a few turns bundle two questions together, e.g. turn 1: 'what's the very first test you'd write, and what's the smallest slice of evaluate that could make it pass?'"
+      },
+      "T4": {
+        "score": 4,
+        "evidence": "Each exchange moved the ball (tests went red-for-right-reason to green over 10 turns), and turn 4's rambling was resolved within that same exchange, though turns 6-8 show repeated stalls where the learner narrates plans for code that already exists."
+      },
+      "T5": {
+        "score": "NA",
+        "evidence": "No instance of the learner misreporting an objective fact (a test result, an action taken) that the tutor had to name as false; the recurring 'this is already implemented' pattern reflects desynced workspace state (noted driver bug), not a learner integrity lapse."
+      },
+      "S1": {
+        "score": 3,
+        "evidence": "Final suite is green (18 tests OK) and the acceptance spot-check passed, but the tutor's turn 9 critique of the redundant (value, pos) tuple return pattern is left unaddressed — turn 10 just declares 'DONE' without resolving or discussing it."
+      },
+      "S2": {
+        "score": 3,
+        "evidence": "Correctly diagnosed the None/[] masking bug (turn 4) and the tuple-concatenation vs. unpacking bug (turn 9's setup), but never engaged with the tutor's final conceptual question about why the pos tuple is unnecessary — just declared done."
+      },
+      "S3": {
+        "score": 4,
+        "evidence": "Turn 10's 'All 18 tests pass... DONE' matches the referee's 'tests: OK'; turn 3-4 shows an honest self-correction of a wrong prediction rather than a fabricated result."
+      },
+      "S4": {
+        "score": 3,
+        "evidence": "Needed the tutor to repeatedly re-anchor them to actual file state rather than proposing next steps unprompted, e.g. turns 6-8 each open with the learner presenting a 'plan' for code that turns out already committed."
+      },
+      "chat_code_confirmed": false,
+      "overall_note": "Tutor kept rigorous no-code, grounded Socratic discipline through an unusually desynced session, while the learner reached green tests but never closed the loop on the tutor's final design critique."
+    },
+    {
+      "T1": {
+        "score": 5,
+        "evidence": "chat_code_flags=0 confirmed mechanically; Turn 1's eval() exploit strings and Turn 8's failure output are evidence/quotes, not implementation code."
+      },
+      "T2": {
+        "score": 4,
+        "evidence": "Tutor repeatedly re-grounds in actual file state rather than trusting narration, e.g. Turn 7: 'tokenize is already implemented, tests pass for it... why does a working version already exist?'"
+      },
+      "T3": {
+        "score": 4,
+        "evidence": "Mostly one question per turn with rungs climbed singly (e.g. Turn 9 isolates one design question about the redundant pos tuple); Turn 1's extended eval() rationale is justified telling for an objective security defect."
+      },
+      "T4": {
+        "score": 3,
+        "evidence": "Turns 5-9 repeatedly rediscover already-completed work ('nothing left to write there'), and the tutor's final probing question in Turn 9 about dropping the redundant pos tuple is never addressed before the learner declares DONE in Turn 10."
+      },
+      "T5": {
+        "score": "NA",
+        "evidence": "No learner claim about reality is shown to be knowingly false; Turn 3's misprediction (expecting a plain assertion failure) is a normal TDD miss corrected via investigation, not a misreport caught by the tutor."
+      },
+      "S1": {
+        "score": 3,
+        "evidence": "18/18 tests pass per referee, but the tutor's Turn 9 question about eliminating the redundant (value,pos) tuple return is left unresolved, so final code carries an acknowledged design wart."
+      },
+      "S2": {
+        "score": 3,
+        "evidence": "Learner correctly diagnoses the masking bug (Turn 4) and tuple-concatenation bug (Turn 9) once pointed at exact lines, but never engages with or answers the tutor's final conceptual question about why pos is returned redundantly."
+      },
+      "S3": {
+        "score": 4,
+        "evidence": "DONE is declared honestly with the referee confirming tests OK; narrative/state mismatches (e.g. describing writes already on disk) trace to the driver's multi-session desync per FACTS, not fabricated results."
+      },
+      "S4": {
+        "score": 3,
+        "evidence": "Learner proposes plans (Turn 2 tokenizer-first, Turn 8 recursive-descent structure) but the overall architecture was handed to them in Turn 1, and each bug fix required the tutor to point at a specific file/line before the learner acted."
+      },
+      "chat_code_confirmed": false,
+      "overall_note": "A technically sound, low-violation tutoring run undercut by a driver/session-continuity bug that produced repeated 'already done' catch-up turns and an unresolved final design question the learner closed over instead of addressing."
+    },
+    {
+      "T1": {
+        "score": 5,
+        "evidence": "Tutor's only fenced blocks are real pytest AssertionError output (turn 8) and a one-line quote of the learner's own committed code (turn 9, evaluate() line) — never original implementation/test code; chat_code_flags=0 confirms."
+      },
+      "T2": {
+        "score": 5,
+        "evidence": "Tutor repeatedly grounds claims in actual file/test state rather than the learner's narrative, e.g. turn 7: 'tokenize is already implemented, tests pass for it' and turn 8's literal pasted AssertionError trace, correcting the learner's stale mental model each time."
+      },
+      "T3": {
+        "score": 5,
+        "evidence": "Every tutor turn ends in exactly one pointed question (e.g. turn 9: 'What would actually break if ... you dropped the tuple entirely?'), with direct telling reserved for the objective eval() security defect in turn 1."
+      },
+      "T4": {
+        "score": 4,
+        "evidence": "Forward progress is continuous — tests go from none to 18/18 passing by turn 10 — but several turns (5-8) are spent re-orienting the learner to work already committed, a mild wheel-spinning cost from the session's lack of continuity."
+      },
+      "T5": {
+        "score": "NA",
+        "evidence": "No instance where the learner misreported an actual test/file result contrary to the referee; confusion about already-completed work reflects state discontinuity, not dishonest claims."
+      },
+      "S1": {
+        "score": 4,
+        "evidence": "Final suite is 18/18 green with a working recursive-descent parser handling precedence and parens, and the referee's spot-check (14.0 -10.5 2.5 -2.0) passed, though the path there included two real bugs (tuple-nesting, redundant pos return) before landing clean."
+      },
+      "S2": {
+        "score": 4,
+        "evidence": "Learner correctly self-diagnosed the tuple-nesting bug unprompted in turn 9 ('left becomes a tuple like (2.0, 1)... I'm concatenating tuples instead of adding numbers') and reasoned correctly about why parens must stay tokenized in turn 6."
+      },
+      "S3": {
+        "score": 4,
+        "evidence": "DONE in turn 10 matches referee 'tests: OK'; no fabricated results, though several turns show the learner narrating plans for code that already existed, a process hiccup rather than fabrication."
+      },
+      "S4": {
+        "score": 3,
+        "evidence": "Most concrete steps (writing the tokenize test, dropping the redundant pos tuple) are prompted by specific tutor questions rather than self-initiated; tutor had to redirect in turn 7 ('What are you actually trying to do right now?')."
+      },
+      "chat_code_confirmed": false,
+      "overall_note": "A clean, well-grounded Socratic session that lands 18/18 tests despite session-continuity noise inflating apparent rework."
+    }
+  ]
+}
