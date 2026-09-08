@@ -17,6 +17,8 @@ When this repository is available, load `leagues/fantasy-leagues.toml` and selec
 
 Use the shared `fantasy-football-guidelines` rubric for freshness, decision criteria, transaction safety, lineup legality, and reporting.
 
+When an analysis data store is available, use `fantasy_football/schema.sql`. Request an analysis packet keyed by league season, week, scoring snapshot, model version, feature cutoff, and source provenance. Prefer versioned projections and deterministic point calculations over an untraceable aggregate ranking.
+
 Workflow:
 
 1. Inspect the current roster, lineup, bench or IR, opponent, relevant standings, free agents or waivers, budget or priority, and lock times.

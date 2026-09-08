@@ -9,6 +9,21 @@ primary_source_url = "https://github.com/nflverse/nflverse-data/releases"
 primary_asset = "weekly player stats"
 reconciliation_source = "platform-reported fantasy points"
 freshness_policy = "Record the retrieval time and use the latest available release."
+play_by_play_source = "nflverse-pbp"
+snap_counts_source = "nflverse-snap-counts"
+next_gen_stats_source = "nfl-next-gen-stats"
+depth_charts_source = "nflverse-depth-charts"
+weather_source = "nws-forecast"
+availability_source = "platform-and-official-team-reports"
+news_source = "source-attributed-media-events"
+
+[data_model]
+schema = "fantasy_football/schema.sql"
+control_storage = "sqlite"
+analytical_storage = "parquet"
+analytical_query_engine = "duckdb"
+time_basis = "as_of"
+provenance_table = "source_observation"
 
 [settings_sources.yahoo]
 description = "Authenticated Yahoo Fantasy league settings and team state."
