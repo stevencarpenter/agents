@@ -28,14 +28,15 @@ provenance_table = "source_observation"
 [settings_sources.yahoo]
 description = "Authenticated Yahoo Fantasy league settings and team state."
 documentation = "https://developer.yahoo.com/fantasysports/guide/"
-mutation_requirement = "Fantasy Sports read/write authorization"
+access_requirement = "OAuth access to private user data with Fantasy Sports read permission"
+mutation_requirement = "User performs final changes in the Yahoo Fantasy UI."
 
 [settings_sources.sleeper]
 description = "Sleeper league settings and team state from the league resource."
 resource = "GET /v1/league/{league_id}"
 settings_fields = ["settings", "scoring_settings", "roster_positions"]
 documentation = "https://docs.sleeper.com/"
-mutation_requirement = "Official API is read-only; use an authenticated UI or write-capable integration."
+mutation_requirement = "User performs final changes in the Sleeper UI."
 
 [point_templates.normalized_v1]
 formula = "sum(raw_stat * points_per_unit) + event_points + threshold_points"

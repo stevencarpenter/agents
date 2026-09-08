@@ -1,6 +1,6 @@
 ---
 name: fantasy-football-guidelines
-description: Use when managing a Yahoo Fantasy or Sleeper roster, evaluating waiver or trade moves, or setting a weekly lineup through an authenticated platform.
+description: Use when inspecting a Yahoo Fantasy or Sleeper roster, evaluating waiver or trade moves, or recommending a weekly lineup.
 ---
 
 # Fantasy Football Operations
@@ -9,8 +9,8 @@ Treat the fantasy platform as the source of truth for roster state, league setti
 
 ## Platform support
 
-- Yahoo Fantasy: use an authenticated Yahoo integration or UI. Confirm that the integration has Fantasy Sports read/write authorization before submitting mutations.
-- Sleeper: the official API is read-only. Use it for inspection, then use an authenticated Sleeper UI or other write-capable integration for lineup and roster changes. Never claim that a Sleeper API call changed a team.
+- Yahoo Fantasy: use the authenticated Yahoo Fantasy API for inspection. Treat this agent as read-only; the user performs final lineup and roster changes in Yahoo.
+- Sleeper: the official API is read-only. Use it for inspection, then provide manual lineup and roster steps for the user. Never claim that a Sleeper API call changed a team.
 - Resolve each platform's own league, team, player, roster-slot, waiver, and lock identifiers. Do not transfer IDs or transaction assumptions between platforms.
 
 ## League profiles and scoring
@@ -54,10 +54,10 @@ Identify the platform, league, scoring and roster settings, week, matchup, and u
 ## Transaction safety
 
 - Draft the exact plan before submitting: add or claim, drop, trade, and bid or priority.
-- Treat trades, drops, and paid claims as high-impact. Require confirmation of the exact players, parties, and amounts unless the user already authorized those bounds.
-- A request to set a lineup authorizes lineup changes only. It does not authorize trades, drops, or waiver spend.
-- Before submitting, re-check player names, team, week, slot, and lock status. After submitting, verify the resulting roster or lineup and report what changed or failed.
-- If no authenticated write-capable platform is available, do not claim completion. Return the verified proposed actions and manual steps.
+- Treat trades, drops, and paid claims as high-impact. State the exact players, parties, and amounts for the user to review.
+- A request to set a lineup authorizes a recommendation only. It does not authorize the agent to submit trades, drops, or waiver spend.
+- Before presenting a plan, re-check player names, team, week, slot, and lock status. Return the verified proposed actions and manual platform steps.
+- Never claim an external mutation succeeded. If the user reports making a change, re-read platform state before relying on it.
 
 ## Weekly lineup
 
