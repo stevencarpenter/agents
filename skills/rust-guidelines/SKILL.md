@@ -18,14 +18,14 @@ The Microsoft `rust-guidelines` repository is MIT licensed. This repo summarizes
 
 ## Core Rubric
 
-- Prefer strong domain types, newtypes, enums, and validated constructors over primitive obsession.
+- Use newtypes, enums, and validated constructors when they enforce an invariant or prevent a concrete mix-up. Keep ordinary values as standard types when a wrapper adds no behavior or safety.
 - Prefer borrowed inputs such as `&str`, `&[T]`, and `impl AsRef<Path>` when ownership is unnecessary.
 - Keep ownership transfer explicit. Do not clone `String`, `Vec`, `Arc`, or large values without a reason.
 - Use concrete types and generics before `dyn` unless dynamic dispatch is intentional.
 - Avoid vague Java-style names such as `Manager`, `Service`, `Factory`, and `Util` when a domain name exists.
 - Public APIs should be hard to misuse: clear argument types, builders for genuinely complex construction, and additive feature design.
 - Public types should implement `Debug` where useful and expose canonical docs or examples for nontrivial APIs.
-- Libraries should expose domain-specific error types; applications may use `anyhow` or `eyre` at the boundary.
+- Expose errors callers can handle: an existing standard error for a single failure domain, a domain enum when callers need distinct failures. Applications may use an existing `anyhow` or `eyre` dependency at the boundary.
 - Lint exceptions should use `#[expect(..., reason = "...")]` or an equivalent documented reason, not broad suppression.
 - `unsafe` requires a stated invariant, a narrow boundary, sound safe APIs, and tests. Use Miri when it is applicable and available.
 - Async should buy real I/O concurrency or scheduling value. Avoid blocking calls inside async tasks, runaway spawning, cancellation blindness, and runtime details leaking through public APIs.
@@ -37,7 +37,7 @@ The Microsoft `rust-guidelines` repository is MIT licensed. This repo summarizes
 
 Reject or fix these generated-code debt patterns on sight, whether writing or reviewing:
 
-- `unwrap()`/`expect()` on fallible operations outside tests — propagate with `?` behind a domain error type.
+- `unwrap()`/`expect()` on recoverable failures outside tests: propagate with `?`. A provably unreachable failure can use `expect` with its invariant explained; do not invent error plumbing for impossible states.
 - `.clone()` sprinkled to silence the borrow checker — fix the ownership or borrowing shape; clone only with a stated reason.
 - `Arc<Mutex<T>>` used as a lifetime escape hatch instead of an ownership design.
 - Lossy `as` casts between numeric types — any cast the target can't represent exactly (narrowing, sign-changing, `u32 as f32`, float→int) silently truncates or saturates; use `From` for infallible widening, `TryFrom` for int↔int narrowing, and explicit range/NaN handling for float↔int (std has no `TryFrom` there).
@@ -67,12 +67,9 @@ Push back when a change or suggestion hits these traps:
 
 - **`block_in_place` / `spawn_blocking` in async** — blocking the async executor or parking a thread without a stated reason; prefer async I/O or an explicit blocking pool with bounded concurrency.
 - **`select!` without cancellation** — spawned tasks or channels left running after a branch wins; tie work to `tokio::select!` cancellation or explicit abort handles.
-- **`#[allow(...)]` without `#[expect(..., reason = "...")]`** — broad lint suppression instead of a narrow, documented exception.
 - **Detached `tokio::spawn`** — a dropped `JoinHandle` leaks an untracked task; use a `JoinSet`, store the handle, or document why detachment is correct.
 - **Lock held across `.await`** — a `std::sync::Mutex` guard (or `tokio::sync::Mutex` guard kept longer than needed) across an await point stalls or deadlocks the executor; restructure or use the async-aware lock deliberately.
 - **Unbounded channels** — `mpsc::unbounded_channel` or a huge buffer hides backpressure bugs; size channels to the real workload.
-- **Clone-to-compile** — `.clone()` added wherever the borrow checker complained, instead of adjusting lifetimes or ownership.
-- **Silent `as` conversion** — `len as u32`, `x as i64` where overflow, truncation, or sign change is possible.
 - **Panic across FFI** — a panic unwinding into an `extern "C"` frame is abort-or-UB; wrap boundaries with `catch_unwind` or prove the code cannot panic.
 
 ## Output Contract

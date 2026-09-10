@@ -27,8 +27,8 @@ Schema discipline:
 
 Transport:
 
-- Default to stdio transport for local servers. Use HTTP/SSE only when the server must be shared across machines or persisted across sessions.
-- Emit structured JSON-LD error objects, not bare strings, when a tool call fails so the calling agent can parse the error type.
+- Default to stdio transport for local servers. Use the SDK's supported HTTP transport when remote access or independent server lifetime is required.
+- Use the SDK's native error contract: tool execution failures return a tool result with `isError: true` and actionable content; protocol failures use protocol errors. Do not add a separate error format.
 
 Testing:
 

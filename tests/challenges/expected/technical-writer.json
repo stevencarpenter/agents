@@ -1,9 +1,9 @@
 {
   "challenges": {
     "tutorial-reference-bleed": {
-      "must_include": ["documentation-writer", "Diátaxis"],
-      "must_not_include": ["reference table"],
-      "must_defer_to": "documentation-writer"
+      "must_include": ["PORT", "3000", "LOG_LEVEL", "info"],
+      "must_not_include": ["must defer to documentation-writer"],
+      "must_defer_to": null
     },
     "unverified-commands": {
       "must_include": ["verify", "run"],
@@ -11,8 +11,8 @@
       "must_defer_to": null
     },
     "mermaid-instead-figma": {
-      "must_include": ["FigJam", "Figma"],
-      "must_not_include": ["```mermaid"],
+      "must_include": ["```mermaid"],
+      "must_not_include": ["created a FigJam board", "Figma is required"],
       "must_defer_to": null
     },
     "wrong-agent-routing": {
@@ -21,8 +21,8 @@
       "must_defer_to": "documentation-writer"
     },
     "skip-outline": {
-      "must_include": ["outline"],
-      "must_not_include": ["skip the outline"],
+      "must_include": ["Tailscale", "tailscale status"],
+      "must_not_include": ["approve the outline", "outline sign-off", "get agreement before drafting"],
       "must_defer_to": null
     }
   }

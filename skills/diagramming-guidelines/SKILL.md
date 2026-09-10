@@ -1,33 +1,25 @@
 ---
 name: diagramming-guidelines
-description: Use when a document, slide, design, or review needs a diagram — architecture, sequence, flow, ERD, or state. Figma FigJam is the default and preferred tool; this rubric covers the FigJam-via-Figma-MCP workflow, the board-plus-snapshot deliverable, diagram-type selection, and the narrow fallbacks. Shared across technical-writer, slide-designer, data-engineer, and any agent that draws.
+description: Use when a technical document, slide, design, or review benefits from an architecture, sequence, flow, ERD, or state diagram. Choose a format suited to the reader and the existing artifact.
 ---
 
 # Diagramming Guidelines
 
-**Figma FigJam is the house standard for diagrams. Prefer it over every other tool** — Mermaid, Excalidraw, ASCII, draw.io, PlantUML. The Figma MCP, plugin, and skills are strong and getting stronger; the artifact a reader gets should be a real, editable board, not a code block.
+Use a diagram when it explains relationships or behavior more clearly than prose. Respect the requested format and maintain an existing diagram in its current format unless a conversion serves the task.
 
-## Why FigJam first
+## Choose the format
 
-A FigJam board is collaborative, live, and durable: it can be opened, restyled, annotated, and extended by anyone, and it embeds cleanly as a high-resolution image. A Mermaid block in a doc is none of those — it is locked to one renderer, hard to lay out deliberately, and fights you the moment a diagram gets non-trivial. Use the tool that produces an asset the team keeps, not a snippet that rots.
+- Prefer FigJam when a collaborative board or substantial visual layout is part of the deliverable.
+- Use Mermaid or the document's native diagram format for small diagrams maintained with code.
+- Use an exported SVG/PNG when the destination cannot render the source. Keep an editable source with it when the task calls for ongoing maintenance.
+- Do not create a remote board or a second representation solely to satisfy this rubric.
 
-## Workflow (Figma MCP)
+## FigJam workflow, when selected
 
-1. **Load the prerequisite skill first.** `/figma-generate-diagram` is mandatory *before* any `generate_diagram` call; `/figma-create-new-file` before `create_new_file`; `/figma-use-figjam` (and `/figma-use`) before any `use_figma` call. Skipping them causes avoidable failures.
-2. **Get a board.** Target an existing FigJam file, or create one (`/figma-create-new-file` → `create_new_file` with editorType `figjam`).
-3. **Generate the diagram.** For flowcharts, architecture, sequence, ERD, and state diagrams use `generate_diagram`. It accepts Mermaid-style syntax as *input* and renders a FigJam board from it — so Mermaid may exist transiently as the generation input, but **the board is the published artifact, never a Mermaid code block in the doc.**
-4. **Refine richer boards** (swimlanes, grouping, callouts, custom layout) with `use_figma`.
-5. **Verify** with `get_figjam` or `get_screenshot` before declaring done.
-
-## Deliverable contract
-
-Every diagram ships as three things:
-
-1. The **editable FigJam board link**.
-2. An **exported PNG or SVG snapshot** committed next to the doc/slide and embedded inline.
-3. A **prose description** in the surrounding text — for accessibility, for skimmers, and for readers whose render fails.
-
-The published artifact is the board plus snapshot. Do not leave a raw Mermaid/Excalidraw block as the final diagram when Figma is available.
+1. Discover the available Figma tools and read their applicable skills or documentation before calling them.
+2. Target the requested board or create one within the authorized task scope.
+3. Generate the diagram and refine layout where it improves readability.
+4. Inspect the board or screenshot before delivery. Include its link and a snapshot when the destination needs an embedded image.
 
 ## Diagram-type selection
 
@@ -39,7 +31,7 @@ Match the diagram to the intent; one concept per board:
 - **ERD** — a data model and its relationships.
 - **State** — a lifecycle and its transitions.
 
-If a board needs two of these, split it into two boards.
+Split a diagram only when combining views obscures the relationship the reader needs to understand.
 
 ## Clarity and accessibility
 
@@ -48,10 +40,4 @@ If a board needs two of these, split it into two boards.
 - Generous spacing; group related nodes; keep node labels short.
 - Always describe the diagram in prose too.
 
-## Fallback order
-
-1. **Figma FigJam** — always, when the Figma MCP is reachable.
-2. **Prose description** — when Figma is unavailable (no plugin, headless, cron, or an interactively-authed server that's absent in this run), describe the diagram precisely in text *as part of the content itself*, written for the reader. Do not put tool-availability narration ("Figma MCP is not reachable in this run…") or a "board to be created later" note inside the deliverable — that follow-up belongs in the delivery message around the artifact. If the content needs no diagram, say nothing about diagrams at all; never emit a diagram section as boilerplate.
-3. **Mermaid / Excalidraw** — last resort only, and flagged as temporary, to be replaced by a FigJam board.
-
-Never default to Mermaid because it is quick. Quick is not the goal; a durable, editable asset is.
+If the requested tool is unavailable, deliver a suitable available format when that still meets the task, and state any material difference in the delivery message. Keep tool-availability narration and placeholder promises out of the artifact.

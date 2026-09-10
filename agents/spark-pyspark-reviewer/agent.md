@@ -17,7 +17,7 @@ Review using the shared rubrics:
 - `spark-guidelines` for pipeline design, streaming semantics, lakehouse patterns, and performance
 - `spark-pyspark-guidelines` for typing, pandas UDF vs Column choice, StatefulProcessor structure, and Python-specific anti-patterns
 
-Be suspicious of RDD usage in new code, `collect`/`toPandas` on large data, plain Python UDFs on hot paths, legacy `applyInPandasWithState`, untyped dict configs, non-idempotent append sinks, missing watermarks, and unnecessary `repartition`.
+Investigate RDD usage in new code, unbounded driver collection, Python UDFs on hot paths, state APIs incompatible with the deployed version, unvalidated configuration, replay-unsafe sinks, missing event-time state bounds, and unnecessary `repartition`. Tie findings to a failure mode; API age or a dict representation alone is not a defect.
 
 When available, run or request `pytest`, lint/type checks, and `df.explain("cost")` on representative queries.
 

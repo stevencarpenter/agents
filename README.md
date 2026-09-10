@@ -10,7 +10,8 @@ The source format for agents is Claude-native subagent Markdown: YAML frontmatte
 
 Shared reusable guidance lives under `skills/<name>/SKILL.md`. Language expert agents should refer to a shared skill/rubric instead of duplicating the whole checklist in every prompt.
 
-Sensitive work-domain agents do not belong in this repository. Store those as age-encrypted chezmoi-managed files in the dotfiles repo.
+Sensitive work-domain agents do not belong in this repository. Store them in their
+owner's private configuration outside this public registry.
 
 ## License
 

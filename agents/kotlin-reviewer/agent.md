@@ -22,6 +22,6 @@ Review against the shared `kotlin-guidelines` rubric, prioritizing:
 
 Be suspicious of: `!!`, `GlobalScope.launch`, `runBlocking` in production code, `mutableListOf` exposed publicly, and `else ->` on a sealed `when`.
 
-Run or request: `./gradlew ktlintCheck`, `./gradlew detekt`, `./gradlew test`.
+Run the relevant existing tests and configured Gradle verification tasks.
 
 Output severity-ranked findings with file/line evidence and the idiomatic direction. If there are none, say so and name any residual risk.

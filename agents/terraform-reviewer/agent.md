@@ -22,6 +22,6 @@ Review against the shared `terraform-guidelines` rubric, prioritizing:
 
 Be suspicious of: literal API tokens/passwords, `sensitive` omitted on credential outputs, `count = length(...)` over lists that change, `provisioner "local-exec"`, and `ignore_changes` that masks managed drift.
 
-Run or request: `terraform fmt -check -recursive`, `terraform validate`, `tflint`, a security scan (`tfsec`/`checkov`), and review the `plan` before any apply.
+Run the repo's configured formatting, validation, lint, and security gates. Review the relevant plan before any apply; state when plan evidence is unavailable.
 
 Output severity-ranked findings with file/line evidence and the safer direction. If there are none, say so and name any residual risk.

@@ -49,19 +49,21 @@ SCORERS: dict[str, list] = {
     "technical-writer": [
         _judge(
             "tw_diataxis_discipline",
-            "Diátaxis discipline. The response should commit cleanly to ONE mode "
+            "Diátaxis discipline. The response should serve the primary reader task "
             "(tutorial = learning by doing; how-to = a task; explanation = "
-            "understanding; reference) appropriate to the task, and stay in it. "
-            "Penalize mode-bleed: a how-to that digresses into background, a "
-            "tutorial that stops to explain alternatives, OR author-to-reader "
+            "understanding; reference). Keep short context or examples beside the "
+            "operation they clarify; do not require splitting a coherent document. "
+            "Penalize unrelated digressions that interrupt the reader, OR author-to-reader "
             "meta-narration ('I'll write this directly', 'before drafting, let me "
             "name the reader') leaking into the deliverable.",
         ),
         _judge(
             "tw_operational_completeness",
             "Operational completeness. For a how-to: prerequisites up front, a "
-            "verification step, a rollback/recovery path, and a real mechanism "
-            "(not hand-waving). For a tutorial: runs end-to-end from clean state "
+            "verification step, and a real mechanism (not hand-waving). Require "
+            "recovery instructions for state changes whose failure can leave the "
+            "reader stuck or lose data, not for every reversible command. "
+            "For a tutorial: runs end-to-end from clean state "
             "with a visible early win. For an explainer: states the why and the "
             "rejected alternatives. Reward the structure the chosen mode needs.",
         ),
@@ -76,29 +78,42 @@ SCORERS: dict[str, list] = {
     "data-engineer": [
         _judge(
             "de_lakehouse_streaming",
-            "Lakehouse + streaming correctness. Medallion layering, a real table "
-            "format (Delta/Iceberg), idempotent/replayable sinks (MERGE on a "
-            "stable key, overwrite-by-partition), small-file control, and correct "
-            "streaming semantics: event-time watermarks, exactly-once ONLY via an "
-            "idempotent checkpointed sink, and explicit late-data handling.",
+            "Lakehouse + streaming correctness for the requested pipeline. "
+            "Require transactional table formats when updates, concurrency, or "
+            "snapshot reads need them; separate layers only for distinct contracts "
+            "or consumers. Preserve retained inputs needed for replay, "
+            "idempotent/replayable sinks (native guarantees, MERGE on a stable key, "
+            "or overwrite-by-partition), and small-file control where relevant. "
+            "For stateful streaming, require bounded state, correct event-time "
+            "watermarks and lateness policy, and checkpoint/recovery compatibility. "
+            "Accept exactly-once claims only with a concrete supporting sink and "
+            "checkpoint mechanism. Do not reward unnecessary platform migrations.",
         ),
         _judge(
             "de_ml_skew_safety",
-            "ML / feature-store correctness. Point-in-time (as-of) joins so no "
+            "ML / feature-store correctness where the task involves training or "
+            "features. Point-in-time (as-of) joins so no "
             "feature leaks future information; offline↔online parity via a SINGLE "
             "feature transformation (not two codebases); versioning/reproducibility "
-            "of training data + feature code. Penalize any design that invites "
-            "training/serving skew or label leakage.",
+            "of training data + feature code. For RAG, require embedding model, "
+            "chunking and source versioning plus refresh that handles additions, "
+            "updates and deletions. Penalize training/serving skew, label leakage, "
+            "or stale derived data. When neither ML nor RAG is in scope, assess "
+            "preservation of downstream contracts without requiring a new ML design.",
         ),
         _judge(
             "de_reliability_currency",
-            "Reliability, governance, cost, and 2026 currency. Quality "
-            "expectations with explicit dispositions (drop/quarantine/fail), "
-            "backfill/replay story, PII/governance, and cost awareness. Reward "
-            "current practice (auto-compaction over manual OPTIMIZE, Iceberg REST "
-            "catalog / format interop, the VACUUM-vs-time-travel-retention "
-            "hazard, declarative streaming tables); penalize dated or vague "
-            "advice and unjustified single-vendor lock-in.",
+            "Reliability, governance, and cost at the task's scope. Quality "
+            "checks need explicit dispositions (drop/quarantine/fail) and must "
+            "fail when safe processing is impossible. Persisted pipeline changes "
+            "need replay/recovery and retention compatible with reproducibility. "
+            "New pipelines or changed data boundaries need classification, "
+            "authorized readers, and PII controls; narrow edits must preserve "
+            "existing controls. Judge cost and platform choices against actual "
+            "workload, deployed-version compatibility, and existing infrastructure. "
+            "Do not reward a vendor feature, extra layer, or new framework solely "
+            "for being newer; do not require alternatives to a suitable platform "
+            "the user already selected.",
         ),
     ],
     "slide-designer": [
@@ -112,9 +127,10 @@ SCORERS: dict[str, list] = {
         _judge(
             "sd_one_message_per_slide",
             "One message per slide and supporting discipline. Each slide carries "
-            "exactly one message; content on a slide proves that slide's title "
-            "(vertical logic); detail is pushed to speaker notes, not crammed on "
-            "the slide.",
+            "one primary message; necessary evidence stays with its claim and "
+            "content supports the slide's title (vertical logic). Unrelated "
+            "detail moves to speaker notes or another slide; do not cram it on "
+            "the slide or require a split solely for supporting evidence.",
         ),
         _judge(
             "sd_audience_fit",

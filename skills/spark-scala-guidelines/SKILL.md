@@ -38,12 +38,12 @@ Language-specific Spark 4 rubric for Scala agents. Always apply `spark-guideline
 
 ## Structured Streaming in Scala
 
-- Use **`transformWithState`** with a class extending `StatefulProcessor`:
+- For arbitrary state unsupported by built-in streaming operators, use `transformWithState` on compatible runtimes with a class extending `StatefulProcessor`:
   - `init` for state handle setup (`getValueState`, `getListState`, `getMapState`)
   - `handleInputRows` for per-batch logic
   - `close` for cleanup
 - Set **`timeMode`** explicitly — `TimeMode.None()`, `TimeMode.ProcessingTime()`, or `TimeMode.EventTime()` — to match the business requirement.
-- Register **event-time timers** and **TTL** in `init` rather than manual expiry logic in `handleInputRows`.
+- Create state handles and TTL configuration in `init`. Register per-key timers while handling input or expired timers; timer registration in `init` is unsupported ([lifecycle guide](https://spark.apache.org/docs/latest/streaming/structured-streaming-transform-with-state.html)).
 - For state schema evolution, set `spark.sql.streaming.stateStore.encodingFormat` to `avro` and evolve case classes additively.
 - Follow `spark-guidelines` operator migration checklist when switching from `flatMapGroupsWithState` to `transformWithState`.
 
@@ -62,14 +62,14 @@ Follow `spark-guidelines` MERGE tie-break policy. Idiomatic forms:
 
 ## Project Structure
 
-- Separate **pipeline orchestration** (main/app object, CLI args, SparkSession builder) from **transform definitions** (pure `DataFrame => DataFrame` functions in a `transforms` package).
+- Keep orchestration separate from transform logic in functions. Extract a `transforms` package only when its size or reuse warrants one.
 - Configure `SparkSession` once; pass `SparkSession` explicitly to transform functions rather than implicit globals.
 - Match the repo's effect system if present (e.g. `IO` for orchestration), but keep Spark actions (`count`, `write`) at the outermost edge — Spark manages its own execution model internally.
 
 ## Anti-Patterns
 
-- `collect`, `take`, or `toLocalIterator` on large datasets in production paths
-- `var` and mutable collections inside UDFs or StatefulProcessors
+- Unbounded driver materialization through `collect` or accumulating `toLocalIterator` results. Check row size and bounds for `take(n)`; it does not collect the full dataset.
+- Shared mutable state or nondeterministic side effects inside UDFs or StatefulProcessors; local mutation can be appropriate inside an operator's lifecycle.
 - `implicits._` wildcard in library code — import only the encoders you need
 - Driver-side `parallelize` of large in-memory collections
 - Exception-driven control flow in UDFs — return `Option`/`Either` columns or filter invalid rows at silver
@@ -82,4 +82,4 @@ Follow `spark-guidelines` MERGE tie-break policy. Idiomatic forms:
 
 ## Output Contract
 
-When implementing, compose pipelines as named transform stages, keep column logic in Catalyst where possible, and record proof commands. When reviewing, flag RDD usage, driver-side collects, untyped string column access, and legacy `flatMapGroupsWithState` that should migrate to `transformWithState`.
+When implementing, use named transform stages where they clarify the pipeline, keep column logic in Catalyst, and record proof commands. When reviewing, flag unsafe driver materialization, unsupported APIs, and avoidable UDFs with evidence. A working `flatMapGroupsWithState` operator is not a defect solely because `transformWithState` exists.

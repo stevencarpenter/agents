@@ -60,7 +60,7 @@ jj-help:
     @echo "  git checkout main   ->  just jj-new        (start fresh work on main)"
     @echo "  git pull            ->  just jj-sync       (fetch remote, show graph)"
     @echo "  git commit -m MSG   ->  just jj-wip MSG    (describe the current change)"
-    @echo "  git push            ->  just jj-ship       (point main at @, push it)"
+    @echo "  git push            ->  just jj-ship NAME  (push the verified feature bookmark)"
     @echo "  git status / log    ->  just jj-st"
     @echo "  'oh no, undo'       ->  just jj-undo  /  just jj-ops (then jj op restore <id>)"
     @echo ""
@@ -84,11 +84,9 @@ jj-sync:
 jj-wip msg:
     jj describe -m "{{msg}}"
 
-# Point main at the current change (if @ has any) and push it to the remote.
-# Safe to run from an empty @ — it just pushes whatever main already points at.
-jj-ship:
-    if [ -n "$(jj diff -r @ --name-only)" ]; then jj bookmark set main -r @; fi
-    jj git push --bookmark main
+# Push an explicitly selected bookmark. Set and inspect its revision first.
+jj-ship bookmark:
+    jj git push --bookmark {{quote(bookmark)}}
 
 # Undo the last jj operation (working copy, bookmark moves, everything)
 jj-undo:

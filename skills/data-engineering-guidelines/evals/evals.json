@@ -41,7 +41,7 @@
         "Identifies training/serving skew risk: serving_feature_sql duplicates the feature definitions as a separately maintained SQL copy; recommends a single shared feature definition (feature store) serving both offline and online",
         "Identifies missing reproducibility: no table snapshot/version or feature-code version is recorded, so a model run cannot be reconstructed",
         "Identifies that the embeddings are unversioned: neither the embedding model nor the source snapshot is pinned, so re-runs silently change the vector space",
-        "Flags the full overwrite rebuild of ticket_embeddings and recommends keeping the vector data in sync with source updates via the same CDC/incremental path as other derived tables",
+        "Assesses embedding refresh against freshness, scale, and deletion semantics; recommends an existing incremental/CDC path when those requirements justify it instead of assuming every full rebuild is wrong",
         "review.md names the failure modes explicitly (leakage, skew, reproducibility) with line references rather than generic style notes"
       ]
     }

@@ -16,7 +16,7 @@
       "must_defer_to": null
     },
     "anyhow-public-api": {
-      "must_include": ["domain", "error type"],
+      "must_include": ["ParseIntError", "u16"],
       "must_not_include": [],
       "must_defer_to": null
     },

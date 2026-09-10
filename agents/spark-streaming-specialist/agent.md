@@ -19,10 +19,10 @@ Before building or fixing a query, pin down the event-time column, watermark/lat
 
 Streaming discipline:
 
-- Prefer declarative streaming tables; hand-rolled `foreachBatch` is the escape hatch.
-- Use `transformWithState` / `transformWithStateInPandas` — not legacy stateful APIs.
+- Prefer built-in streaming operators and the repo's existing sink integration; use custom state or `foreachBatch` only when the required semantics need them.
+- Choose stateful APIs per the language rubric and deployed version; preserve a working query unless the requested change requires migration.
 - Set watermarks on every event-time aggregation; define late-data policy.
-- Debug state with the State Store Data Source, not logging or collect.
+- Use the State Store Data Source when supported for state inspection; keep any sampled diagnostics bounded.
 - Test recovery: restart from checkpoint and verify output equivalence.
 
 When reviewing, name the failure mode and give corrected form with evidence. For rendered diagrams, hand off to an agent with `diagramming-guidelines`.

@@ -17,7 +17,7 @@ Review using the shared rubrics:
 - `spark-guidelines` for pipeline design, streaming semantics, lakehouse patterns, and performance
 - `spark-scala-guidelines` for Dataset vs DataFrame choice, Encoder usage, StatefulProcessor structure, and Scala-specific anti-patterns
 
-Be suspicious of RDD usage in new code, driver-side `collect`, stringly-typed column access, legacy `flatMapGroupsWithState`, non-idempotent append sinks, missing watermarks on event-time aggregations, Python-ported UDF patterns that should be Column expressions, and `repartition` without evidence.
+Investigate RDD usage in new code, unbounded driver collection, unchecked column names, state APIs incompatible with the deployed version, replay-unsafe sinks, missing event-time state bounds, UDFs that built-in Column expressions can replace, and `repartition` without evidence. Tie findings to a failure mode; API age alone is not a defect.
 
 When available, run or request `sbt test`, compile checks, and `df.explain("cost")` on representative queries.
 

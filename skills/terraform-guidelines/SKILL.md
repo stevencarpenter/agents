@@ -14,10 +14,10 @@ Shared Terraform/OpenTofu rubric for agents. Prefer repo-local conventions (modu
 
 ## Core Rubric
 
-- Standard module layout: `main.tf`, `variables.tf`, `outputs.tf`, `versions.tf`. Keep modules small and single-purpose; compose them.
-- Pin `required_version` and every provider with a `~>` constraint in `versions.tf`. Don't float providers.
-- State: remote backend with locking; never commit state files or `.terraform/`. One state per environment; avoid one monolithic state for everything.
-- **Secrets never inline and never in state-visible plaintext.** Pull from a secrets manager / env / `op://`-style references; mark sensitive variables and outputs `sensitive = true`. (This repo's homelab feeds Cloudflare/Tailscale tokens from 1Password, not the tree.)
+- Follow the existing module layout. Split files or extract modules when responsibilities or real reuse warrant it; a small configuration can remain in one file.
+- Declare compatible Terraform/provider version constraints and preserve the dependency lockfile. Match root-module pinning and reusable-module compatibility policy; do not force `~>` everywhere.
+- State: preserve the configured backend, locking, and environment isolation. Use a shared backend when collaborating or deploying through automation; do not provision one for an isolated local example. Never commit state files or `.terraform/`.
+- Keep secrets out of source and logs. `sensitive = true` redacts display but does not exclude values from state, even when supplied by a secrets manager. Use supported ephemeral/write-only inputs or manage the secret value outside Terraform when it must stay out of state; protect state access and encryption ([sensitive data](https://developer.hashicorp.com/terraform/language/manage-sensitive-data)).
 - Variables: explicit `type`, a `description`, and `validation` blocks for constrained inputs. Outputs documented; expose only what callers need.
 - Prefer `for_each` (stable, keyed addressing) over `count` (index churn on insert/remove). Use `data` sources over hardcoded IDs.
 - Least-privilege IAM/API scopes; tag/label resources consistently. Avoid `provisioner` blocks (last resort) and `local-exec` side effects.
@@ -25,7 +25,7 @@ Shared Terraform/OpenTofu rubric for agents. Prefer repo-local conventions (modu
 
 ## Verification
 
-Run the repo gates: `terraform fmt -check -recursive` (or `tofu fmt`), `terraform validate`, `tflint`, a security scan (`tfsec`/`checkov`) when configured, and review `terraform plan` output before any apply. Never apply from a dev machine if the repo deploys elsewhere.
+Run the repository's configured Terraform/OpenTofu formatting, validation, and relevant analysis. Review the plan before an authorized apply; do not install tflint or a security scanner for unrelated work. Never apply from a dev machine if the repo deploys elsewhere.
 
 ## Output Contract
 

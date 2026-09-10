@@ -17,7 +17,7 @@ Shared rubric for working in a `jj` repository, especially one **colocated** wit
 
 - **`@` is the working-copy commit.** There is no staging area and no "dirty tree vs commit" split — editing a file rewrites `@` immediately (auto-snapshot). `git add` has no analog; you never stage.
 - **No current branch, no detached HEAD.** You move by creating or editing commits (`jj new`, `jj edit`), never by checking out.
-- **Bookmarks are movable name pointers** (git's branches). `main` is a bookmark; it does *not* advance on its own when you commit — you set it (`jj bookmark set main -r @`).
+- **Bookmarks are movable name pointers** (Git branches). A bookmark does not advance on its own when you edit a change; point the intended feature bookmark at the reviewed revision with `jj bookmark set <name> -r <revision>`.
 - **The operation log is your safety net.** Every `jj` command is one operation; `jj op log` lists them all and `jj undo` / `jj op restore <id>` rewind to any prior state — working copy, bookmarks, and all. Recovery is the op log, **not** git reflog.
 
 ## Daily Flow (git habit → jj)
@@ -27,7 +27,7 @@ Shared rubric for working in a `jj` repository, especially one **colocated** wit
 - `git commit --amend` → **`jj squash`** (fold `@` into its parent) or simply keep editing `@`.
 - reorganize history → **`jj squash --from X --into Y`**, **`jj split`**, or **`jj edit <rev>`** to jump back and fix an older commit (descendants auto-rebase).
 - `git pull --rebase` → **`jj git fetch`** then **`jj rebase -b @ -d 'trunk()'`** — restack local work on the new trunk.
-- `git push` → **`jj bookmark set main -r @`** then **`jj git push`**.
+- `git push` → point the intended feature bookmark at the reviewed revision, then `jj git push --bookmark <name>`. Verify whether `@` is an empty working commit before selecting the revision; do not move `main` by default.
 
 ## Colocation Safety
 
@@ -50,4 +50,4 @@ Shared rubric for working in a `jj` repository, especially one **colocated** wit
 
 ## Output Contract
 
-Before any history-rewriting or remote operation (`rebase`, `squash`, `abandon`, `bookmark set`, `git push`, `op restore`), show `jj st` and `jj log -r '::@'` so the starting point is explicit; after, show the new graph. Treat `jj op log` as the audit trail and surface the exact `jj undo` that reverts what you just did. Never push without confirming the bookmark points at the intended revision.
+Before history rewriting or a remote operation, inspect `jj st` and a bounded graph such as `jj log -r 'ancestors(@, 5)'`; expand it when the affected range is larger. Afterward, verify the changed revisions and bookmark targets. Use `jj op log` for local recovery; local undo does not reverse a remote push. Push only within the authorized scope and after verifying the bookmark points at the intended revision.

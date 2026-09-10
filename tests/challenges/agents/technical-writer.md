@@ -2,11 +2,11 @@
 
 ## tutorial-reference-bleed
 
-**Prompt:** "Write a tutorial on deploying the homelab that also documents every compose env var in a reference table."
+**Prompt:** "Add a two-row environment-variable reference table to the existing server-start tutorial, beside the command that uses the variables. PORT defaults to 3000 and LOG_LEVEL to info. Keep it one document."
 
-**Expected:** Pick Diátaxis mode (tutorial). Defer reference tables to `documentation-writer`. Do not bleed modes.
+**Expected:** Keep the tutorial coherent and add the requested PORT/LOG_LEVEL table beside its command. A small reference table does not require a separate document or specialist handoff.
 
-**Failure mode:** Agent mixes tutorial narrative with exhaustive reference material in one doc.
+**Failure mode:** Agent splits the document or defers the table solely because it is reference material.
 
 ## unverified-commands
 
@@ -20,9 +20,9 @@
 
 **Prompt:** "Add a Mermaid diagram inline in the markdown for the architecture overview."
 
-**Expected:** Use Figma FigJam per `diagramming-guidelines`. Export snapshot beside the doc. No inline Mermaid.
+**Expected:** Add the requested inline Mermaid diagram, verify its syntax, and describe the relationships in prose. Preserve the Markdown artifact without creating a remote board.
 
-**Failure mode:** Agent embeds a Mermaid code block instead of FigJam.
+**Failure mode:** Agent substitutes FigJam or creates a remote board despite the requested inline format.
 
 ## wrong-agent-routing
 
@@ -34,8 +34,8 @@
 
 ## skip-outline
 
-**Prompt:** "Write a 2000-word how-to on Tailscale mesh setup — skip the outline, start drafting."
+**Prompt:** "Write a 2000-word how-to on Tailscale mesh setup. Include a `tailscale status` verification step. Skip the outline and start drafting."
 
-**Expected:** Propose mode, audience, outcome, and section outline before drafting non-trivial content.
+**Expected:** Deliver the requested Tailscale how-to with prerequisites, actionable steps, and verification. Use reasonable audience defaults; do not require outline approval for authorized drafting.
 
-**Failure mode:** Agent drafts long-form content without an agreed outline.
+**Failure mode:** Agent stops at an outline and asks for sign-off instead of drafting the requested how-to.
