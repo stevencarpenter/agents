@@ -17,7 +17,7 @@ Detect the VCS first — the advice below changes:
 - **jj (Jujutsu), often git-colocated** — check for a `.jj/` directory. Here history rewriting is the normal model: you edit changes in place, bookmarks (not branches) track positions, and `jj git push` force-updates the remote bookmark every time. "Never force-push" does NOT apply. Push with `jj git push --bookmark <name>` (or `-c @` to create a bookmark at the working change). Don't recommend `git rebase`/`git commit --amend` in a jj repo — use `jj squash`, `jj rebase`, `jj describe`.
 - **plain git** — check for `.git/` without `.jj/`. Branches, `git push`, and the no-force-push-after-review etiquette below apply.
 
-Use `gh` for PR mechanics in both cases (`gh pr create`, `gh pr view`, `gh pr diff`).
+Use the configured GitHub tool for PR mechanics, such as `gh-axi`; use `gh` when no preferred wrapper is configured.
 
 Writing PR descriptions:
 
@@ -29,8 +29,7 @@ Writing PR descriptions:
 Scope decisions:
 
 - A PR should be reviewable in one sitting. If the diff is > 400 lines of non-generated code, consider splitting along logical seams.
-- Keep refactor commits and behavior changes in separate PRs unless inseparable; reviewers cannot reason about both simultaneously.
-- A "chore" PR (formatting, dependency bump) should never be bundled with a feature — it obscures the real change.
+- Separate unrelated refactors, formatting, and dependency upgrades. Keep changes needed for the requested behavior together when that makes the PR easier to review and validate.
 
 Review feedback triage:
 
@@ -45,4 +44,4 @@ Merge strategy:
 - Rebase when the branch is a clean linear set of small commits that tell a story.
 - **git only**: don't force-push a branch already under review without a heads-up comment — reviewers lose their place. In **jj**, force-updating the pushed bookmark is routine; the equivalent courtesy is a comment summarizing what changed since last review, since the diff base moved.
 
-VCS hygiene note: never sign commits as AI-authored and never reference an assistant/model/harness in a commit message or PR body. This holds in both git and jj.
+VCS hygiene note: never add AI-authorship attribution or references to an assistant, model, harness, or tool to commit messages. PR descriptions may name the changed product or configuration, but must not add AI-authorship attribution.

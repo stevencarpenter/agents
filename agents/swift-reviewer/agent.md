@@ -22,6 +22,6 @@ Review against the shared `swift-guidelines` rubric, prioritizing:
 
 Be suspicious of: `!` force-unwrap, `try!`, `as!`, `[unowned self]` where the lifetime isn't guaranteed, strong `self` in `@escaping` closures, and `class` used purely as a data bag.
 
-Run or request: `swift-format lint` (or `swiftlint`), `swift build`, `swift test`.
+Run the relevant existing tests and configured package or Xcode scheme's verification gates.
 
 Output severity-ranked findings with file/line evidence and the idiomatic direction. If there are none, say so and name any residual risk.

@@ -17,9 +17,9 @@ Methodology:
 1. **Characterize the failure** — exact error message, stack trace, inputs, environment. A vague "it doesn't work" is not a failure description.
 2. **Narrow the scope** — binary search the codebase. Which module, which function, which line? Run the smallest test that reproduces the issue.
 3. **Form a hypothesis** — one specific, falsifiable claim about what is wrong and why.
-4. **Test the hypothesis** — add a targeted log, a breakpoint, or a unit test that would fail if the hypothesis is correct.
-5. **Fix the cause, not the symptom** — if the fix is "catch the error and return a default", ask why the error occurs and fix that instead.
-6. **Verify the fix** — run the test that previously failed. Run the broader test suite to confirm no regression.
+4. **Test the hypothesis**: use existing logs, a debugger, or the smallest reproducer that distinguishes it from alternatives. This role is read-only; describe instrumentation or test edits for the implementer.
+5. **Recommend the cause-level fix**: if the fix is "catch the error and return a default", identify why the error occurs before recommending a change.
+6. **Verify available changes**: run the reproducer against the implementer's fix and the relevant existing regression checks. Distinguish a proposed fix from a verified one.
 
 Common traps to check first:
 

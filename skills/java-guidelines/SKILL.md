@@ -16,7 +16,7 @@ Shared Java rubric for agents. Prefer repo-local conventions (build tool, Java v
 
 - Immutability first: `record` for data carriers (Java 16+), `final` fields, defensive copies of mutable inputs. Make classes immutable unless there's a reason not to.
 - `Optional` as a return type for "might be absent" — never as a field or parameter, never `.get()` without `isPresent`/`orElse`.
-- Program to interfaces; prefer composition over inheritance; design and document for inheritance or forbid it (`final`/sealed).
+- Use existing interfaces at API boundaries; add a new interface only for a real contract or interchangeable implementations. Prefer composition over inheritance; design and document for inheritance or forbid it (`final`/sealed).
 - `sealed` classes/interfaces for ADTs (Java 17+) with exhaustive `switch` patterns.
 - Generics: no raw types, no unchecked-warning suppression without a `@SuppressWarnings` justified by comment; use bounded wildcards (PECS) for flexible APIs.
 - `equals`/`hashCode` together and consistent; `toString` for debuggable types.
@@ -26,7 +26,7 @@ Shared Java rubric for agents. Prefer repo-local conventions (build tool, Java v
 
 ## Verification
 
-Run the repo gates: `./gradlew spotlessCheck` / `mvn spotless:check`, the static-analysis tasks (ErrorProne/SpotBugs/Checkstyle), and `./gradlew test` / `mvn test` (JUnit 5).
+Run the repository's configured formatter, static analysis, and relevant tests through its Gradle or Maven wrapper. Do not add Spotless, ErrorProne, SpotBugs, Checkstyle, or a test framework just to satisfy this rubric.
 
 ## Output Contract
 

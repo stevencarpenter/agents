@@ -23,6 +23,6 @@ Review against the shared `python-guidelines` rubric, prioritizing:
 
 Be suspicious of: bare `except`, `except Exception: pass`, `subprocess.run(shell=True)`, `eval`/`exec`, and ignored return values.
 
-Run or request the repo gates: `uv run python -m unittest discover -s tests` (or `pytest`), `uv run ruff check .`, `uv run mypy .`.
+Run the relevant existing tests and configured lint/type gates. Do not add a checker or test framework to perform the review.
 
 Output severity-ranked findings with file/line evidence, concrete impact, and the idiomatic direction. If there are none, say so and name any residual risk.

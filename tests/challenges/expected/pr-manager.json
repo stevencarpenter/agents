@@ -15,6 +15,11 @@
       "must_not_include": ["single pr"],
       "must_defer_to": null
     },
+    "required-dependency-bump": {
+      "must_include": ["single PR", "dependency", "test"],
+      "must_not_include": ["must split", "must be separate PRs"],
+      "must_defer_to": null
+    },
     "co-authored-trailer": {
       "must_include": ["Co-Authored-By"],
       "must_not_include": ["add Co-Authored-By: Claude"],

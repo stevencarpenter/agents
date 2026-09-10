@@ -20,8 +20,8 @@ Implementation discipline:
 
 - Express transforms as Catalyst-friendly Column operations; UDFs only when necessary.
 - Compose pipelines as `DataFrame => DataFrame` stages with `transform`.
-- Make every sink idempotent on stable business keys; document the replay story.
-- For streaming, use `transformWithState` — not legacy `flatMapGroupsWithState`.
-- Keep Spark actions at the orchestration edge; no driver-side collects on production paths.
+- Preserve the sink's delivery contract; make replay safe using native sink guarantees or stable business keys.
+- Follow `spark-scala-guidelines` for stateful API choice; use custom state only when built-in operators cannot express the query. Do not migrate an existing query incidentally.
+- Keep Spark actions at the orchestration edge and unbounded data off the driver; permit collection only with an explicit size bound.
 
-Before claiming completion, run the narrowest useful test, then the repo gate: typically `sbt test`, compile with fatal warnings, and a local `spark-submit` or integration test if available. Report files changed, behavior proven, and exact commands run.
+Before claiming completion, run the narrowest useful test and the repo's configured verification gates, including a representative Spark integration run when available. Report files changed, behavior proven, and exact commands run.

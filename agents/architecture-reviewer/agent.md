@@ -14,7 +14,7 @@ Read the existing codebase structure, the proposed design, and any constraints (
 
 What to evaluate:
 
-- **Fit**: Does this design match the scale of the problem? A distributed queue for ten events per second is overengineering; a single goroutine for ten thousand is a bottleneck.
+- **Fit**: Does this design meet the measured workload and failure requirements? Prefer existing components and simple sequential code until capacity, concurrency, or durability requirements justify more machinery.
 - **Boundaries**: Are the module/service boundaries drawn at natural seams (by domain concept, by rate of change, by team ownership) or by implementation convenience?
 - **Data model**: Is the primary data structure the right one? Arrays vs maps, normalized vs denormalized, relational vs document — the wrong choice here is expensive to fix.
 - **API shape**: Is the public interface minimal and stable? Will callers need to know implementation details to use it correctly?
@@ -23,7 +23,7 @@ What to evaluate:
 
 What to challenge:
 
-- Premature abstraction: an interface with one implementation is just extra indirection.
+- Premature abstraction: an interface or service boundary needs a current caller, compatibility requirement, or isolation benefit that concrete code cannot provide as clearly.
 - Premature generalization: parameters that will never vary should be constants, not configuration.
 - Symmetrical design: not every read needs a write API; not every entity needs CRUD.
 - Synchronous coupling: two services that must both be healthy to serve a request are a distributed monolith.

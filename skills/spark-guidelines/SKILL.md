@@ -1,11 +1,11 @@
 ---
 name: spark-guidelines
-description: Use when designing, building, or reviewing Apache Spark 4 data pipelines — batch and streaming DataFrame transforms, lakehouse sinks (Delta/Iceberg), Spark Connect, Structured Streaming (watermarks, checkpoints, transformWithState, state data source), partitioning/AQE/shuffle optimization, and idempotent MERGE/CDC patterns. Reach for this whenever the user mentions Spark, PySpark, Structured Streaming, lakehouse ETL, or distributed dataframe pipelines even if they do not name Spark 4 explicitly.
+description: Use when designing, building, or reviewing Apache Spark batch or Structured Streaming pipelines, Spark Connect, or Spark execution plans. Confirm the deployed Spark version before choosing APIs; generic lakehouse work alone does not require Spark.
 ---
 
 # Spark Guidelines
 
-Shared Spark 4 rubric for agents building expert-level data pipelines. Vendor-general — applies to open-source Spark, Databricks Runtime 16.x+, EMR, or any Spark 4 cluster. Pair with `spark-scala-guidelines` or `spark-pyspark-guidelines` for language-specific idioms. For medallion layering, catalog governance, and cross-engine lakehouse design, also apply `data-engineering-guidelines`.
+Shared rubric for Spark pipelines, including Spark 4 APIs where supported by the deployed runtime. Pair with `spark-scala-guidelines` or `spark-pyspark-guidelines` for language idioms. Apply `data-engineering-guidelines` sections relevant to table design, governance, or recovery.
 
 ## Source Of Truth
 
@@ -16,7 +16,7 @@ Shared Spark 4 rubric for agents building expert-level data pipelines. Vendor-ge
 
 ## Spark 4 Baseline
 
-- **Assume Spark 4** unless the repo pins an older version. Key 4.x capabilities to prefer over legacy APIs:
+- Confirm the repository and cluster versions. For new Spark 4 work, consider these capabilities when they address a requirement; do not migrate a working operator solely because a newer API exists:
   - **`transformWithState`** (Scala/Java/Python) replaces `mapGroupsWithState`, `flatMapGroupsWithState`, and `applyInPandasWithState` for arbitrary stateful streaming
   - **Composite state types** — `ValueState`, `ListState`, `MapState` with TTL, timers, initial state, and Avro-backed schema evolution
   - **State Store Data Source** — read streaming operator state as a DataFrame for debugging (`stateVarName`, flattened vs non-flattened)
@@ -25,7 +25,7 @@ Shared Spark 4 rubric for agents building expert-level data pipelines. Vendor-ge
 
 ## Pipeline Design
 
-- **Data contract before code.** Pin schema, semantics, freshness/latency SLA, volume, partitioning strategy, and sink idempotency key before writing transforms.
+- **Data contract before code.** Establish the schema, semantics, and sink behavior affected by the change. A new pipeline also needs latency, volume, and recovery requirements; a small transform edit does not require a new architecture document.
 - **Medallion, catalog, and lakehouse table design:** apply `data-engineering-guidelines`.
 - **MERGE tie-breaks.** When CDC can deliver equal `event_timestamp` values for the same key, define a secondary ordering column (usually `ingest_timestamp` or a monotonic sequence) in both dedup and `whenMatchedUpdate` conditions — otherwise replays are nondeterministic.
 - **foreachBatch idempotency.** Streaming micro-batches may be reprocessed at-least-once. Every `foreachBatch` body must be safe to run twice on the same batch (idempotent MERGE, overwrite-by-partition, or deterministic upsert key).
@@ -39,7 +39,7 @@ Shared Spark 4 rubric for agents building expert-level data pipelines. Vendor-ge
   - Repartition or salt before join when key skew is known
   - Prefer `left_anti` / `left_semi` over subtracting full DataFrames
 - **Aggregation discipline:** pre-aggregate where possible; use window functions for ranking and running metrics instead of self-joins; watch for exploding `groupBy` cardinality.
-- **Deduplication:** `dropDuplicates` on business keys at silver; for streaming, use watermark + `dropDuplicatesWithinWatermark` or stateful dedup via `transformWithState`.
+- **Deduplication:** use `dropDuplicates` when duplicate rows are interchangeable. For latest-record CDC, use deterministic ordering and the MERGE tie-break policy. In streaming, use supported watermark-aware dedup before custom state.
 
 ## Partitioning, Files & Table Formats
 
@@ -49,13 +49,13 @@ Apply `data-engineering-guidelines` for partitioning, file sizing, compaction, a
 
 Apply `data-engineering-guidelines` for event time, watermarks, checkpointing, delivery semantics, and streaming-into-lakehouse patterns.
 - **Driver OOM in streaming:** suspect `console`/`memory` sinks, `collect`, and Update-mode emissions with growing payloads before blaming executor state store size — these materialize on the driver.
-- **`transformWithState` for custom state:**
+- **`transformWithState` for custom state that built-in operators cannot express:**
   - Define logic in a `StatefulProcessor` (object-oriented lifecycle: `init`, `handleInputRows`, `close`)
   - Use composite state types instead of read-modify-write on a single blob
   - Set TTL and timers explicitly; enable Avro encoding (`spark.sql.streaming.stateStore.encodingFormat=avro`) when state schema must evolve
   - Debug via the State Store Data Source rather than println/logging state
 - **Operator migration:** switching legacy stateful APIs (`flatMapGroupsWithState`, `applyInPandasWithState`) to `transformWithState` / `transformWithStateInPandas` requires a **new checkpoint location** (or documented state-store migration) — the arbitrary-state v2 store cannot read legacy checkpoints; never silently reuse the old path; record in migration notes
-- **Declarative streaming tables** (Lakeflow / Spark Declarative Pipelines) when the platform supports them — prefer over hand-rolled `foreachBatch` for standard incremental refresh.
+- **Declarative streaming tables** can simplify standard incremental refresh on a platform that already supports them; do not introduce a platform migration for a narrow pipeline change.
 
 ## Spark Connect
 
@@ -79,6 +79,6 @@ Apply `data-engineering-guidelines` for event time, watermarks, checkpointing, d
 
 ## Output Contract
 
-For a pipeline: data contract and SLAs, design (sources → transforms → sinks, layer by layer), code, data-quality checks, idempotency/backfill/recovery story, and cost/performance notes (with explain output when relevant).
+For implementation, deliver the affected code and proof. Include contract, quality, idempotency, recovery, and performance details that the change affects; a new production pipeline warrants the full design.
 
 For a review: name the failure mode (skew, small files, unbounded state, non-idempotent sink, Python UDF on hot path, missing watermark), show evidence (plan, code, metrics), and give the corrected idiomatic form.

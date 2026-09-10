@@ -21,11 +21,11 @@ Shared Kotlin rubric for agents. Prefer repo-local conventions (build setup, cor
 - Extension functions to extend types you don't own — but keep them discoverable and cohesive, not a junk drawer.
 - Coroutines: structured concurrency only — no `GlobalScope`; pass a `CoroutineScope`/use `coroutineScope {}`; pick the right `Dispatcher`; make suspend functions main-safe; don't block inside `suspend`.
 - Scope functions (`let`/`run`/`with`/`apply`/`also`) used for their intent, not stacked into unreadable chains.
-- Preconditions with `require`/`check`/`error`; results with sealed `Result`-style types or `Result<T>`, not swallowed exceptions.
+- Preconditions with `require`/`check`/`error`; use the repository's exception or result convention for recoverable failures. Add a sealed result type only when callers need to distinguish outcomes; never swallow exceptions.
 
 ## Verification
 
-Run the repo gates: `./gradlew ktlintCheck` (or `ktfmt`), `./gradlew detekt`, and `./gradlew test` (JUnit5 or Kotest).
+Run the repository's configured Gradle formatting, analysis, and relevant test tasks. Use ktlint, ktfmt, detekt, JUnit, or Kotest only where the project already configures them.
 
 ## Output Contract
 

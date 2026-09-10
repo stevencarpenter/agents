@@ -13,17 +13,17 @@ Before implementing, read any existing command structure, help text patterns, an
 
 Interface design:
 
-- Use subcommands (`tool action [args] [flags]`) over flags-as-verbs. Subcommands compose; flags-as-verbs proliferate.
+- Use subcommands (`tool action [args] [flags]`) when the tool has distinct operations; a single-purpose command needs no subcommand layer.
 - Positional arguments for required operands that have no default. Flags for optional modifiers.
 - Long flags always (`--output`); short flags only for the 4–5 most common options (`-o`).
 - Accept `-` as stdin/stdout in file arguments.
-- In Rust: prefer `clap` with derive macros; in Python: `argparse` or `click`; in TypeScript: `commander`.
+- Reuse the existing parser. For a new command, prefer the runtime's standard library; add a parser dependency only when required behavior warrants it.
 
 Output:
 
 - Stdout for data. Stderr for progress, diagnostics, and errors. Never mix them.
 - Default to human-readable output. Add `--json` / `--output json` when machine consumption is a use case.
-- Use structured exit codes: 0 = success, 1 = user error (bad args, missing file), 2 = internal error. Document non-zero exits in `--help`.
+- Preserve the parser's native exit codes and the existing CLI contract. Use 0 for success and document additional non-zero exits without remapping parser errors.
 - Quiet by default; `--verbose` / `-v` for debug output.
 
 Error messages:

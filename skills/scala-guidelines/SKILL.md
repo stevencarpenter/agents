@@ -21,12 +21,12 @@ Shared Scala rubric for agents. Prefer repo-local conventions (Scala 2 vs 3, eff
 - Pattern matching and `for`-comprehensions over nested `flatMap`/`isInstanceOf`/`asInstanceOf`.
 - Scala 3: `given`/`using` for type classes; Scala 2: implicit instances scoped narrowly. Don't smuggle behavior through broad implicit conversions.
 - Effects: if the repo uses cats-effect or ZIO, keep effects in `IO`/`F[_]` to the edges; don't run effects in constructors or block inside them. Tagless-final only when it buys real abstraction.
-- Collections: know strict vs lazy (`View`, `LazyList`); avoid O(n) `head`/`apply` on `List`; pick the structure that matches the access pattern.
+- Collections: know strict vs lazy (`View`, `LazyList`); `List.head` and `tail` are constant time, while indexed access and append are linear. Pick the structure that matches the access pattern ([performance table](https://docs.scala-lang.org/overviews/collections-2.13/performance-characteristics.html)).
 - Keep type signatures legible — name complex types, avoid gratuitous higher-kinded gymnastics.
 
 ## Verification
 
-Run the repo gates: `sbt scalafmtCheckAll`, `sbt "scalafixAll --check"`, compile with `-Xfatal-warnings`, and `sbt test` (ScalaTest or MUnit — match the repo).
+Run the repository's configured build, formatting, analysis, and relevant tests through sbt, Mill, or Maven. Preserve its compiler flags and test framework; do not introduce scalafmt, scalafix, or fatal warnings for unrelated work.
 
 ## Output Contract
 

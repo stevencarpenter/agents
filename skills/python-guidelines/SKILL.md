@@ -14,11 +14,11 @@ Shared Python rubric for agents. Prefer repo-local conventions when they are del
 
 ## Core Rubric
 
-- Type every public signature. Use `from __future__ import annotations` for forward refs on Python < 3.12. Use `X | None`, not `Optional[X]`, on modern runtimes.
-- Model structured data with `dataclasses` (or `NamedTuple`) over bare dicts; reserve `TypedDict` for genuinely dynamic shapes.
+- Type every public signature using syntax supported by the target runtime. Use quoted forward references or `from __future__ import annotations` where runtime evaluation requires them; prefer `X | None` on supported Python versions.
+- Use `TypedDict` for known dictionary shapes, including JSON boundaries; use `dataclass` or `NamedTuple` when objects fit the runtime model. Keep simple mappings as mappings instead of adding conversion layers.
 - Use `pathlib.Path` for filesystem paths, never raw string concatenation.
 - Raise specific exceptions (`ValueError`, `FileNotFoundError`, domain classes). Never `except:` bare and never `except Exception: pass`. Let exceptions you can't handle propagate.
-- Subprocess: pass args as a **list**, never `shell=True` with interpolated input. Use `check=True` and capture `stdout`/`stderr` explicitly. Never ignore the return value.
+- Subprocess: pass args as a list, never `shell=True` with interpolated input. Use `check=True` or handle expected nonzero statuses explicitly. Capture output when the caller consumes it; inherit streams for interactive commands.
 - No mutable default arguments. No module-level mutable global state used as a cache without a reason.
 - Prefer `uv run` for invocation in uv-managed repos. Avoid new runtime dependencies when the stdlib suffices.
 
@@ -26,11 +26,11 @@ Shared Python rubric for agents. Prefer repo-local conventions when they are del
 
 - Match the repo's framework (`unittest.TestCase` or pytest) — don't mix.
 - Test the contract: inputs → outputs and error conditions, not internal call sequences.
-- Use `tempfile.TemporaryDirectory` for filesystem tests; never write to the project tree.
+- Use `tempfile.TemporaryDirectory` or the existing framework's temporary-path fixture for filesystem tests; never write to the project tree.
 
 ## Verification
 
-Run the repo's exact gates first. Typical: `uv run python -m unittest discover -s tests` (or `pytest`), `uv run ruff check .`, `uv run mypy .`.
+Run the repo's exact gates and relevant tests using its existing runner. Use `uv run` in uv-managed repos; run ruff, mypy, pytest, or unittest only as configured. Do not add tooling to satisfy this rubric.
 
 ## Output Contract
 

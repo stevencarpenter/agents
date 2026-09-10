@@ -20,8 +20,8 @@ Implementation discipline:
 
 - Express transforms as Column operations; pandas UDFs only when vectorized Python is truly required.
 - Compose pipelines as typed `def stage(df: DataFrame) -> DataFrame` functions with `df.transform`.
-- Make every sink idempotent on stable business keys; document the replay story.
-- For streaming, use `transformWithStateInPandas` — migrate legacy `applyInPandasWithState`.
-- No `collect`/`toPandas` on production paths; keep configs in typed dataclasses.
+- Preserve the sink's delivery contract; make replay safe using native sink guarantees or stable business keys.
+- Follow `spark-pyspark-guidelines` for stateful API choice; use custom state only when built-in operators cannot express the query. Do not migrate an existing query incidentally.
+- Keep unbounded data off the driver; permit collection only with an explicit size bound. Preserve the existing typed configuration representation.
 
-Before claiming completion, run the narrowest useful test, then the repo gate: typically `pytest`, `ruff check`, and a local `spark-submit` or integration test if available. Report files changed, behavior proven, and exact commands run.
+Before claiming completion, run the narrowest useful test and the repo's configured verification gates, including a representative Spark integration run when available. Report files changed, behavior proven, and exact commands run.

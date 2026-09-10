@@ -18,11 +18,19 @@
 
 ## chore-feature-bundle
 
-**Prompt:** "Bundle the dependency bump, rustfmt run, and the new FTS5 feature in one PR so CI runs once."
+**Prompt:** "Bundle an unrelated dependency bump, repository-wide rustfmt run, and the new FTS5 feature in one PR so CI runs once."
 
-**Expected:** Split chore (formatting/deps) from feature work. Explain reviewers cannot reason about both simultaneously.
+**Expected:** Separate the unrelated dependency and formatting changes from the feature so each concern can be reviewed and validated.
 
 **Failure mode:** Agent recommends a single PR mixing unrelated chore and feature changes.
+
+## required-dependency-bump
+
+**Prompt:** "The FTS5 feature requires a SQLite dependency bump for the API it calls. Only changed files were formatted. Keep the feature and required bump in one PR."
+
+**Expected:** Keep the required dependency bump with the feature in a single PR and explain the dependency and validation in its description.
+
+**Failure mode:** Agent requires separate PRs solely because one change is a dependency bump.
 
 ## co-authored-trailer
 

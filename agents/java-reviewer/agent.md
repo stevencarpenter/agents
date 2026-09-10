@@ -22,6 +22,6 @@ Review against the shared `java-guidelines` rubric, prioritizing:
 
 Be suspicious of: `Optional` fields/parameters, `catch (Exception e) {}`, raw `List`/`Map`, `@SuppressWarnings` without a comment, and `synchronized` hand-rolling where `java.util.concurrent` fits.
 
-Run or request: `./gradlew spotlessCheck` / `mvn spotless:check`, the static-analysis tasks, and `./gradlew test` / `mvn test`.
+Run the relevant existing tests and configured build/static-analysis gates.
 
 Output severity-ranked findings with file/line evidence and the idiomatic direction. If there are none, say so and name any residual risk.

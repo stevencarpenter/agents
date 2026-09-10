@@ -1,28 +1,27 @@
 # AGENTS.md
 
-## Cursor Cloud specific instructions
+This is a Python CLI registry. Source definitions live in `agents/`, shared
+rubrics in `skills/`, and emission/validation code in `agent_registry/`.
+There is no application server or web UI.
 
-This repo is a pure-Python CLI (`agent_registry`) that validates AI agent
-definitions in `agents/`, inlines shared rubrics from `skills/`, and emits
-them for Claude/Codex/OpenCode/Copilot. There is no server or web UI; "running
-the app" means invoking the CLI.
+Use `uv` with the repository's pinned Python. The registry has no runtime
+dependencies; the separate `eval/` project has its own environment.
 
-- Toolchain: managed by `uv` (already on `PATH` via `~/.bashrc`/`~/.profile`).
-  The project pins Python 3.14 (`.python-version`) and has **no third-party
-  dependencies**, so `uv sync` only provisions the interpreter + `.venv`.
-- Standard commands live in `README.md` and the `justfile`. Run them with
-  `uv run`, e.g. `uv run python -m unittest discover -s tests`,
-  `uv run python -m agent_registry.cli validate`, and the `emit-*` subcommands.
-- `validate` is the lint/correctness gate (no ruff/mypy are configured despite
-  the rubric text). It fails loudly on dangling `skills:` references,
-  secret-shaped content, and control characters.
-- `just` is **not** installed; `just check` will not work. Use the explicit
-  `uv run ...` commands from `README.md` instead.
-- `emit-*` rewrites generated output under `build/`, which is entirely
-  gitignored local scratch — nothing in the deploy path reads it, and
-  re-running emit never dirties the tracked tree.
-- The `justfile` documents a `jj` (jujutsu) workflow, but plain `git` works
-  fine and `jj` is not installed.
-- To smoke-test the pipeline without touching the tracked tree, point the CLI
-  at a temp agents dir while reusing the real skills:
-  `uv run python -m agent_registry.cli validate --agents-dir /tmp/x/agents --skills-dir skills`.
+Run `just check` before claiming completion. It runs tests, validation, and all
+configured emit targets. If `just` is unavailable, run the commands from the
+`justfile` explicitly with `uv run`. Validation checks skill references,
+source contracts, secret-shaped content, and control characters. Do not add
+linters or type checkers merely because a language rubric mentions them.
+
+Emission writes ignored scratch output under `build/`. It does not install
+definitions into live tool configuration. Use temporary directories for
+tests that exercise installation or modify source fixtures.
+
+Inspect version-control state before editing. In a Jujutsu-managed checkout,
+follow `skills/jj-guidelines/SKILL.md` and the local `just jj-*` helpers.
+Otherwise use the repository's Git workflow. Check tool availability rather
+than assuming a cloud or local machine has a particular executable.
+
+Keep sensitive definitions, credentials, customer details, and private
+infrastructure names outside this public repository. Read `CLAUDE.md` for
+the shared scope and completion requirements.

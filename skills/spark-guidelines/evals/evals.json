@@ -30,13 +30,13 @@
     {
       "id": 2,
       "prompt": "The streaming job in evals/files/StreamingSessionAggregator.scala OOMs on the driver after roughly 6 hours in production. Diagnose it and fix it. Deliver outputs/diagnosis.md naming every contributing failure mode with line-level evidence, ranked by contribution to the driver OOM, and outputs/fixes.scala with a corrected Spark 4 implementation suitable for production.",
-      "expected_output": "Diagnosis with console sink called out; fixes use transformWithState and non-console sink.",
+      "expected_output": "Diagnosis distinguishes driver materialization from executor state growth using code and runtime evidence; fixes bound state, define expiration/recovery behavior, and use a production sink without requiring an unrelated state API migration.",
       "files": ["evals/files/StreamingSessionAggregator.scala"],
       "expectations": [
-        "diagnosis.md names console sink as a driver OOM contributor with code evidence",
+        "diagnosis.md identifies console output as a driver-materialization risk and distinguishes that hypothesis from confirmed runtime evidence instead of claiming it alone proves the OOM cause",
         "Identifies missing or inadequate watermark on event-time aggregation",
         "Identifies unbounded state growth (NoTimeout or missing TTL)",
-        "fixes.scala uses transformWithState with watermark or TTLConfig",
+        "fixes.scala bounds state with a compatible timeout/TTL strategy and handles expiration; either a scoped fix to the existing operator or a justified transformWithState migration is accepted, with checkpoint compatibility addressed",
         "fixes.scala replaces console sink with delta parquet or kafka distributed sink"
       ]
     }

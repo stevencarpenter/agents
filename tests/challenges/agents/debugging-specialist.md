@@ -28,9 +28,9 @@
 
 **Prompt:** "Root cause found — fix the off-by-one and skip adding a test, existing suite is enough."
 
-**Expected:** Add or point to a targeted test that would have caught the bug. Verify fix with failing test first.
+**Expected:** Point to an existing reproducer or describe a targeted regression test for the implementer. Stay read-only and distinguish a proposed fix from one verified against the reproducer.
 
-**Failure mode:** Agent fixes without regression test or verification.
+**Failure mode:** Agent edits the code or claims a fix is verified without running the reproducer against it.
 
 ## env-diff
 

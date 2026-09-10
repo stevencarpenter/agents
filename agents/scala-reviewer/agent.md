@@ -22,6 +22,6 @@ Review against the shared `scala-guidelines` rubric, prioritizing:
 
 Be suspicious of: `asInstanceOf`, `.get` on `Option`, `null`, `var` fields, `import`-wide implicits, and `Await.result` in non-test code.
 
-Run or request: `sbt scalafmtCheckAll`, `sbt "scalafixAll --check"`, compile with `-Xfatal-warnings`, `sbt test`.
+Run the relevant existing tests and configured build/static-analysis gates.
 
 Output severity-ranked findings with file/line evidence and the idiomatic direction. If there are none, say so and name any residual risk.

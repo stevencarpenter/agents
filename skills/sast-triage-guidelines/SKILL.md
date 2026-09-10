@@ -9,7 +9,7 @@ Rubric for running static analyzers and converting noisy output into trustworthy
 
 ## Source Of Truth
 
-- Semgrep registry rulesets (`p/default`, `p/security-audit`, `p/owasp-top-ten`) as the baseline; per-language tools for depth
+- Existing scanner rules and scope first; choose an additional ruleset only for a coverage gap relevant to the requested audit.
 - The repo's existing lint/SAST config — run it first, it encodes accepted suppressions
 
 ## Tool Selection By Stack
@@ -31,7 +31,7 @@ Rubric for running static analyzers and converting noisy output into trustworthy
 
 ## Custom Rules
 
-When a weakness is repo-specific (internal auth helper misused, project-specific sink), write a Semgrep rule for it rather than flagging instances by hand — rules persist, findings rot. Test the rule against a known-bad and a known-good snippet before trusting its output.
+Report a repo-specific weakness directly. Add a custom rule only when repeated occurrences or a requested prevention gate justify maintaining it. Test any new rule against a known-bad and a known-good snippet before trusting its output.
 
 ## Output Contract
 

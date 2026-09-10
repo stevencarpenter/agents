@@ -20,7 +20,7 @@ Shared TypeScript/JavaScript rubric for agents. Prefer repo-local conventions (i
 - `type` for unions/computed shapes; `interface` for shapes meant to be extended. `const` by default; `let` only when mutation is required.
 - Async: explicit `Promise<T>` return types; never leave floating promises; always `await` inside `try/catch`; no async work in constructors. Don't swallow rejections with empty `.catch()`.
 - Null safety: don't paper over `undefined` with optional chaining where downstream code assumes a value. Justify every non-null assertion (`!`).
-- Errors: throw typed error classes or return a `Result<T, E>` shape — never silently return `undefined` on failure.
+- Errors: follow the existing exception or result convention. Built-in `Error` subclasses suffice unless callers need domain-specific fields or discriminated outcomes; never silently return `undefined` on failure.
 - React: function components + hooks; explicit prop types; `useEffect` that opens a connection/subscription must return a cleanup.
 
 ## Security & Runtime
@@ -30,7 +30,7 @@ Shared TypeScript/JavaScript rubric for agents. Prefer repo-local conventions (i
 
 ## Verification
 
-Run `tsc --noEmit` (or `bun tsc --noEmit`), then the repo's test runner (`vitest run`, `bun test`, `npm test`), then `eslint .` if configured.
+Run the repository's configured typecheck, relevant tests, and lint commands through its package manager. Do not add a test runner, linter, or TypeScript build step to a JavaScript project just to satisfy this rubric.
 
 ## Output Contract
 

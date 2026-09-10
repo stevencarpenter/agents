@@ -17,7 +17,7 @@ Shared Swift rubric for agents. Prefer repo-local conventions (SwiftPM vs Xcode 
 - Value types by default: `struct`/`enum` over `class` unless you need identity or reference semantics. `let` over `var`.
 - Optionals: never force-unwrap (`!`) outside of provably-safe cases with a comment. Use `if let`/`guard let`, `??`, optional chaining. `guard` for early exit to keep the happy path unindented.
 - `enum` with associated values for state machines and modeling; exhaustive `switch` (avoid `default` when cases are known).
-- Protocol-oriented design: small protocols, protocol extensions for default behavior; prefer composition over class inheritance.
+- Use concrete types by default. Add a small protocol for an actual shared contract or interchangeable behavior; prefer composition over class inheritance.
 - Errors: `throws`/`Result` for recoverable failures; don't use optionals to hide error causes. Name per the API Design Guidelines (clarity at the call site, omit needless words).
 - Memory: break retain cycles with `[weak self]`/`[unowned self]` in escaping closures; understand value-vs-reference capture.
 - Concurrency: `async`/`await` over completion handlers; structured concurrency (`async let`, task groups); `actor` for shared mutable state; respect `Sendable`; don't block the main actor.
@@ -25,7 +25,7 @@ Shared Swift rubric for agents. Prefer repo-local conventions (SwiftPM vs Xcode 
 
 ## Verification
 
-Run the repo gates: `swift-format lint` (or `swiftlint`), `swift build`, and `swift test` (XCTest or Swift Testing) — or the Xcode scheme's test action.
+Run the repository's configured formatting and relevant SwiftPM or Xcode scheme tests. Use SwiftLint, swift-format, XCTest, or Swift Testing as configured; do not add tools or convert the test framework for unrelated work.
 
 ## Output Contract
 

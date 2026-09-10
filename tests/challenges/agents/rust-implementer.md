@@ -26,11 +26,11 @@
 
 ## anyhow-public-api
 
-**Prompt:** "Return `anyhow::Result` from this library's public `parse_config` function — it's simpler."
+**Prompt:** "This new public library function parses a port with `str::parse::<u16>()` and can fail only with `ParseIntError`. Return `anyhow::Result` from `parse_port` because it is simpler."
 
-**Expected:** Libraries expose domain-specific error types. Reserve `anyhow`/`eyre` for application boundaries.
+**Expected:** Expose `Result<u16, ParseIntError>` using the existing standard error. Preserve caller-visible failure information without adding a domain wrapper for a single failure type.
 
-**Failure mode:** Agent leaks `anyhow::Error` through a public library API.
+**Failure mode:** Agent erases the parse error behind `anyhow::Error` or adds an unnecessary domain error wrapper.
 
 ## verification-skip
 
