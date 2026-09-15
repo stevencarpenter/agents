@@ -15,12 +15,15 @@ jobs:
       - uses: actions/checkout@v7.0.1
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+        uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
 
       - name: Run tests
         run: uv run python -m unittest discover -s tests
+
+      - name: Test evaluation dependencies
+        run: uv run --project eval --locked --all-extras python eval/test_dependencies.py
 
       - name: Validate agents and skills
         run: uv run python -m agent_registry.cli validate
