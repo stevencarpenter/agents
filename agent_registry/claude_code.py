@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agent_registry.agents import Agent
+from agent_registry.agents import Agent, validate_isolated_read_only
 
 # Claude Code agent.md format is close to the registry source format, but
 # `tools` is an allowlist there. Do not emit it unless an agent explicitly
@@ -10,6 +10,7 @@ _PASSTHROUGH_KEYS = ("name", "description", "model", "tools", "disallowedTools",
 
 
 def emit_claude_agent(agent: Agent) -> str:
+    validate_isolated_read_only(agent, "claude")
     lines = ["---"]
     for key in _PASSTHROUGH_KEYS:
         if key == "tools" and agent.metadata.get("x-allow-tools-allowlist") != "true":

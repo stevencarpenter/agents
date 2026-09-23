@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agent_registry.agents import Agent
+from agent_registry.agents import Agent, validate_isolated_read_only
 from agent_registry.model_translation import translate_model
 
 # Cursor subagents are markdown files in ~/.cursor/agents/<name>.md (Cursor
@@ -32,6 +32,7 @@ _UNSCOPED_TOOLS_NOTICE = (
 
 
 def emit_cursor_agent(agent: Agent) -> str:
+    validate_isolated_read_only(agent, "cursor")
     name = agent.metadata.get("name", "")
     description = agent.metadata.get("description", "")
 

@@ -46,6 +46,41 @@ Pure retrieval/pass-through agents (`Explore` and the read-only ops agents) are 
 
 ## Commands
 
+### Enforced local-read-only agents
+
+Agents requiring tool isolation must declare all of these fields:
+
+```yaml
+x-registry-permission: read-only
+x-isolated-read-only: true
+x-allow-tools-allowlist: true
+tools: Read, Glob, Grep
+disallowedTools: Write, Edit, MultiEdit, NotebookEdit, Bash, Agent, Task
+```
+
+The validator permits only a nonempty subset of `Read`, `Glob`, and `Grep`.
+Claude exports use its native tool allowlist. OpenCode exports deny all tools
+except the named local readers. Shell, browser, MCP, delegation, and dynamic
+tool discovery are not granted. These agents cannot retrieve live API data.
+Supply exported evidence instead. A skill or prompt alone does not enforce this.
+
+Codex, Cursor, and Copilot exports are refused because these emitters cannot
+preserve that tool boundary. Mixed-target installation fails before writing
+anything. Ordinary `read-only` agents retain their existing permissions and
+are not equivalent to isolated agents.
+
+Use the updated registry and explicitly select `claude` or `opencode` when
+installing isolated agents. Old exporters ignore the new field. Existing
+installed definitions and running sessions are not updated by source edits.
+Host configuration, hooks, plugins, or a separate unrestricted parent session
+are outside this boundary; use a trusted host configuration and do not ask a
+parent agent to execute the recommendations.
+
+The emitted policy follows [Claude tool restrictions](https://code.claude.com/docs/en/sub-agents#available-tools)
+and [OpenCode permission matching](https://opencode.ai/docs/permissions/).
+
+### Validation and emission
+
 ```sh
 uv run python -m unittest discover -s tests
 uv run python -m agent_registry.cli validate

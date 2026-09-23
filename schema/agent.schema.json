@@ -37,6 +37,11 @@
       "enum": ["true"],
       "description": "Marks a mechanical leaf agent (pure retrieval/pass-through, no synthesis). Exempts it from the universal tool-priority inline: the rubric is unreachable under a hard MCP allowlist or contradicts a leaf worker's brief."
     },
+    "x-isolated-read-only": {
+      "type": "string",
+      "enum": ["true"],
+      "description": "Require a reviewed local Read/Glob/Grep allowlist. Reject targets that cannot enforce tool isolation."
+    },
     "color": {
       "type": "string"
     }

@@ -8,6 +8,7 @@ from agent_registry.agents import (
     Agent,
     compose_agent_with_skills,
     validate_agent_tree,
+    validate_isolated_read_only,
     validate_skill_closure,
     validate_skill_tree,
 )
@@ -84,6 +85,19 @@ def main() -> int:
 
     args = parser.parse_args()
 
+    # Check every requested target before writing any output or installing any
+    # agent. In particular, install --target all must not partially install.
+    if args.command != "validate":
+        agents = _load_agents(args.agents_dir, args.skills_dir)
+        targets = (
+            ["claude", "codex", "opencode", "copilot", "cursor"]
+            if args.command == "install" and args.target == "all"
+            else [args.target if args.command == "install" else args.command.removeprefix("emit-")]
+        )
+        for agent in agents:
+            for target in targets:
+                validate_isolated_read_only(agent, target)
+
     if args.command == "validate":
         agents = validate_agent_tree(Path(args.agents_dir))
         skills = validate_skill_tree(Path(args.skills_dir))
@@ -98,7 +112,6 @@ def main() -> int:
         return 0
 
     if args.command == "emit-claude":
-        agents = _load_agents(args.agents_dir, args.skills_dir)
         out_dir = Path(args.out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         for agent in agents:
@@ -107,7 +120,6 @@ def main() -> int:
         return 0
 
     if args.command == "emit-codex":
-        agents = _load_agents(args.agents_dir, args.skills_dir)
         out_dir = Path(args.out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         for agent in agents:
@@ -116,7 +128,6 @@ def main() -> int:
         return 0
 
     if args.command == "emit-opencode":
-        agents = _load_agents(args.agents_dir, args.skills_dir)
         out_dir = Path(args.out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         for agent in agents:
@@ -125,7 +136,6 @@ def main() -> int:
         return 0
 
     if args.command == "emit-copilot":
-        agents = _load_agents(args.agents_dir, args.skills_dir)
         out_dir = Path(args.out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         content = emit_copilot_instructions(agents)
@@ -134,7 +144,6 @@ def main() -> int:
         return 0
 
     if args.command == "emit-cursor":
-        agents = _load_agents(args.agents_dir, args.skills_dir)
         out_dir = Path(args.out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         for agent in agents:
@@ -143,7 +152,7 @@ def main() -> int:
         return 0
 
     if args.command == "install":
-        all_agents = _load_agents(args.agents_dir, args.skills_dir)
+        all_agents = agents
         home = Path.home()
         targets = (
             ["claude", "codex", "opencode", "copilot", "cursor"] if args.target == "all" else [args.target]

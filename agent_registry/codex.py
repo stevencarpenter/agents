@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agent_registry.agents import Agent
+from agent_registry.agents import Agent, validate_isolated_read_only
 from agent_registry.model_translation import translate_model
 
 # Codex custom agents are TOML files in ~/.codex/agents/<name>.toml.
@@ -37,6 +37,7 @@ _UNSCOPED_TOOLS_NOTICE = (
 
 
 def emit_codex_agent(agent: Agent) -> str:
+    validate_isolated_read_only(agent, "codex")
     name = agent.metadata.get("name", "")
     description = agent.metadata.get("description", "")
     instructions = agent.body.rstrip()

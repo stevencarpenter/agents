@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agent_registry.agents import Agent
+from agent_registry.agents import Agent, validate_isolated_read_only
 from agent_registry.mcp_tools import parse_tools_field
 from agent_registry.model_translation import translate_model
 
@@ -36,9 +36,10 @@ _CLAUDE_TO_OPENCODE_TOOL = {
 
 
 def emit_opencode_agent(agent: Agent) -> str:
+    validate_isolated_read_only(agent, "opencode")
     description = agent.metadata.get("description", "")
     can_edit = agent.metadata.get("x-registry-permission") == "edit"
-    can_bash = True
+    can_bash = agent.metadata.get("x-isolated-read-only") != "true"
 
     lines = [
         "---",

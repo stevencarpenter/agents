@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agent_registry.agents import Agent
+from agent_registry.agents import Agent, validate_isolated_read_only
 
 
 def emit_copilot_instructions(agents: list[Agent]) -> str:
@@ -9,6 +9,8 @@ def emit_copilot_instructions(agents: list[Agent]) -> str:
     Copilot doesn't have native subagents, so this writes a consolidated
     reference that describes each specialist agent and when to suggest it.
     """
+    for agent in agents:
+        validate_isolated_read_only(agent, "copilot")
     lines = [
         "# Specialist Agent Directory",
         "",

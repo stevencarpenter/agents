@@ -291,6 +291,7 @@ def _validate_registry_item(
 
 
 def _validate_agent_tool_contract(agent: Agent) -> None:
+    validate_isolated_read_only(agent)
     permission = agent.metadata.get("x-registry-permission", "")
     if permission not in _REGISTRY_PERMISSIONS:
         allowed = ", ".join(sorted(_REGISTRY_PERMISSIONS))
@@ -315,3 +316,28 @@ def _validate_agent_tool_contract(agent: Agent) -> None:
 
 def _metadata_csv_set(raw: str) -> set[str]:
     return {item.strip() for item in raw.split(",") if item.strip()}
+
+
+def validate_isolated_read_only(agent: Agent, target: str | None = None) -> None:
+    """Fail closed when a target cannot preserve a local-read-only tool boundary."""
+    flag = agent.metadata.get("x-isolated-read-only")
+    if flag is None:
+        return
+    if flag != "true":
+        raise AgentValidationError(f"{agent.path}: x-isolated-read-only must be true")
+    tools = _metadata_csv_set(agent.metadata.get("tools", ""))
+    if (
+        agent.metadata.get("x-registry-permission") != "read-only"
+        or agent.metadata.get("x-allow-tools-allowlist") != "true"
+        or not tools
+        or not tools <= {"Read", "Glob", "Grep"}
+    ):
+        raise AgentValidationError(
+            f"{agent.path}: isolated read-only requires read-only permission and a "
+            "reviewed, nonempty allowlist containing only Read, Glob, Grep"
+        )
+    if target is not None and target not in {"claude", "opencode"}:
+        raise AgentValidationError(
+            f"{agent.path}: {target} cannot enforce isolated read-only tools; "
+            "export refused (supported targets: claude, opencode)"
+        )
