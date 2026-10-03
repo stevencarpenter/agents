@@ -6,7 +6,7 @@ license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "mlflow>=3.16.0",
-    "anthropic>=1.2.0",
+    "anthropic>=1.9.0",
     "pandas>=3.0.6",
 ]
 

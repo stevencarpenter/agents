@@ -34,7 +34,7 @@ vertex = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", specifier = ">=1.2.0" },
+    { name = "anthropic", specifier = ">=1.9.0" },
     { name = "anthropic", extras = ["bedrock"], marker = "extra == 'bedrock'", specifier = ">=1.9.0" },
     { name = "anthropic", extras = ["vertex"], marker = "extra == 'vertex'", specifier = ">=1.8.0" },
     { name = "litellm", marker = "extra == 'vertex'", specifier = ">=1.103.0" },
