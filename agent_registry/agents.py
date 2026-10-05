@@ -87,13 +87,7 @@ def validate_skill_tree(root: Path) -> list[Skill]:
 
     seen: set[str] = set()
     for skill in skills:
-        _validate_registry_item(
-            path=skill.path,
-            name=skill.name,
-            metadata=skill.metadata,
-            body=skill.body,
-            expected_parent_name=skill.name,
-        )
+        _validate_registry_item(skill)
         if skill.name in seen:
             raise AgentValidationError(f"duplicate skill name: {skill.name}")
         seen.add(skill.name)
@@ -215,9 +209,6 @@ def compose_agent_with_skills(agent: Agent, skills_by_name: dict[str, Skill]) ->
 
 
 def _split_frontmatter(text: str, path: Path) -> tuple[dict[str, str], str]:
-    # Normalize line endings so CRLF/CR-authored files behave identically and
-    # never smuggle a bare \r into emitted TOML/markdown.
-    text = text.replace("\r\n", "\n").replace("\r", "\n")
     if not text.startswith("---\n"):
         raise AgentValidationError(f"{path}: missing YAML frontmatter")
 
@@ -242,29 +233,17 @@ def _split_frontmatter(text: str, path: Path) -> tuple[dict[str, str], str]:
 
 
 def _validate_agent(agent: Agent) -> None:
-    _validate_registry_item(
-        path=agent.path,
-        name=agent.name,
-        metadata=agent.metadata,
-        body=agent.body,
-        expected_parent_name=agent.name,
-    )
+    _validate_registry_item(agent)
     _validate_agent_tool_contract(agent)
 
 
-def _validate_registry_item(
-    *,
-    path: Path,
-    name: str,
-    metadata: dict[str, str],
-    body: str,
-    expected_parent_name: str,
-) -> None:
+def _validate_registry_item(item: Agent | Skill) -> None:
+    path, name, metadata, body = item.path, item.name, item.metadata, item.body
     if not name:
         raise AgentValidationError(f"{path}: missing name")
     if not (_NAME_RE.fullmatch(name) or name in _BUILTIN_OVERRIDE_NAMES):
         raise AgentValidationError(f"{path}: invalid name: {name}")
-    if path.parent.name != expected_parent_name:
+    if path.parent.name != name:
         raise AgentValidationError(
             f"{path}: directory name must match definition name {name}"
         )

@@ -16,8 +16,5 @@ Apply the shared `java-guidelines` rubric for data modeling, null handling, reso
 Implementation discipline:
 
 - Let the existing code decide package layout, naming, and error model unless demonstrably wrong.
-- Keep value equality and hashing consistent; use generated value semantics when they fit the existing design.
-- Use streams where they clarify and loops where they're plainer; don't allocate needlessly.
-- Document thread-safety; never leak `this` during construction.
 
 Before claiming completion, run the narrowest useful test and the repo's configured build, formatting, and static-analysis gates. Report files changed, behavior proven, and exact commands run.

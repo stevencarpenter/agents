@@ -5,7 +5,7 @@ description: Use when designing, building, or reviewing Apache Spark batch or St
 
 # Spark Guidelines
 
-Shared rubric for Spark pipelines, including Spark 4 APIs where supported by the deployed runtime. Pair with `spark-scala-guidelines` or `spark-pyspark-guidelines` for language idioms. Apply `data-engineering-guidelines` sections relevant to table design, governance, or recovery.
+Shared rubric for Spark pipelines. Confirm repository and cluster versions before choosing Spark 4 APIs; use capabilities supported by the deployed runtime that address a requirement and do not migrate a working operator solely because a newer API exists. Pair with `spark-scala-guidelines` or `spark-pyspark-guidelines` for language idioms. Apply `data-engineering-guidelines` for partitioning, file sizing, compaction, Delta/Iceberg table design, governance, and recovery.
 
 ## Source Of Truth
 
@@ -13,15 +13,6 @@ Shared rubric for Spark pipelines, including Spark 4 APIs where supported by the
 - Structured Streaming guide (especially `transformWithState`): https://spark.apache.org/docs/latest/streaming/
 - The cluster's exact Spark/Delta/Iceberg versions — semantics change between releases
 - The live catalog and existing table formats in the repo — match what's there
-
-## Spark 4 Baseline
-
-- Confirm the repository and cluster versions. For new Spark 4 work, consider these capabilities when they address a requirement; do not migrate a working operator solely because a newer API exists:
-  - **`transformWithState`** (Scala/Java/Python) replaces `mapGroupsWithState`, `flatMapGroupsWithState`, and `applyInPandasWithState` for arbitrary stateful streaming
-  - **Composite state types** — `ValueState`, `ListState`, `MapState` with TTL, timers, initial state, and Avro-backed schema evolution
-  - **State Store Data Source** — read streaming operator state as a DataFrame for debugging (`stateVarName`, flattened vs non-flattened)
-  - **Spark Connect** — client-server mode with high feature parity; toggle via `spark.api.mode` during migration
-- **Declarative first.** Express transforms as DataFrame/SQL operations. Reach for custom stateful processors or UDFs only when the declarative layer cannot express the logic.
 
 ## Pipeline Design
 
@@ -32,7 +23,7 @@ Shared rubric for Spark pipelines, including Spark 4 APIs where supported by the
 
 ## DataFrame Transforms
 
-- **Column expressions over UDFs.** Catalyst can optimize SQL/Column API; UDFs (especially Python) break vectorization and predicate pushdown. UDFs are the escape hatch, not the default.
+- **Declarative first.** Express transforms as DataFrame/SQL operations; use custom stateful processors or UDFs only when the declarative layer cannot express the logic. Catalyst can optimize SQL/Column API; UDFs (especially Python) break vectorization and predicate pushdown.
 - **Push filters and projections early.** Select only needed columns; filter at the earliest layer that has the predicate column — cheaper at bronze than at gold.
 - **Join discipline:**
   - Broadcast small dimension tables (`broadcast` hint or `spark.sql.autoBroadcastJoinThreshold`)
@@ -41,26 +32,22 @@ Shared rubric for Spark pipelines, including Spark 4 APIs where supported by the
 - **Aggregation discipline:** pre-aggregate where possible; use window functions for ranking and running metrics instead of self-joins; watch for exploding `groupBy` cardinality.
 - **Deduplication:** use `dropDuplicates` when duplicate rows are interchangeable. For latest-record CDC, use deterministic ordering and the MERGE tie-break policy. In streaming, use supported watermark-aware dedup before custom state.
 
-## Partitioning, Files & Table Formats
-
-Apply `data-engineering-guidelines` for partitioning, file sizing, compaction, and Delta/Iceberg table design. Spark-specific: verify partition pruning and broadcast-join choices in explain plans.
-
 ## Structured Streaming
 
 Apply `data-engineering-guidelines` for event time, watermarks, checkpointing, delivery semantics, and streaming-into-lakehouse patterns.
 - **Driver OOM in streaming:** suspect `console`/`memory` sinks, `collect`, and Update-mode emissions with growing payloads before blaming executor state store size — these materialize on the driver.
-- **`transformWithState` for custom state that built-in operators cannot express:**
+- **`transformWithState` (Scala/Java/Python) for custom state that built-in operators cannot express:**
   - Define logic in a `StatefulProcessor` (object-oriented lifecycle: `init`, `handleInputRows`, `close`)
-  - Use composite state types instead of read-modify-write on a single blob
+  - Use `ValueState`, `ListState`, and `MapState` instead of read-modify-write on a single blob; use initial-state support when needed
   - Set TTL and timers explicitly; enable Avro encoding (`spark.sql.streaming.stateStore.encodingFormat=avro`) when state schema must evolve
-  - Debug via the State Store Data Source rather than println/logging state
-- **Operator migration:** switching legacy stateful APIs (`flatMapGroupsWithState`, `applyInPandasWithState`) to `transformWithState` / `transformWithStateInPandas` requires a **new checkpoint location** (or documented state-store migration) — the arbitrary-state v2 store cannot read legacy checkpoints; never silently reuse the old path; record in migration notes
+  - Debug by reading operator state as a DataFrame via the State Store Data Source (`stateVarName`, flattened vs non-flattened), rather than println/logging state
+- **Operator migration:** switching legacy stateful APIs (`mapGroupsWithState`, `flatMapGroupsWithState`, `applyInPandasWithState`) to `transformWithState` / `transformWithStateInPandas` requires a **new checkpoint location** (or documented state-store migration). The arbitrary-state v2 store cannot read legacy checkpoints; never silently reuse the old path; record in migration notes
 - **Declarative streaming tables** can simplify standard incremental refresh on a platform that already supports them; do not introduce a platform migration for a narrow pipeline change.
 
 ## Spark Connect
 
-- Use Connect when the workload is remote-driver, polyglot client, or notebook-to-cluster separation.
-- Keep session configuration and catalog access consistent between Connect and Classic during migration.
+- Use Connect's client-server mode with high feature parity when the workload is remote-driver, polyglot client, or notebook-to-cluster separation.
+- Toggle via `spark.api.mode` during migration; keep session configuration and catalog access consistent between Connect and Classic.
 - Test both paths if the repo supports `spark.api.mode` toggling.
 
 ## Performance & Cost

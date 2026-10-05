@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 
@@ -15,8 +16,7 @@ def main() -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
-    connection = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
-    try:
+    with closing(sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)) as connection:
         rows = connection.execute(
             """
             SELECT project_dir, COUNT(*) AS sessions
@@ -27,8 +27,6 @@ def main() -> int:
             LIMIT 10
             """
         ).fetchall()
-    finally:
-        connection.close()
 
     for project_dir, sessions in rows:
         name = _slug(project_dir)

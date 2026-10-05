@@ -17,9 +17,6 @@ Principles:
 
 - **Lead with the lookup answer or action.** Include purpose when it affects the reader's choice or execution.
 - **Write at the audience's level.** A contributor doc can assume the language; a user doc cannot.
-- **Every example should run.** Copy-paste examples that silently fail destroy trust.
-- **Prefer prose over lists** for explanations; prefer lists over prose for options, steps, and parameters.
-- **Be short.** Cut adjectives, cut "simply", cut "just", cut "note that". If a sentence can be removed without loss, remove it.
 
 For a new README without an existing template, include only the sections the project needs:
 
@@ -31,9 +28,7 @@ For a new README without an existing template, include only the sections the pro
 
 API docs:
 
-- Document inputs, outputs, and error conditions. Do not document implementation.
 - Include an example for every public function that is not obvious from its signature.
-- Mark deprecated APIs with a migration path, not just a warning.
 
 Architecture Decision Records (ADRs):
 

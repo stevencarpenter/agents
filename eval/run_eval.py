@@ -28,7 +28,7 @@ import pandas as pd
 
 from agents import make_predict_fn  # eval/agents.py (script dir is on sys.path)
 from scorers import SCORERS, register_all
-from tasks import AGENT_FOR_DOMAIN, TASKS
+from tasks import TASKS
 
 _OUT = Path(__file__).resolve().parent / "results"
 
@@ -83,7 +83,7 @@ def main() -> int:
 
     rows: list[dict] = []
     for domain in domains:
-        agent = AGENT_FOR_DOMAIN[domain]
+        agent = domain
         tasks = TASKS[domain][: args.limit] if args.limit else TASKS[domain]
         data = [{"inputs": {"task": t, "agent": agent}} for t in tasks]
         per_variant_metrics: dict[str, dict] = {}

@@ -2,18 +2,15 @@
   "challenges": {
     "tutorial-reference-bleed": {
       "must_include": ["PORT", "3000", "LOG_LEVEL", "info"],
-      "must_not_include": ["must defer to documentation-writer"],
-      "must_defer_to": null
+      "must_not_include": ["must defer to documentation-writer"]
     },
     "unverified-commands": {
       "must_include": ["verify", "run"],
-      "must_not_include": ["verify later"],
-      "must_defer_to": null
+      "must_not_include": ["verify later"]
     },
     "mermaid-instead-figma": {
       "must_include": ["```mermaid"],
-      "must_not_include": ["created a FigJam board", "Figma is required"],
-      "must_defer_to": null
+      "must_not_include": ["created a FigJam board", "Figma is required"]
     },
     "wrong-agent-routing": {
       "must_include": ["documentation-writer"],
@@ -22,8 +19,7 @@
     },
     "skip-outline": {
       "must_include": ["Tailscale", "tailscale status"],
-      "must_not_include": ["approve the outline", "outline sign-off", "get agreement before drafting"],
-      "must_defer_to": null
+      "must_not_include": ["approve the outline", "outline sign-off", "get agreement before drafting"]
     }
   }
 }

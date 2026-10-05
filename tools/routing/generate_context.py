@@ -1,40 +1,6 @@
 #!/usr/bin/env python3
-"""generate_context.py — build the curated session-start routing block.
-
-Explicit non-goal: this does NOT dump the agent/skill inventory. Claude Code
-already injects the full agent list (with tools) and skill list into the
-system prompt every session; repeating that here is negative-value tokens.
-This script emits only what that injection does not provide:
-
-  1. Disambiguation rules for overlapping agents that aren't already spelled
-     out in the agents' own frontmatter descriptions (routing-overlay.md,
-     hand-curated — this is a judgment call, not a fact any config states).
-  2. Cross-family shared-rubric overlap the agent names don't reveal
-     (e.g. documentation-writer and technical-writer both inline
-     technical-writing-guidelines despite dissimilar names).
-  3. Declared-vs-installed staleness, on TWO independent pipelines:
-       - the canonical agents repo vs what's actually in ~/.claude/agents
-       - the personal skills manifest vs what's actually in ~/.claude/skills
-     Both are facts injection cannot state, because injection only ever
-     reflects the installed set, never a "should be" reference point.
-  4. The live MCP server inventory read from ~/.claude.json — a plain
-     factual list (not priority judgment; "prefer X over Y" guidance lives
-     in the user's global CLAUDE.md already and would be redundant here).
-  5. Per-machine capability deltas from the chezmoi machine table, so the
-     agent knows what's different about the box it's running on right now.
-
-An earlier version of this script also carried an implementer/reviewer
-pairing table and a hand-curated MCP priority quick-map. Both were cut after
-a judged bakeoff found they substantially restated facts already visible in
-agent names and the user's global CLAUDE.md — see the agents repo's
-tools/routing/README.md for that history.
-
-Every non-local source (chezmoi paths) is read best-effort: on a machine
-where dotfiles aren't applied, or where a section's source file is absent,
-that section is simply omitted rather than erroring. No third-party deps.
-
-Output: a single Markdown block on stdout, sized for direct injection via a
-SessionStart hook (see hook-wiring.json, sibling to this file).
+"""Build the curated session-start routing block.
+Emit Markdown on stdout; see tools/routing/README.md for behavior and deployment.
 """
 from __future__ import annotations
 
@@ -113,16 +79,6 @@ def load_installed_skill_names() -> set[str]:
     return {d.name for d in INSTALLED_SKILLS_DIR.iterdir() if (d / "SKILL.md").is_file()}
 
 
-def deep_merge(base: dict, override: dict) -> dict:
-    result = dict(base)
-    for key, value in override.items():
-        if isinstance(value, dict) and isinstance(result.get(key), dict):
-            result[key] = deep_merge(result[key], value)
-        else:
-            result[key] = value
-    return result
-
-
 def load_declared_personal_skill_names(machine: str) -> set[str] | None:
     """Skills the personal skills-master.json manifest declares for THIS
     machine, after applying its overlay and dropping ``false``-disabled
@@ -143,7 +99,7 @@ def load_declared_personal_skill_names(machine: str) -> set[str] | None:
             overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             overlay = {}
-        skills = deep_merge(skills, overlay.get("skills", {}))
+        skills = skills | overlay.get("skills", {})
     # .tmpl overlays (personal.json.tmpl etc.) aren't renderable without
     # `chezmoi execute-template`; skip them rather than mis-parsing Go
     # template syntax as plain JSON. This under-counts on machines whose
@@ -197,26 +153,17 @@ def live_mcp_servers() -> dict[str, str]:
 
 
 def _is_obvious_pair(names: list[str]) -> bool:
-    """True when `names` is exactly {X-implementer, X-reviewer} for one X.
+    """True when two implementer/reviewer names share a base.
 
     That pairing is already obvious from reading the two agent names side by
     side in the harness's own injected list — restating it here would be
     the inventory-dump mistake the pairing table was cut for.
     """
-    if len(names) != 2:
-        return False
-    suffixes = {"-implementer": None, "-reviewer": None}
-    bases = set()
-    for name in names:
-        matched = False
-        for suffix in suffixes:
-            if name.endswith(suffix):
-                bases.add(name[: -len(suffix)])
-                matched = True
-                break
-        if not matched:
-            return False
-    return len(bases) == 1
+    return (
+        len(names) == 2
+        and all(name.endswith(("-implementer", "-reviewer")) for name in names)
+        and len({name.rsplit("-", 1)[0] for name in names}) == 1
+    )
 
 
 def skill_sharers(agents: dict[str, dict]) -> dict[str, list[str]]:

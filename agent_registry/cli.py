@@ -44,42 +44,21 @@ def _load_agents(agents_dir: str, skills_dir: str) -> list[Agent]:
 def main() -> int:
     parser = argparse.ArgumentParser(prog="agent-registry")
     subparsers = parser.add_subparsers(dest="command", required=True)
+    source_parser = argparse.ArgumentParser(add_help=False)
+    source_parser.add_argument("--agents-dir", default="agents")
+    source_parser.add_argument("--skills-dir", default="skills")
+    emit_targets = ("claude", "codex", "opencode", "copilot", "cursor")
 
-    validate_parser = subparsers.add_parser("validate")
-    validate_parser.add_argument("--agents-dir", default="agents")
-    validate_parser.add_argument("--skills-dir", default="skills")
+    subparsers.add_parser("validate", parents=[source_parser])
+    for target in emit_targets:
+        emit_parser = subparsers.add_parser(f"emit-{target}", parents=[source_parser])
+        out_dir = f"build/{target}" if target == "copilot" else f"build/{target}/agents"
+        emit_parser.add_argument("--out-dir", default=out_dir)
 
-    emit_claude_parser = subparsers.add_parser("emit-claude")
-    emit_claude_parser.add_argument("--agents-dir", default="agents")
-    emit_claude_parser.add_argument("--skills-dir", default="skills")
-    emit_claude_parser.add_argument("--out-dir", default="build/claude/agents")
-
-    emit_codex_parser = subparsers.add_parser("emit-codex")
-    emit_codex_parser.add_argument("--agents-dir", default="agents")
-    emit_codex_parser.add_argument("--skills-dir", default="skills")
-    emit_codex_parser.add_argument("--out-dir", default="build/codex/agents")
-
-    emit_opencode_parser = subparsers.add_parser("emit-opencode")
-    emit_opencode_parser.add_argument("--agents-dir", default="agents")
-    emit_opencode_parser.add_argument("--skills-dir", default="skills")
-    emit_opencode_parser.add_argument("--out-dir", default="build/opencode/agents")
-
-    emit_copilot_parser = subparsers.add_parser("emit-copilot")
-    emit_copilot_parser.add_argument("--agents-dir", default="agents")
-    emit_copilot_parser.add_argument("--skills-dir", default="skills")
-    emit_copilot_parser.add_argument("--out-dir", default="build/copilot")
-
-    emit_cursor_parser = subparsers.add_parser("emit-cursor")
-    emit_cursor_parser.add_argument("--agents-dir", default="agents")
-    emit_cursor_parser.add_argument("--skills-dir", default="skills")
-    emit_cursor_parser.add_argument("--out-dir", default="build/cursor/agents")
-
-    install_parser = subparsers.add_parser("install")
-    install_parser.add_argument("--agents-dir", default="agents")
-    install_parser.add_argument("--skills-dir", default="skills")
+    install_parser = subparsers.add_parser("install", parents=[source_parser])
     install_parser.add_argument(
         "--target",
-        choices=["claude", "codex", "opencode", "copilot", "cursor", "all"],
+        choices=[*emit_targets, "all"],
         default="all",
     )
 
@@ -90,7 +69,7 @@ def main() -> int:
     if args.command != "validate":
         agents = _load_agents(args.agents_dir, args.skills_dir)
         targets = (
-            ["claude", "codex", "opencode", "copilot", "cursor"]
+            list(emit_targets)
             if args.command == "install" and args.target == "all"
             else [args.target if args.command == "install" else args.command.removeprefix("emit-")]
         )
@@ -111,28 +90,20 @@ def main() -> int:
         print(f"validated {len(agents)} agents and {len(skills)} skills")
         return 0
 
-    if args.command == "emit-claude":
+    emitters = {
+        "claude": (emit_claude_agent, ".md"),
+        "codex": (emit_codex_agent, CODEX_EXT),
+        "opencode": (emit_opencode_agent, ".md"),
+        "cursor": (emit_cursor_agent, CURSOR_EXT),
+    }
+    if args.command.startswith("emit-") and targets[0] in emitters:
+        target = targets[0]
+        emit, extension = emitters[target]
         out_dir = Path(args.out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         for agent in agents:
-            (out_dir / f"{agent.name}.md").write_text(emit_claude_agent(agent), encoding="utf-8")
-        print(f"emitted {len(agents)} claude agents to {out_dir}")
-        return 0
-
-    if args.command == "emit-codex":
-        out_dir = Path(args.out_dir)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        for agent in agents:
-            (out_dir / f"{agent.name}{CODEX_EXT}").write_text(emit_codex_agent(agent), encoding="utf-8")
-        print(f"emitted {len(agents)} codex agents to {out_dir}")
-        return 0
-
-    if args.command == "emit-opencode":
-        out_dir = Path(args.out_dir)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        for agent in agents:
-            (out_dir / f"{agent.name}.md").write_text(emit_opencode_agent(agent), encoding="utf-8")
-        print(f"emitted {len(agents)} opencode agents to {out_dir}")
+            (out_dir / f"{agent.name}{extension}").write_text(emit(agent), encoding="utf-8")
+        print(f"emitted {len(agents)} {target} agents to {out_dir}")
         return 0
 
     if args.command == "emit-copilot":
@@ -143,33 +114,21 @@ def main() -> int:
         print(f"emitted copilot instructions ({len(agents)} agents) to {out_dir}")
         return 0
 
-    if args.command == "emit-cursor":
-        out_dir = Path(args.out_dir)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        for agent in agents:
-            (out_dir / f"{agent.name}{CURSOR_EXT}").write_text(emit_cursor_agent(agent), encoding="utf-8")
-        print(f"emitted {len(agents)} cursor agents to {out_dir}")
-        return 0
-
     if args.command == "install":
-        all_agents = agents
         home = Path.home()
-        targets = (
-            ["claude", "codex", "opencode", "copilot", "cursor"] if args.target == "all" else [args.target]
-        )
 
         if "claude" in targets:
-            files = {f"{a.name}.md": emit_claude_agent(a) for a in all_agents}
+            files = {f"{a.name}.md": emit_claude_agent(a) for a in agents}
             n = _sync_dir(home / ".claude" / "agents", files)
             print(f"installed {n} agents → ~/.claude/agents")
 
         if "codex" in targets:
-            files = {f"{a.name}{CODEX_EXT}": emit_codex_agent(a) for a in all_agents}
+            files = {f"{a.name}{CODEX_EXT}": emit_codex_agent(a) for a in agents}
             n = _sync_dir(home / ".codex" / "agents", files)
             print(f"installed {n} agents → ~/.codex/agents (TOML)")
 
         if "opencode" in targets:
-            files = {f"{a.name}.md": emit_opencode_agent(a) for a in all_agents}
+            files = {f"{a.name}.md": emit_opencode_agent(a) for a in agents}
             n = _sync_dir(home / ".config" / "opencode" / "agents", files)
             print(f"installed {n} agents → ~/.config/opencode/agents")
 
@@ -177,9 +136,9 @@ def main() -> int:
             dest = home / ".config" / "github-copilot"
             dest.mkdir(parents=True, exist_ok=True)
             (dest / "global-agents-instructions.md").write_text(
-                emit_copilot_instructions(all_agents), encoding="utf-8"
+                emit_copilot_instructions(agents), encoding="utf-8"
             )
-            print(f"installed {len(all_agents)} agents → ~/.config/github-copilot/global-agents-instructions.md")
+            print(f"installed {len(agents)} agents → ~/.config/github-copilot/global-agents-instructions.md")
             # The github-copilot dir is only partially chezmoi-managed; warn only
             # if chezmoi actually tracks THIS file (any prefix/.tmpl variant).
             cm_src = home / ".local" / "share" / "chezmoi" / "dot_config" / "github-copilot"
@@ -187,7 +146,7 @@ def main() -> int:
                 print("  note: chezmoi also tracks this file — manage it there so `chezmoi apply` doesn't overwrite it")
 
         if "cursor" in targets:
-            files = {f"{a.name}{CURSOR_EXT}": emit_cursor_agent(a) for a in all_agents}
+            files = {f"{a.name}{CURSOR_EXT}": emit_cursor_agent(a) for a in agents}
             n = _sync_dir(home / ".cursor" / "agents", files)
             print(f"installed {n} agents → ~/.cursor/agents")
 

@@ -15,6 +15,4 @@ Apply the shared `data-engineering-guidelines` rubric for table design, streamin
 
 For Spark implementation depth, route to `spark-scala-implementer`, `spark-pyspark-implementer`, or `spark-streaming-specialist`.
 
-For architecture or lineage diagrams that clarify the task, follow `diagramming-guidelines` and the existing artifact format.
-
 Before claiming completion, deliver the requested change, verification evidence, and any affected data-quality, governance, replay, or recovery requirements. Scale design and cost analysis to the task. Keep tooling notes and process narration outside authored artifacts.

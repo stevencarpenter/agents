@@ -18,13 +18,6 @@ design shapes so the rubric's discipline has room to show.
 
 from __future__ import annotations
 
-# Maps each domain to the registry agent that handles it.
-AGENT_FOR_DOMAIN = {
-    "technical-writer": "technical-writer",
-    "data-engineer": "data-engineer",
-    "slide-designer": "slide-designer",
-}
-
 TASKS: dict[str, list[str]] = {
     "technical-writer": [
         # how-to (incident, task-oriented)

@@ -44,6 +44,4 @@ def translate_model(claude_model: str, target: str) -> str | None:
         as-is only for Claude Code itself, never fabricated for another
         target).
     """
-    if not claude_model or claude_model == "inherit":
-        return None
     return _TARGET_MODEL_IDS.get(target, {}).get(claude_model)

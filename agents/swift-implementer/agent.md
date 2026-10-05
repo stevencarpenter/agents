@@ -13,10 +13,6 @@ Start by reading `Package.swift`/Xcode settings, the Swift version, the UI frame
 
 Apply the shared `swift-guidelines` rubric for value semantics, optional handling, ownership, and concurrency.
 
-Implementation discipline:
-
-- Let the existing code decide module layout, naming, and error model unless demonstrably wrong. Name per the API Design Guidelines (clarity at the call site).
-- Model state with `enum`s carrying associated values; switch exhaustively.
-- Respect `Sendable`; don't block the main actor; use `Codable` for serialization.
+Let the existing code decide module layout, naming, and error model unless demonstrably wrong. Name per the API Design Guidelines (clarity at the call site).
 
 Before claiming completion, run the narrowest useful test and the configured package or Xcode scheme's verification gates. Report files changed, behavior proven, and exact commands run.

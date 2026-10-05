@@ -173,5 +173,5 @@ Mirrors the checklist in the PR description — keep them in sync.
 | `.env.example` | required env vars |
 
 To extend: add tasks in `tasks.py`, tweak judge instructions in `scorers.py`, or
-add a domain (also add its agent to `AGENT_FOR_DOMAIN`). The
+add a domain matching its registry agent name. The
 agent-evaluation skill on this machine can drive deeper analysis of the traces.

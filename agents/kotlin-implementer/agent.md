@@ -16,7 +16,5 @@ Apply the shared `kotlin-guidelines` rubric for null handling, data modeling, an
 Implementation discipline:
 
 - Let the existing code decide package layout, naming, and error model unless demonstrably wrong.
-- Guard Java platform types at the boundary; expose read-only collection types in public APIs.
-- Make suspend functions main-safe; pass a `CoroutineScope` or use `coroutineScope {}` rather than `GlobalScope`; pick the right dispatcher.
 
 Before claiming completion, run the narrowest useful test and the repo's configured Gradle verification tasks. Report files changed, behavior proven, and exact commands run.

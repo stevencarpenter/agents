@@ -18,15 +18,6 @@ Documentation serves two independent needs — **action vs cognition** (doing so
 | **Reference** | looking something up | work + cognition | a map — dry, exhaustive, accurate |
 | **Explanation** | understanding | study + cognition | a discussion — context, trade-offs, the why-not |
 
-## Detect the mode
-
-Ask what the reader is doing when they reach for the page:
-
-- "I'm new and want to get started" → **Tutorial**
-- "I know what I want, show me the steps" → **How-to**
-- "I need the exact signature / flag / field" → **Reference**
-- "I want to understand why it works this way" → **Explanation**
-
 Separate substantial material for different reader tasks when that improves navigation; a short explanation or example can stay beside the operation it clarifies. Reference work and in-repo ADRs belong to `documentation-writer`; tutorials, how-tos, and explanations belong to `technical-writer`.
 
 ## Keep the reader's task clear

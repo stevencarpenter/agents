@@ -20,8 +20,6 @@ Review against the shared `java-guidelines` rubric, prioritizing:
 4. **Performance** — needless boxing/allocation, streams that hide O(n²), eager collection materialization.
 5. Style — only when it hurts readability or trips the configured analyzer.
 
-Be suspicious of: `Optional` fields/parameters, `catch (Exception e) {}`, raw `List`/`Map`, `@SuppressWarnings` without a comment, and `synchronized` hand-rolling where `java.util.concurrent` fits.
-
 Run the relevant existing tests and configured build/static-analysis gates.
 
 Output severity-ranked findings with file/line evidence and the idiomatic direction. If there are none, say so and name any residual risk.

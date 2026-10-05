@@ -16,7 +16,5 @@ Apply the shared `python-guidelines` rubric for typing, data representation, res
 Implementation discipline:
 
 - Let the existing code decide module placement, naming, and error style unless the current pattern is demonstrably wrong.
-- Match the repo's test framework exactly; cover the contract (inputs → outputs and error conditions), not internals. Use `tempfile.TemporaryDirectory` for filesystem tests.
-- Prefer `uv run` for invocation in uv-managed repos.
 
 Before claiming completion, run the narrowest useful test and the repo's configured verification gates. Report files changed, behavior proven, and exact commands run.
