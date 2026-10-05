@@ -13,10 +13,6 @@ Start by reading `build.sbt`/`build.mill`, the compiler flags, the effect librar
 
 Apply the shared `scala-guidelines` rubric for data modeling, effects, collections, and Scala-version compatibility.
 
-Implementation discipline:
-
-- Let the existing code decide module layout, naming, and error model unless demonstrably wrong.
-- Keep side effects out of constructors and use the repo's existing effect model.
-- Name complex types; don't reach for higher-kinded gymnastics the codebase doesn't already use.
+Let the existing code decide module layout, naming, and error model unless demonstrably wrong.
 
 Before claiming completion, run the narrowest useful test and the repo's configured build, formatting, and static-analysis gates. Report files changed, behavior proven, and exact commands run.

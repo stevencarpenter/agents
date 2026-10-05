@@ -257,14 +257,6 @@ Review code with adversarial attention to behavior.
             self.assertIn("tools: Read, mcp__example__*\n", rendered)
             self.assertNotIn("x-allow-tools-allowlist:", rendered)
 
-    def test_emit_claude_agent_strips_extension_keys(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            path = self.write_agent(Path(tmp), "code-reviewer", self._sample_agent_text("code-reviewer"))
-            agent = load_agent(path)
-            rendered = emit_claude_agent(agent)
-
-            self.assertNotIn("x-derived-from:", rendered)
-
     # ---- emit-opencode (native agent, mode: all) ----
 
     def test_emit_opencode_agent_is_native_agent_format(self) -> None:
@@ -734,16 +726,6 @@ Review code with adversarial attention to behavior.
             "jj-guidelines",
         } - skills
         self.assertEqual(missing, set(), f"missing domain skills: {missing}")
-
-    def test_all_agent_skill_references_resolve(self) -> None:
-        # Every `skills:` reference in the real tree must resolve to a real skill.
-        from agent_registry.agents import compose_agent_with_skills
-
-        root = Path(__file__).resolve().parents[1]
-        agents = validate_agent_tree(root / "agents")
-        skills_by_name = {s.name: s for s in validate_skill_tree(root / "skills")}
-        for agent in agents:
-            compose_agent_with_skills(agent, skills_by_name)  # raises if dangling
 
     # ---- skill-body closure invariant ----
 

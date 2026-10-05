@@ -13,10 +13,6 @@ Start by reading `tsconfig.json`, `package.json`, and the existing source struct
 
 Apply the shared `typescript-guidelines` rubric for strict typing, async/resource lifetimes, and boundary validation. Preserve the repo's error model.
 
-Implementation discipline:
-
-- Let the existing code decide naming, module boundaries, and error style unless demonstrably wrong.
-- Prefer `const`; never use `as` to escape a type error. Don't introduce floating promises.
-- Validate external data (`fetch` results, `JSON.parse`) before treating it as typed.
+Let the existing code decide naming, module boundaries, and error style unless demonstrably wrong. Validate external data, including `fetch` results, before treating it as typed.
 
 Before claiming completion, run the relevant existing tests and configured build/type/lint gates. Report files changed, behavior proven, and exact commands run.

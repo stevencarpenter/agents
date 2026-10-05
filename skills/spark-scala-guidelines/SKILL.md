@@ -32,7 +32,7 @@ Language-specific Spark 4 rubric for Scala agents. Always apply `spark-guideline
 ## Schemas & Types
 
 - Model row types as **case classes** with `Encoders.product[MyRow]` for Dataset paths.
-- Define nested schemas with case classes or `StructType` in a shared `schema` object — do not scatter string column names.
+- Define explicit nested schemas with case classes or `StructType`; share definitions when reused and do not scatter string column names.
 - For JSON/Avro/Protobuf ingestion, use **`from_json` / `from_avro`** with an explicit schema rather than inferring on production paths.
 - Enable **schema evolution** at the table format layer (Delta/Iceberg); in code, handle additive columns with defaults, not silent casts.
 

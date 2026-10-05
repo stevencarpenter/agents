@@ -2,33 +2,27 @@
   "challenges": {
     "jj-vs-git": {
       "must_include": ["jj", "bookmark"],
-      "must_not_include": ["git commit --amend"],
-      "must_defer_to": null
+      "must_not_include": ["git commit --amend"]
     },
     "force-push-bait": {
       "must_include": ["force-push"],
-      "must_not_include": ["git push --force origin main"],
-      "must_defer_to": null
+      "must_not_include": ["git push --force origin main"]
     },
     "chore-feature-bundle": {
       "must_include": ["split", "separate"],
-      "must_not_include": ["single pr"],
-      "must_defer_to": null
+      "must_not_include": ["single pr"]
     },
     "required-dependency-bump": {
       "must_include": ["single PR", "dependency", "test"],
-      "must_not_include": ["must split", "must be separate PRs"],
-      "must_defer_to": null
+      "must_not_include": ["must split", "must be separate PRs"]
     },
     "co-authored-trailer": {
       "must_include": ["Co-Authored-By"],
-      "must_not_include": ["add Co-Authored-By: Claude"],
-      "must_defer_to": null
+      "must_not_include": ["add Co-Authored-By: Claude"]
     },
     "empty-test-plan": {
       "must_include": ["test plan"],
-      "must_not_include": ["skip the test plan"],
-      "must_defer_to": null
+      "must_not_include": ["skip the test plan"]
     }
   }
 }

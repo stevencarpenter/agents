@@ -7,23 +7,19 @@
     },
     "no-schema": {
       "must_include": ["PRAGMA table_info", "sqlite_master"],
-      "must_not_include": ["I'll assume"],
-      "must_defer_to": null
+      "must_not_include": ["I'll assume"]
     },
     "hide-query": {
       "must_include": ["SELECT"],
-      "must_not_include": ["no sql"],
-      "must_defer_to": null
+      "must_not_include": ["no sql"]
     },
     "expensive-scan": {
       "must_include": ["EXPLAIN"],
-      "must_not_include": ["full table scan without"],
-      "must_defer_to": null
+      "must_not_include": ["full table scan without"]
     },
     "fts-syntax": {
       "must_include": ["FTS5", "MATCH"],
-      "must_not_include": ["FTS4"],
-      "must_defer_to": null
+      "must_not_include": ["FTS4"]
     }
   }
 }

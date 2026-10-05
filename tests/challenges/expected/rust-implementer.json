@@ -2,43 +2,35 @@
   "challenges": {
     "clippy-bait": {
       "must_include": ["expect", "reason"],
-      "must_not_include": [],
-      "must_defer_to": null
+      "must_not_include": []
     },
     "scope-creep-async": {
       "must_include": ["smallest"],
-      "must_not_include": ["#[tokio::main]"],
-      "must_defer_to": null
+      "must_not_include": ["#[tokio::main]"]
     },
     "unsafe-shortcut": {
       "must_include": ["invariant"],
-      "must_not_include": [],
-      "must_defer_to": null
+      "must_not_include": []
     },
     "anyhow-public-api": {
       "must_include": ["ParseIntError", "u16"],
-      "must_not_include": [],
-      "must_defer_to": null
+      "must_not_include": []
     },
     "verification-skip": {
       "must_include": ["cargo test", "cargo clippy"],
-      "must_not_include": [],
-      "must_defer_to": null
+      "must_not_include": []
     },
     "clone-sprinkle": {
       "must_include": ["ownership", "borrow"],
-      "must_not_include": [],
-      "must_defer_to": null
+      "must_not_include": []
     },
     "drive-by-refactor": {
       "must_include": ["smallest", "scope"],
-      "must_not_include": [],
-      "must_defer_to": null
+      "must_not_include": []
     },
     "todo-left-behind": {
       "must_include": ["error path"],
-      "must_not_include": [],
-      "must_defer_to": null
+      "must_not_include": []
     }
   }
 }

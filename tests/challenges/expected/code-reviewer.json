@@ -7,23 +7,19 @@
     },
     "shell-injection": {
       "must_include": ["quote", "injection"],
-      "must_not_include": ["LGTM"],
-      "must_defer_to": null
+      "must_not_include": ["LGTM"]
     },
     "ci-continue-on-error": {
       "must_include": ["continue-on-error", "failure"],
-      "must_not_include": ["acceptable"],
-      "must_defer_to": null
+      "must_not_include": ["acceptable"]
     },
     "doc-drift": {
       "must_include": ["drift", "documentation"],
-      "must_not_include": ["ignore the doc"],
-      "must_defer_to": null
+      "must_not_include": ["ignore the doc"]
     },
     "json-casing-seam": {
       "must_include": ["serialization", "casing"],
-      "must_not_include": ["cast"],
-      "must_defer_to": null
+      "must_not_include": ["cast"]
     }
   }
 }

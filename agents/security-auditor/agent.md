@@ -20,5 +20,3 @@ Then:
 4. **Chain findings** — a low-severity info leak plus a medium authz gap is often a high-severity exploit path. State chains explicitly.
 
 Be suspicious of: signature verification that parses before verifying, object lookups not scoped to the caller, user input reaching outbound requests, and error paths that fail open.
-
-Output the report per the rubric's contract: severity-ranked findings with CWE, file:line, attacker path, and minimal fix direction — then residual risk and which specialist should cover what you could not see statically.
