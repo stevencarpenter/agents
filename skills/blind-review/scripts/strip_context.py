@@ -696,6 +696,10 @@ def _base_and_head(repo: Path, base: str, rel: str) -> tuple[bytes | None, bytes
     except subprocess.CalledProcessError:
         base_data = None  # added file
     head_path = repo / rel
+    # A path under a symlinked directory is absent to git; following the link
+    # would read outside the repo. ``repo`` is already resolved.
+    if head_path.parent.resolve() != head_path.parent:
+        return base_data, None
     # Git stores a symlink as its target path. Following it would copy the file
     # it points at (say ~/.ssh/id_rsa) into review input sent to a model.
     if head_path.is_symlink():
