@@ -182,9 +182,10 @@ any files the stripper could not process. In sidecar mode: one line
   the unit text. A short harness block (temp cwd, platform, date, an account
   note) remains, because removing it needs `--bare` and an API key.
 - `--mechanical` limits: per-file units cannot see cross-file effects or
-  unchanged code that a change depends on; the whitespace comparison follows
-  `git diff -w`, so a spacing-only edit inside a string literal is hidden
-  (leading indentation still counts in Python and YAML).
+  unchanged code that a change depends on; the whitespace comparison treats
+  any run of spaces as one space, so a change in run length inside a string
+  literal is hidden (leading indentation still counts in Python, YAML, and
+  Makefiles, and adding or removing a space between tokens always counts).
 - Scope bundling: the context arm has comments AND repo-wide tools
   (grep, history, other files), so blind-vs-context differences measure
   "does more information of any kind help", not purely comment bias. The

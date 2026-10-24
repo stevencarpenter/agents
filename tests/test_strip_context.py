@@ -16,6 +16,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 from importlib.machinery import SourceFileLoader
@@ -506,6 +507,50 @@ class MechanicalModeTest(unittest.TestCase):
         self.assertNotIn("leaked", units)
         self.assertIn("-1|y = 1", units)
 
+    def test_whitespace_between_tokens_is_a_code_change(self) -> None:
+        """A new space can split one shell argument into two."""
+        out = self.run_mechanical(
+            {"a.sh": "rm -rf /tmp/build\n"}, {"a.sh": "rm  -rf / tmp/build\n"}
+        )
+        self.assertIn("+1|rm  -rf / tmp/build", (out / "units" / "f01.sh.diff").read_text())
+
+    def test_whitespace_run_length_is_not_a_change(self) -> None:
+        """Collapsing a run of spaces is formatting, not code."""
+        out = self.run_mechanical({"a.sh": "rm -rf /tmp\n"}, {"a.sh": "rm   -rf  /tmp  \n"})
+        self.assertEqual(list((out / "units").iterdir()), [])
+
+    def test_makefile_tab_to_spaces_is_a_code_change(self) -> None:
+        """A recipe line must start with a tab, so retabbing breaks make."""
+        out = self.run_mechanical(
+            {"Makefile": "all:\n\techo hi\n"}, {"Makefile": "all:\n    echo hi\n"}
+        )
+        self.assertIn("+2|    echo hi", (out / "units" / "f01-Makefile.diff").read_text())
+
+    def test_non_ascii_file_name_is_reviewed(self) -> None:
+        """Git quotes such names unless -z is used; the change must not vanish."""
+        out = self.run_mechanical({"caf\u00e9.py": "x = 1\n"}, {"caf\u00e9.py": "x = 2\n"})
+        self.assertIn("+1|x = 2", (out / "units" / "f01.py.diff").read_text())
+
+    def test_submodule_bump_does_not_crash(self) -> None:
+        """A submodule path is a directory, not a file to read."""
+        out = self.run_mechanical({"a.py": "x = 1\n"}, {})
+        repo = Path(json.loads((out / "manifest.json").read_text())["repo"])
+        sub = repo / "sub"
+        sub.mkdir()
+        for args in (("init", "-q"), ("commit", "-q", "--allow-empty", "-m", "s1")):
+            subprocess.run(["git", "-C", str(sub), *args], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "add", "sub"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "commit", "-qm", "sub"], check=True, capture_output=True
+        )
+        subprocess.run(
+            ["git", "-C", str(sub), "commit", "-q", "--allow-empty", "-m", "s2"],
+            check=True,
+            capture_output=True,
+        )
+        rc = strip_context.main(["mechanical", "--repo", str(repo), "--out", str(out)])
+        self.assertEqual(rc, 0)
+
     def test_unknown_language_is_omitted_not_copied(self) -> None:
         """A file whose comments cannot be removed must not reach a reviewer."""
         out = self.run_mechanical({"a.lua": "x = 1\n"}, {"a.lua": "x = 2 -- why\n"})
@@ -514,18 +559,40 @@ class MechanicalModeTest(unittest.TestCase):
         self.assertTrue(manifest["files"][0]["action"].startswith("omitted"))
 
 
+def load_mechanical_review() -> ModuleType:
+    """Load the fan-out script as a module despite its non-importable filename.
+
+    Returns:
+        The imported module.
+    """
+    loader = SourceFileLoader("mechanical_review", str(SCRIPT.with_name("mechanical_review.py")))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
 class MechanicalReviewArgvTest(unittest.TestCase):
     """The reviewer process must start with no tools and no customizations."""
 
+    def test_reply_without_structured_output_is_a_failure(self) -> None:
+        """A reply with no findings field must not read as a clean file."""
+        module = load_mechanical_review()
+        out = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", str(out)], check=False))
+        for sub in ("units", "payloads", "results"):
+            (out / sub).mkdir()
+        unit = out / "units" / "f01.py.diff"
+        unit.write_text("file f01.py\n+1|x = 1\n")
+        fake = [sys.executable, "-c", "print('{\"is_error\": false}')"]
+        result = module.review_unit(unit, out, fake, "no-such-repo-name")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "no structured_output")
+
     def test_isolation_flags(self) -> None:
         """Dropping any of these flags lets non-diff text reach the model."""
-        loader = SourceFileLoader(
-            "mechanical_review", str(SCRIPT.with_name("mechanical_review.py"))
-        )
-        spec = importlib.util.spec_from_loader(loader.name, loader)
-        assert spec is not None
-        module = importlib.util.module_from_spec(spec)
-        loader.exec_module(module)
+        module = load_mechanical_review()
         argv = module.reviewer_argv("sonnet", "high")
         for flag in ("--safe-mode", "--strict-mcp-config", "--disable-slash-commands"):
             self.assertIn(flag, argv)
