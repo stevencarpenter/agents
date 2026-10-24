@@ -537,14 +537,16 @@ class MechanicalModeTest(unittest.TestCase):
         repo = Path(json.loads((out / "manifest.json").read_text())["repo"])
         sub = repo / "sub"
         sub.mkdir()
-        for args in (("init", "-q"), ("commit", "-q", "--allow-empty", "-m", "s1")):
+        # CI has no global git identity, so the inner repo needs its own.
+        ident = ["-c", "user.email=t@example.com", "-c", "user.name=t"]
+        for args in (("init", "-q"), (*ident, "commit", "-q", "--allow-empty", "-m", "s1")):
             subprocess.run(["git", "-C", str(sub), *args], check=True, capture_output=True)
         subprocess.run(["git", "-C", str(repo), "add", "sub"], check=True, capture_output=True)
         subprocess.run(
             ["git", "-C", str(repo), "commit", "-qm", "sub"], check=True, capture_output=True
         )
         subprocess.run(
-            ["git", "-C", str(sub), "commit", "-q", "--allow-empty", "-m", "s2"],
+            ["git", "-C", str(sub), *ident, "commit", "-q", "--allow-empty", "-m", "s2"],
             check=True,
             capture_output=True,
         )
