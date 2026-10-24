@@ -488,6 +488,24 @@ class MechanicalModeTest(unittest.TestCase):
         units = "".join(p.read_text() for p in (out / "units").iterdir())
         self.assertNotIn("leaked", units)
 
+    def test_symlinked_parent_dir_is_not_followed(self) -> None:
+        """Replacing a tracked dir with a symlink must not read outside the repo."""
+        outside = Path(tempfile.mkdtemp())
+        (outside / "k.py").write_text("TOKEN = 'leaked'\n")
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", str(outside)], check=False))
+        out = self.run_mechanical({"a.py": "x = 1\n"}, {})
+        repo = Path(json.loads((out / "manifest.json").read_text())["repo"])
+        (repo / "d").mkdir()
+        (repo / "d" / "k.py").write_text("y = 1\n")
+        subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "-qm", "dir"], check=True)
+        subprocess.run(["rm", "-rf", str(repo / "d")], check=True)
+        (repo / "d").symlink_to(outside)
+        strip_context.main(["mechanical", "--repo", str(repo), "--out", str(out)])
+        units = "".join(p.read_text() for p in (out / "units").iterdir())
+        self.assertNotIn("leaked", units)
+        self.assertIn("-1|y = 1", units)
+
     def test_unknown_language_is_omitted_not_copied(self) -> None:
         """A file whose comments cannot be removed must not reach a reviewer."""
         out = self.run_mechanical({"a.lua": "x = 1\n"}, {"a.lua": "x = 2 -- why\n"})
