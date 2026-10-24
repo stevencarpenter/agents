@@ -138,9 +138,12 @@ def sandbox(repo_name: str) -> Path:
 @functools.cache
 def cli_version() -> str:
     """Return the ``claude --version`` string; the harness text changes with it."""
-    return subprocess.run(
-        ["claude", "--version"], capture_output=True, text=True, check=False
-    ).stdout.strip()
+    try:
+        return subprocess.run(
+            ["claude", "--version"], capture_output=True, text=True, check=False
+        ).stdout.strip()
+    except OSError:
+        return "unavailable"
 
 
 def review_unit(unit: Path, out: Path, argv: list[str], repo_name: str) -> dict:
