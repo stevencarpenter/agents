@@ -210,6 +210,8 @@ def run(args: argparse.Namespace) -> int:
         "effort": args.effort,
         "reps": args.reps,
         "brief_sha256": hashlib.sha256(mechanical_review.BRIEF.encode()).hexdigest()[:12],
+        # A corpus edit changes what the scores mean, so it must show in the history.
+        "cases_sha256": hashlib.sha256(json.dumps(cases, sort_keys=True).encode()).hexdigest()[:12],
         "cases": len(cases),
         "failed_reviews": len(failed),
         "tokens": tokens,
@@ -246,12 +248,15 @@ def summary(_: argparse.Namespace) -> int:
         return 0
     cols = ("recall", "context_required_recall", "safe_false_alarm", "extra_findings_per_run",
             "trap_stability", "finding_jaccard", "input_identical")
-    print("recorded_at | commit | model | effort | reps | " + " | ".join(cols))
+    print("recorded_at | commit | cases | model | effort | reps | " + " | ".join(cols))
     for line in RESULTS.read_text().splitlines():
         r = json.loads(line)
         model = ",".join(r["model_ids"]) or r["model"]
         values = " | ".join(str(r["scores"][c]) for c in cols)
-        print(f"{r['recorded_at']} | {r['repo_commit']} | {model} | {r['effort']} | {r['reps']} | {values}")
+        print(
+            f"{r['recorded_at']} | {r['repo_commit']} | {r.get('cases_sha256', '?')} | {model} | "
+            f"{r['effort']} | {r['reps']} | {values}"
+        )
     return 0
 
 
