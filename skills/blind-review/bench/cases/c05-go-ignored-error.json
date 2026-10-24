@@ -1,0 +1,29 @@
+{
+  "id": "c05-go-ignored-error",
+  "description": "The error from os.Create is discarded.",
+  "base": {
+    "store.go": "package store\n\nimport \"os\"\n"
+  },
+  "head": {
+    "store.go": "package store\n\nimport \"os\"\n\nfunc Save(path string, data []byte) error {\n\tf, _ := os.Create(path)\n\tdefer f.Close()\n\t_, err := f.Write(data)\n\treturn err\n}\n"
+  },
+  "traps": [
+    {
+      "id": "ignored-create-error",
+      "kind": "bug",
+      "category": "reliability",
+      "path": "store.go",
+      "anchors": [
+        [
+          "+",
+          6
+        ],
+        [
+          "+",
+          7
+        ]
+      ],
+      "why": "On failure f is nil and the error is lost."
+    }
+  ]
+}

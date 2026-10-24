@@ -1,0 +1,29 @@
+{
+  "id": "c01-py-path-guard-removed",
+  "description": "A path-traversal guard is deleted.",
+  "base": {
+    "files.py": "import os\n\n\ndef read_user_file(base, name):\n    path = os.path.normpath(os.path.join(base, name))\n    if not path.startswith(base + os.sep):\n        raise ValueError(\"outside base\")\n    with open(path) as fh:\n        return fh.read()\n"
+  },
+  "head": {
+    "files.py": "import os\n\n\ndef read_user_file(base, name):\n    path = os.path.normpath(os.path.join(base, name))\n    with open(path) as fh:\n        return fh.read()\n"
+  },
+  "traps": [
+    {
+      "id": "guard-removed",
+      "kind": "bug",
+      "category": "security",
+      "path": "files.py",
+      "anchors": [
+        [
+          "-",
+          6
+        ],
+        [
+          "-",
+          7
+        ]
+      ],
+      "why": "Removing the startswith check lets ../ escape base."
+    }
+  ]
+}

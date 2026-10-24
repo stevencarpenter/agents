@@ -101,6 +101,7 @@ agents/
 skills/
   <name>/SKILL.md
   <name>/scripts/      # optional helper scripts (blind-review)
+  <name>/bench/        # optional benchmark cases and recorded scores (blind-review)
 schema/
   agent.schema.json
   skill.schema.json

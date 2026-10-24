@@ -1,0 +1,25 @@
+{
+  "id": "c09-rs-unwrap-env",
+  "description": "A constant port becomes a double unwrap on an environment variable.",
+  "base": {
+    "main.rs": "use std::env;\n\nfn port() -> u16 {\n    8080\n}\n"
+  },
+  "head": {
+    "main.rs": "use std::env;\n\nfn port() -> u16 {\n    env::var(\"PORT\").unwrap().parse().unwrap()\n}\n"
+  },
+  "traps": [
+    {
+      "id": "unwrap-env",
+      "kind": "bug",
+      "category": "idiom",
+      "path": "main.rs",
+      "anchors": [
+        [
+          "+",
+          4
+        ]
+      ],
+      "why": "A missing or invalid PORT panics instead of returning an error."
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "c07-py-inverted-auth",
+  "description": "An authorization condition is inverted.",
+  "base": {
+    "perms.py": "def require_active(user):\n    if not user.is_active:\n        raise PermissionError(\"inactive\")\n    return user\n"
+  },
+  "head": {
+    "perms.py": "def require_active(user):\n    if user.is_active:\n        raise PermissionError(\"inactive\")\n    return user\n"
+  },
+  "traps": [
+    {
+      "id": "inverted-check",
+      "kind": "bug",
+      "category": "security",
+      "path": "perms.py",
+      "anchors": [
+        [
+          "+",
+          2
+        ]
+      ],
+      "why": "Active users are now rejected and inactive users pass."
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "id": "c10-py-arg-order",
+  "description": "Parameters are swapped; the positional caller is unchanged and not in the diff.",
+  "base": {
+    "pay.py": "def charge(amount_cents, currency):\n    return (amount_cents, currency)\n",
+    "checkout.py": "from pay import charge\n\n\ndef buy():\n    return charge(500, \"usd\")\n"
+  },
+  "head": {
+    "pay.py": "def charge(currency, amount_cents):\n    return (amount_cents, currency)\n"
+  },
+  "traps": [
+    {
+      "id": "swapped-params",
+      "kind": "bug",
+      "category": "correctness",
+      "context_required": true,
+      "path": "pay.py",
+      "anchors": [
+        [
+          "+",
+          1
+        ]
+      ],
+      "why": "checkout.py still calls charge(500, \"usd\")."
+    }
+  ]
+}
