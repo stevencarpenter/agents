@@ -476,6 +476,18 @@ class MechanicalModeTest(unittest.TestCase):
         )
         self.assertIn("+3|z()", (out / "units" / "f01.py.diff").read_text())
 
+    def test_symlink_is_read_as_its_target_path(self) -> None:
+        """A changed symlink must not leak the content of the file it points at."""
+        outside = Path(tempfile.mkdtemp()) / "secret.py"
+        outside.write_text("TOKEN = 'leaked'\n")
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", str(outside.parent)], check=False))
+        out = self.run_mechanical({"a.py": "x = 1\n"}, {})
+        repo = Path(json.loads((out / "manifest.json").read_text())["repo"])
+        (repo / "link.py").symlink_to(outside)
+        strip_context.main(["mechanical", "--repo", str(repo), "--out", str(out)])
+        units = "".join(p.read_text() for p in (out / "units").iterdir())
+        self.assertNotIn("leaked", units)
+
     def test_unknown_language_is_omitted_not_copied(self) -> None:
         """A file whose comments cannot be removed must not reach a reviewer."""
         out = self.run_mechanical({"a.lua": "x = 1\n"}, {"a.lua": "x = 2 -- why\n"})

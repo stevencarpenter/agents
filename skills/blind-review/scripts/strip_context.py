@@ -696,6 +696,10 @@ def _base_and_head(repo: Path, base: str, rel: str) -> tuple[bytes | None, bytes
     except subprocess.CalledProcessError:
         base_data = None  # added file
     head_path = repo / rel
+    # Git stores a symlink as its target path. Following it would copy the file
+    # it points at (say ~/.ssh/id_rsa) into review input sent to a model.
+    if head_path.is_symlink():
+        return base_data, os.readlink(head_path).encode()
     return base_data, head_path.read_bytes() if head_path.exists() else None
 
 
