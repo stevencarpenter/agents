@@ -237,7 +237,8 @@ def _commit() -> str:
         return subprocess.run(
             ["git", "-C", str(HERE), *a], capture_output=True, text=True, check=False
         ).stdout
-    dirty = out("status", "--porcelain", "--", str(HERE.parent)).strip()
+    # results.jsonl is output, not input: a concurrent run appending to it is not an edit.
+    dirty = out("status", "--porcelain", "--", str(HERE.parent), ":!" + str(RESULTS)).strip()
     return out("rev-parse", "--short", "HEAD").strip() + ("-dirty" if dirty else "")
 
 
