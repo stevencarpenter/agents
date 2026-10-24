@@ -110,7 +110,8 @@ def review_unit(unit: Path, out: Path, argv: list[str], repo_name: str) -> dict:
     )
     with tempfile.TemporaryDirectory() as sandbox:
         # The cwd is the one path the reviewer sees; a session scratchpad path names the repo.
-        if repo_name in sandbox:
+        # The random leaf is skipped so a short repo name cannot match it by chance.
+        if repo_name in str(Path(sandbox).parent):
             raise SystemExit(f"temp dir {sandbox} names the repo; set TMPDIR elsewhere")
         proc = subprocess.run(
             argv, input=text, cwd=sandbox, capture_output=True, text=True, check=False
@@ -119,12 +120,16 @@ def review_unit(unit: Path, out: Path, argv: list[str], repo_name: str) -> dict:
         reply = json.loads(proc.stdout)
     except json.JSONDecodeError:
         reply = {"is_error": True, "result": proc.stdout[-2000:]}
+    # A reply without structured output is a failed review, not a clean file.
+    ok = proc.returncode == 0 and not reply.get("is_error") and "structured_output" in reply
     result = {
         "unit": unit.stem,
-        "ok": proc.returncode == 0 and not reply.get("is_error"),
+        "ok": ok,
         "findings": (reply.get("structured_output") or {}).get("findings", []),
         "usage": reply.get("usage"),
-        "error": None if proc.returncode == 0 else (proc.stderr or reply.get("result", ""))[-2000:],
+        "error": None
+        if ok
+        else str(proc.stderr or reply.get("result") or "no structured_output")[-2000:],
     }
     (out / "results" / f"{unit.stem}.json").write_text(
         json.dumps(result, indent=2), encoding="utf-8"

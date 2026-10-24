@@ -680,9 +680,10 @@ def _assert_diff_applies(repo: Path, diff_path: Path) -> None:
 def _changed_files(repo: Path, base: str) -> list[str]:
     """List files changed between ``base`` and the worktree, untracked included."""
     # Include untracked files so both review passes receive the same changes.
-    tracked = _git(repo, "diff", "--name-only", base).splitlines()
-    untracked = _git(repo, "ls-files", "--others", "--exclude-standard").splitlines()
-    return list(dict.fromkeys(rel.strip() for rel in [*tracked, *untracked] if rel.strip()))
+    # -z: without it git quotes unusual names ("caf\303\251.py"), which then match no file.
+    tracked = _git(repo, "diff", "--name-only", "-z", base).split("\0")
+    untracked = _git(repo, "ls-files", "--others", "--exclude-standard", "-z").split("\0")
+    return list(dict.fromkeys(rel for rel in [*tracked, *untracked] if rel))
 
 
 def _base_and_head(repo: Path, base: str, rel: str) -> tuple[bytes | None, bytes | None]:
@@ -704,7 +705,7 @@ def _base_and_head(repo: Path, base: str, rel: str) -> tuple[bytes | None, bytes
     # it points at (say ~/.ssh/id_rsa) into review input sent to a model.
     if head_path.is_symlink():
         return base_data, os.readlink(head_path).encode()
-    return base_data, head_path.read_bytes() if head_path.exists() else None
+    return base_data, head_path.read_bytes() if head_path.is_file() else None
 
 
 def cmd_diff(args: argparse.Namespace) -> int:
@@ -761,17 +762,18 @@ def _code_lines(text: str, indent_sensitive: bool) -> list[tuple[int, str, str]]
     """Return (line_number, compare_key, display) for each line that holds code.
 
     Blank lines (including comment-only lines, which the stripper blanked) and
-    the ``""`` docstring placeholder are dropped. The key ignores whitespace as
-    ``git diff -w`` does, but keeps leading indentation when it is syntax.
+    the ``""`` docstring placeholder are dropped. The key collapses each run of
+    whitespace to one space (deleting it would equate ``rm -rf /tmp`` and
+    ``rm -rf / tmp``) and keeps raw leading indentation when it is syntax.
     """
     rows = []
     for number, line in enumerate(text.splitlines(), 1):
         body = line.strip()
         if not body or body == '""':
             continue
-        key = "".join(body.split())
+        key = " ".join(body.split())
         if indent_sensitive:
-            key = line[: len(line) - len(line.lstrip())].replace("\t", "    ") + key
+            key = line[: len(line) - len(line.lstrip())] + key
         rows.append((number, key, line.rstrip()))
     return rows
 
