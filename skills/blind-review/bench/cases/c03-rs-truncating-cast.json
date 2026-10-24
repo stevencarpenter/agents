@@ -1,11 +1,11 @@
 {
   "id": "c03-rs-truncating-cast",
-  "description": "A u64 is truncated through u32, beside a correct saturating_sub.",
+  "description": "A u64 is truncated through u32, beside a correct bounds-checked get.",
   "base": {
-    "lib.rs": "pub fn alloc_len(n: u64) -> usize {\n    n as usize\n}\n\npub fn last_index(v: &[u8]) -> usize {\n    v.len()\n}\n"
+    "lib.rs": "pub fn alloc_len(n: u64) -> usize {\n    n as usize\n}\n"
   },
   "head": {
-    "lib.rs": "pub fn alloc_len(n: u64) -> usize {\n    let len = n as u32 as usize;\n    len * 2\n}\n\npub fn last_index(v: &[u8]) -> usize {\n    v.len().saturating_sub(1)\n}\n"
+    "lib.rs": "pub fn alloc_len(n: u64) -> usize {\n    let len = n as u32 as usize;\n    len * 2\n}\n\npub fn at(v: &[u8], i: usize) -> Option<u8> {\n    v.get(i).copied()\n}\n"
   },
   "traps": [
     {
@@ -22,7 +22,7 @@
       "why": "n as u32 drops the high 32 bits."
     },
     {
-      "id": "saturating-sub",
+      "id": "bounds-checked-get",
       "kind": "safe",
       "path": "lib.rs",
       "anchors": [
@@ -31,7 +31,7 @@
           7
         ]
       ],
-      "why": "saturating_sub cannot underflow."
+      "why": "get returns None for an out-of-range index."
     }
   ]
 }

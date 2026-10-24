@@ -1,0 +1,25 @@
+{
+  "id": "c15-sql-precedence",
+  "description": "Parentheses around an OR are dropped from a DELETE.",
+  "base": {
+    "purge.sql": "DELETE FROM sessions\nWHERE user_id = $1 AND (expires_at < now() OR revoked);\n"
+  },
+  "head": {
+    "purge.sql": "DELETE FROM sessions\nWHERE user_id = $1 AND expires_at < now() OR revoked;\n"
+  },
+  "traps": [
+    {
+      "id": "or-precedence",
+      "kind": "bug",
+      "category": "correctness",
+      "path": "purge.sql",
+      "anchors": [
+        [
+          "+",
+          2
+        ]
+      ],
+      "why": "AND binds first, so every user's revoked sessions are deleted."
+    }
+  ]
+}

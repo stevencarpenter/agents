@@ -1,0 +1,29 @@
+{
+  "id": "c12-py-check-then-act",
+  "description": "A dict pop moves outside the lock that guarded the membership check.",
+  "base": {
+    "cache.py": "def take(cache, key, lock):\n    with lock:\n        if key in cache:\n            return cache.pop(key)\n    return None\n"
+  },
+  "head": {
+    "cache.py": "def take(cache, key, lock):\n    with lock:\n        present = key in cache\n    if present:\n        return cache.pop(key)\n    return None\n"
+  },
+  "traps": [
+    {
+      "id": "pop-outside-lock",
+      "kind": "bug",
+      "category": "reliability",
+      "path": "cache.py",
+      "anchors": [
+        [
+          "+",
+          4
+        ],
+        [
+          "+",
+          5
+        ]
+      ],
+      "why": "Another thread can pop the key between the check and the pop: KeyError."
+    }
+  ]
+}
