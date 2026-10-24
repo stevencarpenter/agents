@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This repo stores non-sensitive agent definitions and shared language rubrics only.
+This repo stores non-sensitive agent definitions, shared language rubrics, and the skills and helper scripts that registry agents depend on (for example `skills/blind-review/`).
 
 Do not add work secrets, customer-specific implementation details, credentials, tokens, or private infrastructure names to `agents/` or `skills/`. Keep sensitive definitions in their owner's private configuration outside this public repository.
 

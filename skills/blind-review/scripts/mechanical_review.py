@@ -1,0 +1,162 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
+"""mechanical_review.py: fan mechanical-mode units out to context-free reviewers.
+
+Each unit written by ``strip_context.py mechanical`` goes to its own headless
+``claude -p`` process. That process gets this file's fixed brief as its whole
+system prompt, the unit text on stdin, no tools, no settings, hooks, plugins,
+MCP servers, skills, or CLAUDE.md, and an empty temporary working directory, so
+no repository text can reach the model. The exact payload for each unit is
+written to ``payloads/`` for audit and the reviewer's answer to ``results/``.
+
+Usage: mechanical_review.py --out DIR [--model sonnet] [--effort high] [--jobs 4]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+import tempfile
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+BRIEF = """\
+You review one code change. The input holds only the changed lines of one file.
+Comments, docstrings, documentation, blank lines, and whitespace-only changes
+were removed before you received it. Unchanged code is not shown.
+
+Format: "file <label>" names the file and its language. A row "-N|text" is a
+removed line and "+N|text" is an added line; N is the line number on that side
+of the change. "@@" separates groups of changed lines that were not adjacent.
+
+Report defects that these lines show: wrong conditions, operators, or
+boundaries; unhandled errors; swallowed failures; injection sinks; unsafe
+casts or overflow; state or ordering hazards; a removed line whose guard or
+effect the added lines no longer provide. Identifier names are not evidence of
+behavior. Do not report missing comments, missing context, style, or naming.
+When a finding depends on code you cannot see, state that assumption and set
+confidence to low. Report no findings when you find no defect.
+"""
+
+SCHEMA = {
+    "type": "object",
+    "properties": {
+        "findings": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "side": {"enum": ["+", "-"]},
+                    "line": {"type": "integer"},
+                    "severity": {"enum": ["high", "medium", "low"]},
+                    "confidence": {"enum": ["high", "medium", "low"]},
+                    "claim": {"type": "string"},
+                    "evidence": {"type": "string"},
+                    "assumption": {"type": "string"},
+                },
+                "required": ["side", "line", "severity", "confidence", "claim", "evidence"],
+            },
+        }
+    },
+    "required": ["findings"],
+}
+
+
+def reviewer_argv(model: str, effort: str) -> list[str]:
+    """Build the isolated headless invocation.
+
+    ``--system-prompt`` replaces the default prompt (and with it git status and
+    memory paths), ``--safe-mode`` turns off every customization, and
+    ``--tools ""`` leaves the model nothing to read with. Not removable without
+    ``--bare`` and an API key: a short environment block (temp cwd, platform,
+    date) and an account note.
+    """
+    return [
+        "claude",
+        "-p",
+        "--safe-mode",
+        "--setting-sources",
+        "",
+        "--strict-mcp-config",
+        "--mcp-config",
+        '{"mcpServers":{}}',
+        "--tools",
+        "",
+        "--disable-slash-commands",
+        "--no-session-persistence",
+        "--system-prompt",
+        BRIEF,
+        "--json-schema",
+        json.dumps(SCHEMA),
+        "--output-format",
+        "json",
+        "--model",
+        model,
+        "--effort",
+        effort,
+    ]
+
+
+def review_unit(unit: Path, out: Path, argv: list[str], repo_name: str) -> dict:
+    """Review one unit in a fresh empty directory and record payload and result."""
+    text = unit.read_text(encoding="utf-8")
+    (out / "payloads" / f"{unit.stem}.json").write_text(
+        json.dumps({"argv": argv, "stdin": text}, indent=2), encoding="utf-8"
+    )
+    with tempfile.TemporaryDirectory() as sandbox:
+        # The cwd is the one path the reviewer sees; a session scratchpad path names the repo.
+        if repo_name in sandbox:
+            raise SystemExit(f"temp dir {sandbox} names the repo; set TMPDIR elsewhere")
+        proc = subprocess.run(
+            argv, input=text, cwd=sandbox, capture_output=True, text=True, check=False
+        )
+    try:
+        reply = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        reply = {"is_error": True, "result": proc.stdout[-2000:]}
+    result = {
+        "unit": unit.stem,
+        "ok": proc.returncode == 0 and not reply.get("is_error"),
+        "findings": (reply.get("structured_output") or {}).get("findings", []),
+        "usage": reply.get("usage"),
+        "error": None if proc.returncode == 0 else (proc.stderr or reply.get("result", ""))[-2000:],
+    }
+    (out / "results" / f"{unit.stem}.json").write_text(
+        json.dumps(result, indent=2), encoding="utf-8"
+    )
+    return result
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Review every unit in parallel and print a one-line summary per unit."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--out", required=True, help="strip_context.py mechanical --out dir")
+    parser.add_argument("--model", default="sonnet")
+    parser.add_argument("--effort", default="high")
+    parser.add_argument("--jobs", type=int, default=4)
+    args = parser.parse_args(argv)
+    out = Path(args.out).resolve()
+    units = sorted((out / "units").glob("*.diff"))
+    if not units:
+        print(f"no units in {out / 'units'}", file=sys.stderr)
+        return 1
+    for sub in ("payloads", "results"):
+        (out / sub).mkdir(exist_ok=True)
+    repo_name = Path(json.loads((out / "manifest.json").read_text())["repo"]).name
+    cmd = reviewer_argv(args.model, args.effort)
+    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+        results = list(pool.map(lambda u: review_unit(u, out, cmd, repo_name), units))
+    for r in results:
+        status = f"{len(r['findings'])} finding(s)" if r["ok"] else f"FAILED: {r['error']}"
+        print(f"{r['unit']}: {status}")
+    print(f"results in {out / 'results'}")
+    return 0 if all(r["ok"] for r in results) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
