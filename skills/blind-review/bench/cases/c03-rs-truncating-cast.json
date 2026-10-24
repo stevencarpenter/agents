@@ -1,0 +1,37 @@
+{
+  "id": "c03-rs-truncating-cast",
+  "description": "A u64 is truncated through u32, beside a correct saturating_sub.",
+  "base": {
+    "lib.rs": "pub fn alloc_len(n: u64) -> usize {\n    n as usize\n}\n\npub fn last_index(v: &[u8]) -> usize {\n    v.len()\n}\n"
+  },
+  "head": {
+    "lib.rs": "pub fn alloc_len(n: u64) -> usize {\n    let len = n as u32 as usize;\n    len * 2\n}\n\npub fn last_index(v: &[u8]) -> usize {\n    v.len().saturating_sub(1)\n}\n"
+  },
+  "traps": [
+    {
+      "id": "truncating-cast",
+      "kind": "bug",
+      "category": "correctness",
+      "path": "lib.rs",
+      "anchors": [
+        [
+          "+",
+          2
+        ]
+      ],
+      "why": "n as u32 drops the high 32 bits."
+    },
+    {
+      "id": "saturating-sub",
+      "kind": "safe",
+      "path": "lib.rs",
+      "anchors": [
+        [
+          "+",
+          7
+        ]
+      ],
+      "why": "saturating_sub cannot underflow."
+    }
+  ]
+}

@@ -80,10 +80,13 @@ with ONLY this brief: "Mechanical mode. Run
 --effort <e>` and merge `<out-dir>/results/*.json`." The agent reviews
 nothing itself. The script gives each unit to a separate headless
 `claude -p` process (no tools, `--safe-mode`, no settings, MCP servers, or
-skills, a fixed system prompt, an empty temp working directory) and records
+skills, a fixed system prompt, one fixed empty working directory) and records
 the exact payload in `payloads/` so the isolation can be audited. Map the
 returned `fNN` labels back to paths with `manifest.json` yourself; never give
-the manifest to the agent.
+the manifest to the agent. After a Claude Code upgrade, run
+`<this-skill-dir>/scripts/audit_request.py --out <out-dir>`: it captures the
+full request the CLI sends (no model call), fails on any repo-name leak, and
+lists every field that differs between two identical runs.
 
 **Context pass**: use the superpowers
 requesting-code-review flow or /code-review conventions, or a
@@ -154,6 +157,25 @@ provenance tags like `assumption:`, arm-specific formatting tells),
 shuffle across arms, grade against the trap key, and only then rejoin the
 arm mapping. An unblinded grader credits the arm it expects to win.
 
+### 6b. Track the mechanical reviewer (with `--mechanical`)
+
+Two records, for two questions:
+
+- **Score (benchmark):** does the reviewer find planted defects without
+  false alarms, and how stable is it across reps? After any change to the
+  brief, schema, stripper, model, or effort, run
+  `<this-skill-dir>/bench/bench.py run --record` and commit the new line in
+  `bench/results.jsonl`. `bench.py summary` prints the history.
+- **Effectiveness (real use):** did findings on real changes help ship
+  better code? Run `<this-skill-dir>/scripts/review_log.py log --out
+  <out-dir>` after each real run. When the user fixes or dismisses a
+  finding, record it with `review_log.py mark <id>
+  accepted|false-positive|not-useful|duplicate`. When a defect surfaces
+  later in reviewed code, record it with `review_log.py escape`. Run
+  `review_log.py reconcile` (flagged lines that changed since the review
+  become `likely-addressed`) and then `review_log.py summary`. The ledger
+  stays local because it holds private paths and code lines.
+
 ### 7. Report
 
 Severity-ordered, provenance-tagged findings; state the PoC caveat; name
@@ -179,8 +201,14 @@ any files the stripper could not process. In sidecar mode: one line
   mostly unsupported files.
 - Blind isolation is prompt-level, not sandbox-level, except with
   `--mechanical`: there the reviewer process has no tools and receives only
-  the unit text. A short harness block (temp cwd, platform, date, an account
-  note) remains, because removing it needs `--bare` and an API key.
+  the unit text. The CLI still adds harness text that this skill cannot
+  remove: a billing header with the CLI version, one SDK identity line, an
+  account-email note, and an environment block (fixed cwd, platform, OS
+  version, model, date, and sometimes a `<total_tokens>` line). Removing it
+  needs `--bare` and an API key.
+- `--mechanical` output is not deterministic: the CLI sends no temperature
+  and uses adaptive thinking, and no flag changes either. Measure stability
+  with `bench.py` reps; do not treat one run as the answer.
 - `--mechanical` limits: per-file units cannot see cross-file effects or
   unchanged code that a change depends on; the whitespace comparison treats
   any run of spaces as one space, so a change in run length inside a string

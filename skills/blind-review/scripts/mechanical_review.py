@@ -8,9 +8,11 @@
 Each unit written by ``strip_context.py mechanical`` goes to its own headless
 ``claude -p`` process. That process gets this file's fixed brief as its whole
 system prompt, the unit text on stdin, no tools, no settings, hooks, plugins,
-MCP servers, skills, or CLAUDE.md, and an empty temporary working directory, so
-no repository text can reach the model. The exact payload for each unit is
-written to ``payloads/`` for audit and the reviewer's answer to ``results/``.
+MCP servers, skills, or CLAUDE.md, and one fixed empty working directory, so
+no repository text can reach the model and every unit sees the same harness
+text. The exact payload for each unit is written to ``payloads/`` for audit and
+the reviewer's answer, with the resolved model ID and an input hash, to
+``results/``. ``audit_request.py`` shows the full request the CLI sends.
 
 Usage: mechanical_review.py --out DIR [--model sonnet] [--effort high] [--jobs 4]
 """
@@ -18,6 +20,8 @@ Usage: mechanical_review.py --out DIR [--model sonnet] [--effort high] [--jobs 4
 from __future__ import annotations
 
 import argparse
+import functools
+import hashlib
 import json
 import subprocess
 import sys
@@ -38,7 +42,10 @@ Report defects that these lines show: wrong conditions, operators, or
 boundaries; unhandled errors; swallowed failures; injection sinks; unsafe
 casts or overflow; state or ordering hazards; a removed line whose guard or
 effect the added lines no longer provide. Identifier names are not evidence of
-behavior. Do not report missing comments, missing context, style, or naming.
+behavior. Also report non-idiomatic constructs that a language expert would
+change because they make the code less reliable, as category "idiom" with
+severity low. Do not report missing comments, missing context, formatting, or
+naming.
 When a finding depends on code you cannot see, state that assumption and set
 confidence to low. Report no findings when you find no defect.
 """
@@ -55,11 +62,20 @@ SCHEMA = {
                     "line": {"type": "integer"},
                     "severity": {"enum": ["high", "medium", "low"]},
                     "confidence": {"enum": ["high", "medium", "low"]},
+                    "category": {"enum": ["correctness", "security", "reliability", "idiom"]},
                     "claim": {"type": "string"},
                     "evidence": {"type": "string"},
                     "assumption": {"type": "string"},
                 },
-                "required": ["side", "line", "severity", "confidence", "claim", "evidence"],
+                "required": [
+                    "side",
+                    "line",
+                    "severity",
+                    "confidence",
+                    "category",
+                    "claim",
+                    "evidence",
+                ],
             },
         }
     },
@@ -102,20 +118,40 @@ def reviewer_argv(model: str, effort: str) -> list[str]:
     ]
 
 
+# One fixed path: a random temp name would make every request's environment
+# block differ (verified with audit_request.py), and the reviewer has no tools,
+# so nothing is written here.
+SANDBOX = Path(tempfile.gettempdir()) / "blind-review-sandbox"
+
+
+def sandbox(repo_name: str) -> Path:
+    """Return the empty, fixed reviewer working directory, creating it if needed."""
+    SANDBOX.mkdir(exist_ok=True)
+    # The cwd is the one path the reviewer sees; a session scratchpad path names the repo.
+    if repo_name in str(SANDBOX):
+        raise SystemExit(f"sandbox {SANDBOX} names the repo; set TMPDIR elsewhere")
+    if any(SANDBOX.iterdir()):
+        raise SystemExit(f"sandbox {SANDBOX} is not empty; remove its contents")
+    return SANDBOX
+
+
+@functools.cache
+def cli_version() -> str:
+    """Return the ``claude --version`` string; the harness text changes with it."""
+    return subprocess.run(
+        ["claude", "--version"], capture_output=True, text=True, check=False
+    ).stdout.strip()
+
+
 def review_unit(unit: Path, out: Path, argv: list[str], repo_name: str) -> dict:
     """Review one unit in a fresh empty directory and record payload and result."""
     text = unit.read_text(encoding="utf-8")
     (out / "payloads" / f"{unit.stem}.json").write_text(
         json.dumps({"argv": argv, "stdin": text}, indent=2), encoding="utf-8"
     )
-    with tempfile.TemporaryDirectory() as sandbox:
-        # The cwd is the one path the reviewer sees; a session scratchpad path names the repo.
-        # The random leaf is skipped so a short repo name cannot match it by chance.
-        if repo_name in str(Path(sandbox).parent):
-            raise SystemExit(f"temp dir {sandbox} names the repo; set TMPDIR elsewhere")
-        proc = subprocess.run(
-            argv, input=text, cwd=sandbox, capture_output=True, text=True, check=False
-        )
+    proc = subprocess.run(
+        argv, input=text, cwd=sandbox(repo_name), capture_output=True, text=True, check=False
+    )
     try:
         reply = json.loads(proc.stdout)
     except json.JSONDecodeError:
@@ -127,6 +163,9 @@ def review_unit(unit: Path, out: Path, argv: list[str], repo_name: str) -> dict:
         "ok": ok,
         "findings": (reply.get("structured_output") or {}).get("findings", []),
         "usage": reply.get("usage"),
+        "model_id": ",".join(sorted(reply.get("modelUsage") or {})),
+        "cli_version": cli_version(),
+        "input_sha256": hashlib.sha256(json.dumps([argv, text]).encode()).hexdigest(),
         "error": None
         if ok
         else str(proc.stderr or reply.get("result") or "no structured_output")[-2000:],

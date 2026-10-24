@@ -1,0 +1,25 @@
+{
+  "id": "c06-sh-split-argument",
+  "description": "A quoted rm target becomes two unquoted words.",
+  "base": {
+    "build.sh": "#!/usr/bin/env bash\nset -euo pipefail\nrm -rf \"$BUILD_DIR/out\"\n"
+  },
+  "head": {
+    "build.sh": "#!/usr/bin/env bash\nset -euo pipefail\nrm -rf $BUILD_DIR /out\n"
+  },
+  "traps": [
+    {
+      "id": "split-rm-target",
+      "kind": "bug",
+      "category": "security",
+      "path": "build.sh",
+      "anchors": [
+        [
+          "+",
+          3
+        ]
+      ],
+      "why": "rm now also deletes /out, and an unset or spaced BUILD_DIR splits."
+    }
+  ]
+}

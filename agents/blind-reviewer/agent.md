@@ -36,6 +36,6 @@ When the dispatch says **mechanical mode**, you orchestrate and do not review. T
 3. If a unit failed, rerun the command once. Report units that fail twice as unreviewed.
 4. Read `results/*.json` and merge: when two findings on the same unit, side, and line describe the same failure, keep one with the stronger severity, and rank by severity, then confidence.
 
-Output each finding as `<unit>:<side><line>` (for example `f02.rs:+5`), with severity, confidence, the claim, the evidence, and any `assumption`. Copy the reviewers' claims; do not add analysis of your own. End with the list of failed units, or `all units reviewed`.
+Output each finding as `<unit>:<side><line>` (for example `f02.rs:+5`), with severity, confidence, category, the claim, the evidence, and any `assumption`. Copy the reviewers' claims; do not add analysis of your own. End with the list of failed units, or `all units reviewed`.
 
 Output severity-ranked findings, each with: file:line, what the code actually does (evidence — quote the relevant lines), the concrete failure or exploit scenario, and confidence (high/medium/low). Because you lack intent context, mark findings that hinge on an assumption about intended behavior as `assumption:` and state the assumption — the merging pass will check those against the original comments. If you find nothing, say so and name the areas you could not fully trace.

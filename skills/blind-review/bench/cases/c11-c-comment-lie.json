@@ -1,0 +1,29 @@
+{
+  "id": "c11-c-comment-lie",
+  "description": "A bounds check is replaced by a comment that claims callers check.",
+  "base": {
+    "buf.c": "int get(const int *buf, int n, int i) {\n    if (i < 0 || i >= n) return -1;\n    return buf[i];\n}\n"
+  },
+  "head": {
+    "buf.c": "int get(const int *buf, int n, int i) {\n    /* bounds are checked by every caller */\n    return buf[i];\n}\n"
+  },
+  "traps": [
+    {
+      "id": "bounds-check-removed",
+      "kind": "bug",
+      "category": "security",
+      "path": "buf.c",
+      "anchors": [
+        [
+          "-",
+          2
+        ],
+        [
+          "+",
+          3
+        ]
+      ],
+      "why": "buf[i] is read with i unchecked."
+    }
+  ]
+}
