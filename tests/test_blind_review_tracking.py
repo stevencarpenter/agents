@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -73,6 +74,28 @@ class BenchScoringTest(unittest.TestCase):
     def test_unmatched_findings_are_counted_as_extra(self) -> None:
         """A finding on no trap is noise the scores must show."""
         self.assertEqual(self.score(finding("+", 5), finding("+", 30))["extra"], 1)
+
+    def test_failed_reviews_are_not_scored_or_recorded(self) -> None:
+        """A failed rep must not read as a clean review, and the run must not be recorded."""
+        failed = {"ok": False, "findings": [], "usage": None, "model_id": "",
+                  "input_sha256": "x", "error": "api down"}
+        results = Path(tempfile.mkdtemp()) / "results.jsonl"
+        self.addCleanup(shutil.rmtree, results.parent, ignore_errors=True)
+        with (
+            mock.patch.object(bench.mechanical_review, "review_unit", return_value=failed),
+            mock.patch.object(bench.mechanical_review, "cli_version", return_value="t"),
+            mock.patch.object(bench, "RESULTS", results),
+            mock.patch("sys.stdout", new=io.StringIO()) as stdout,
+            mock.patch("sys.stderr", new=io.StringIO()),
+        ):
+            code = bench.main(["run", "--reps", "2", "--case", "c01-py-path-guard-removed", "--record"])
+        self.assertEqual(code, 1)
+        self.assertFalse(results.exists())
+        text = stdout.getvalue()
+        scores = json.JSONDecoder().raw_decode(text, text.index("{\n"))[0]["scores"]
+        self.assertIsNone(scores["recall"])
+        self.assertIsNone(scores["trap_stability"])
+        self.assertIsNone(scores["finding_jaccard"])
 
     def test_jaccard(self) -> None:
         """Identical sets score 1, disjoint sets 0, empty reps count as agreement."""

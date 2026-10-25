@@ -880,12 +880,18 @@ def _embedded_rules(name: str, tag: str) -> Sequence[Rule] | None:
     return None
 
 
-def _markup(source: str, raw_text: bool) -> str:
+# HTML parses these bodies as text, so `<!-- -->` inside them is data. XML
+# (SVG, XHTML) does not, so there a comment in `<title>` is a comment.
+_HTML_TEXT_ELEMENTS = frozenset({"textarea", "title", "xmp", "iframe", "noembed", "noframes"})
+
+
+def _markup(source: str, raw_text: bool, html: bool = False) -> str:
     """Strip ``<!-- -->`` comments, keeping quoted attributes and CDATA.
 
     With ``raw_text`` (HTML, Vue, Svelte, SVG), ``<script>`` and ``<style>``
     bodies are code: an HTML comment marker in them is not a comment, and
-    their own comments are stripped with the JS or CSS rules.
+    their own comments are stripped with the JS or CSS rules. With ``html``,
+    the bodies of ``_HTML_TEXT_ELEMENTS`` and ``<plaintext>`` are kept.
     """
     out = list(source)
     i, n = 0, len(source)
@@ -919,6 +925,11 @@ def _markup(source: str, raw_text: bool) -> str:
                 if rules is not None:
                     out[i:end] = _scan(source[i:end], rules)
                 i = end
+            elif html and name == "plaintext" and not tag.startswith("</"):
+                i = n
+            elif html and name in _HTML_TEXT_ELEMENTS and not tag.endswith("/>"):
+                close = re.compile(rf"</{name}\s*>", re.IGNORECASE).search(source, i)
+                i = close.start() if close else n
         else:
             i += 1
     return "".join(out)
@@ -931,6 +942,11 @@ def strip_xml(source: str) -> str:
 
 def strip_html(source: str) -> str:
     """Strip HTML comments and the comments in embedded scripts and styles."""
+    return _markup(source, raw_text=True, html=True)
+
+
+def strip_xml_document(source: str) -> str:
+    """Strip SVG and XHTML: scripts and styles as in HTML, other elements as XML."""
     return _markup(source, raw_text=True)
 
 
@@ -1102,7 +1118,8 @@ LANGUAGES_BY_SUFFIX: dict[str, Callable[[str], str]] = {
     **_suffixes(".nix", _rules(NIX)),
     **_suffixes(".graphql .gql", _rules(GRAPHQL)),
     **_suffixes(".cmake", _rules(CMAKE)),
-    **_suffixes(".html .htm .xhtml .vue .svelte .svg", strip_html),
+    **_suffixes(".html .htm .vue .svelte", strip_html),
+    **_suffixes(".xhtml .svg", strip_xml_document),
     **_suffixes(
         ".xml .plist .xsd .xsl .xslt .csproj .fsproj .vbproj .props .targets .xaml"
         " .storyboard .xib",

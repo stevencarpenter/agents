@@ -158,18 +158,21 @@ def run(args: argparse.Namespace) -> int:
     model_ids = sorted({res["model_id"] for *_, res in reviews if res["model_id"]})
     for case in cases:
         units = built[case["id"]][1]
-        by_rep = [
-            {u: res for c, r, u, res in reviews if c == case["id"] and r == rep and res["ok"]}
-            for rep in range(args.reps)
-        ]
+        # A rep with a failed unit is left out: its missing results would score as "no findings".
+        by_rep = []
+        for rep in range(args.reps):
+            mine = {u: res for c, r, u, res in reviews if c == case["id"] and r == rep}
+            if all(res["ok"] for res in mine.values()):
+                by_rep.append(mine)
         reps = [score_rep(case, units, results) for results in by_rep]
         hits = {t["id"]: sum(r["outcome"][t["id"]] for r in reps) for t in case["traps"]}
         for trap in case["traps"]:
             key = "safe" if trap["kind"] == "safe" else "ctx" if trap.get("context_required") else "bug"
             totals[key] += len(reps)
             totals[{"safe": "safe_fa", "ctx": "ctx_hit", "bug": "bug_hit"}[key]] += hits[trap["id"]]
-            trap_count += 1
-            stable += hits[trap["id"]] in (0, len(reps))
+            if reps:  # with no scored rep, stability is unknown, not perfect
+                trap_count += 1
+                stable += hits[trap["id"]] in (0, len(reps))
         extras += sum(r["extra"] for r in reps)
         for unit in units.values():
             sets = [
@@ -177,7 +180,8 @@ def run(args: argparse.Namespace) -> int:
                 for results in by_rep
                 if unit in results
             ]
-            jaccards.append(jaccard(sets))
+            if sets:
+                jaccards.append(jaccard(sets))
             hashes = {res["input_sha256"] for c, _, u, res in reviews if c == case["id"] and u == unit}
             input_ok &= len(hashes) == 1
         tokens += sum(
@@ -191,7 +195,7 @@ def run(args: argparse.Namespace) -> int:
     def rate(num: int, den: int) -> float | None:
         return round(num / den, 3) if den else None
 
-    runs = len(cases) * args.reps
+    runs = sum(row["reps"] for row in per_case)
     scores = {
         "recall": rate(totals["bug_hit"], totals["bug"]),
         "context_required_recall": rate(totals["ctx_hit"], totals["ctx"]),
@@ -224,7 +228,9 @@ def run(args: argparse.Namespace) -> int:
     for line in failed:
         print(f"FAILED {line}", file=sys.stderr)
     print(f"raw output in {root}")
-    if args.record:
+    if args.record and failed:
+        print(f"not recorded: {len(failed)} review(s) failed", file=sys.stderr)
+    elif args.record:
         with RESULTS.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record) + "\n")
         print(f"recorded -> {RESULTS}")

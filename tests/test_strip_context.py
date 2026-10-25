@@ -348,6 +348,16 @@ class SqlAndXmlStripTest(PositionContractTest):
         self.assertIn("<!-- keep -->", out)
         self.assertNotIn("gone", out)
 
+    def test_html_text_element_bodies_are_data(self) -> None:
+        """HTML reads `<!--` in a textarea or title as text; SVG reads it as a comment."""
+        src = "<TextArea><!-- keep --></textarea><title><!-- keep2 --></title><!-- gone -->\n"
+        out = self.assert_masked("a.html", src)
+        self.assertIn("<!-- keep -->", out)
+        self.assertIn("<!-- keep2 -->", out)
+        self.assertNotIn("gone", out)
+        out = self.assert_masked("a.svg", "<svg><title><!-- gone --></title></svg>\n")
+        self.assertNotIn("gone", out)
+
     def test_xml_comment_after_a_tag_still_strips(self) -> None:
         """Leaving the tag state must re-arm comment detection."""
         out = self.assert_masked("a.xml", '<a href="x">y</a><!-- gone -->\n')
