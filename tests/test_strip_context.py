@@ -152,6 +152,8 @@ class SlashStripTest(PositionContractTest):
         self.assertIn("/[/*]deny/.test(s);", out)
         self.assertIn("x = (a + b) / c;", out)
         self.assertNotIn("gone", out)
+        out = self.assert_masked("a.js", "x = o.for(a) / b; // gone\n")
+        self.assertNotIn("gone", out)
 
     def test_comment_inside_template_substitution_is_stripped(self) -> None:
         """Inside `${...}` the language is code again, so comments must go."""
@@ -568,7 +570,8 @@ STYLE_CASES: list[tuple[str, str, list[str], list[str]]] = [
         'SELECT "a--b" FROM t; /* outer /* inner */ tail */\n'
         "SELECT E'it\\'s -- keep2';\n"
         "DO $x$ BEGIN NULL; -- gone2\nEND $x$;\n"
-        "UPDATE c SET t = $$-- keep3$$, u = $q$ /* keep4 */ $q$;\n"),
+        "UPDATE c SET t = $$-- keep3$$, u = $q$ /* keep4 */ $q$;\n"
+        "SELECT a$b$c FROM t; -- gone3\nSELECT $u$ x; -- gone4\n"),
         ["SELECT '-- keep'", '"a--b"', "E'it\\'s -- keep2'", "END $x$;", "$$-- keep3$$", "/* keep4 */ $q$;"],
         ["gone", "outer", "inner", "tail"],
     ),

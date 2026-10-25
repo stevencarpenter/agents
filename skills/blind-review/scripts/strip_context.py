@@ -191,7 +191,9 @@ def _regex_allowed(source: str, i: int, out: list[str]) -> bool:
         j -= 1
         while j >= 0 and out[j] in " \t\r\n":
             j -= 1
-        return _word_before(out, j) in ("if", "while", "for", "with")
+        word = _word_before(out, j)
+        # shortcut: a ( or ) inside a string literal miscounts the match; fix by tracking tokens in the scan if it shows up.
+        return word in ("if", "while", "for", "with") and out[j - len(word) : j - len(word) + 1] != ["."]
     if out[j].isalnum() or out[j] in "_$":
         return _word_before(out, j) in _REGEX_KEYWORDS
     return False
@@ -743,7 +745,8 @@ LUA = [
     DQ,
     SQ,
 ]
-DOLLAR_QUOTE = r"\$(?:[A-Za-z_]\w*)?\$"
+# PostgreSQL identifiers may hold `$`, so `a$b$` is not a quote.
+DOLLAR_QUOTE = r"(?<![\w$])\$(?:[A-Za-z_]\w*)?\$"
 _ROUTINE_BODY_PRECEDER = re.compile(r"(?<!\w)(?:AS|DO(?:\s+LANGUAGE\s+\w+)?)\s*\Z", re.IGNORECASE)
 
 
@@ -752,9 +755,16 @@ def _same_text(m: re.Match[str]) -> re.Pattern[str]:
     return re.compile(re.escape(m.group(0)))
 
 
+def _dollar_quote_closed(source: str, i: int, out: list[str]) -> bool:
+    """Open a dollar quote only if its tag recurs; an unterminated one would hide the rest."""
+    tag = re.compile(DOLLAR_QUOTE).match(source, i)
+    return tag is not None and source.find(tag.group(0), tag.end()) >= 0
+
+
 def _sql_routine_body(source: str, i: int, out: list[str]) -> bool:
     """A dollar quote after ``AS`` or ``DO`` holds a routine body, not data."""
-    return _ROUTINE_BODY_PRECEDER.search("".join(out[max(0, i - 200) : i])) is not None
+    preceder = _ROUTINE_BODY_PRECEDER.search("".join(out[max(0, i - 200) : i]))
+    return preceder is not None and _dollar_quote_closed(source, i, out)
 
 
 SQL = [
@@ -765,7 +775,7 @@ SQL = [
     # `AS $$` and `DO $$` quote a routine body, which is code; any other
     # dollar-quoted text is string data.
     Rule("body", _rx(DOLLAR_QUOTE), _same_text, guard=_sql_routine_body),
-    _string(DOLLAR_QUOTE, _same_text, skip=None),
+    _string(DOLLAR_QUOTE, _same_text, skip=None, guard=_dollar_quote_closed),
     _string('"', skip='""'),
     _string("`", skip="``"),
 ]
