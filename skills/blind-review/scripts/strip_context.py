@@ -66,7 +66,7 @@ class Rule(NamedTuple):
     open: re.Pattern[str]
     close: Closer = EOL
     skip: re.Pattern[str] | None = None  # escape sequences inside a string
-    nested: re.Pattern[str] | None = None  # opener that nests a comment
+    nested: re.Pattern[str] | None = None  # opener that nests a comment, or a string's bracket
     multiline: bool = True  # False: a newline ends an unterminated string
     interp: tuple[tuple[str, str], ...] = ()  # (opener, closer) of code inside the string
     guard: Guard | None = None
@@ -89,10 +89,12 @@ def _string(
     interp: tuple[tuple[str, str], ...] = (),
     guard: Guard | None = None,
     kind: str = "string",
+    nested: bool = False,
 ) -> Rule:
     end = _rx(open_) if close is None else _rx(close) if isinstance(close, str) else close
     esc = _rx(skip) if isinstance(skip, str) else skip
-    return Rule(kind, _rx(open_), end, esc, None, multiline, interp, guard)
+    pairs = _rx("[" + re.escape("".join(_PAIRS)) + "]") if nested else None
+    return Rule(kind, _rx(open_), end, esc, pairs, multiline, interp, guard)
 
 
 def _keep(pattern: str) -> Rule:
@@ -182,8 +184,12 @@ def _regex_allowed(source: str, i: int, out: list[str]) -> bool:
         return True
     if out[j] == ")":
         # `if (ok) /re/` starts a statement; `(a + b) / c` divides.
+        literals = getattr(out, "literals", {})
         depth = 0
         while j >= 0:
+            if j in literals:  # a paren inside a string or regex is not syntax
+                j = literals[j] - 1
+                continue
             depth += {")": 1, "(": -1}.get(out[j], 0)
             if depth == 0:
                 break
@@ -192,7 +198,6 @@ def _regex_allowed(source: str, i: int, out: list[str]) -> bool:
         while j >= 0 and out[j] in " \t\r\n":
             j -= 1
         word = _word_before(out, j)
-        # shortcut: a ( or ) inside a string literal miscounts the match; fix by tracking tokens in the scan if it shows up.
         return word in ("if", "while", "for", "with") and out[j - len(word) : j - len(word) + 1] != ["."]
     if out[j].isalnum() or out[j] in "_$":
         return _word_before(out, j) in _REGEX_KEYWORDS
@@ -325,6 +330,9 @@ def _string_end(
     """Return (end of the literal, start of its closer or None if unterminated)."""
     close = _closer(rule, m)
     j, n = m.end(), len(source)
+    # `%q{a{b}}` balances its brackets, so an inner `}` does not close it.
+    bracket = m.group(0)[-1] if rule.nested and rule.nested.fullmatch(m.group(0)[-1]) else ""
+    depth = 0
     while j < n:
         # Interpolation first: Swift's `\(` would otherwise read as an escape.
         opener = next(((op, cl) for op, cl in rule.interp if source.startswith(op, j)), None)
@@ -336,7 +344,13 @@ def _string_end(
             if s and s.end() > j:
                 j = s.end()
                 continue
+        if bracket and source[j] == bracket:
+            depth, j = depth + 1, j + 1
+            continue
         c = close.match(source, j)
+        if c and depth:
+            depth, j = depth - 1, c.end()
+            continue
         if c:
             return c.end(), j
         if not rule.multiline and source[j] == "\n":
@@ -388,6 +402,7 @@ def _scan_code(source: str, out: list[str], i: int, rules: Sequence[Rule], close
                         c = closer.search(source, resumed)
                         resumed = c.end() if c else n
                     pending.clear()
+                    _literal(out, k + 1, resumed)
                     break
             if resumed is not None:
                 i = resumed
@@ -407,6 +422,7 @@ def _scan_code(source: str, out: list[str], i: int, rules: Sequence[Rule], close
                 i = start + 1
         elif rule.kind == "regex":
             i = start + (_scan_regex(source, start) or 1)
+            _literal(out, start, i)
         elif rule.kind == "body":
             # Code quoted as a literal, such as a PL/pgSQL `AS $$ ... $$` body.
             c = _closer(rule, m).search(source, m.end())
@@ -418,6 +434,7 @@ def _scan_code(source: str, out: list[str], i: int, rules: Sequence[Rule], close
             _blank(source, out, start, i)
         else:
             i, body_end = _string_end(source, out, rule, m, rules)
+            _literal(out, start, i)
             # An unterminated doc may be a misread; blanking to EOF would delete code.
             if rule.kind == "doc" and body_end is not None:
                 _blank(source, out, m.end(), body_end, keep_continuation=True)
@@ -426,9 +443,22 @@ def _scan_code(source: str, out: list[str], i: int, rules: Sequence[Rule], close
     return n
 
 
+class _Output(list[str]):
+    """Scan output that also maps each literal's last index to its first."""
+
+    literals: dict[int, int]
+
+
+def _literal(out: list[str], start: int, end: int) -> None:
+    """Record ``source[start:end]`` as a literal, so guards can skip over it."""
+    if end > start and isinstance(out, _Output):
+        out.literals[end - 1] = start
+
+
 def _scan(source: str, rules: Sequence[Rule]) -> str:
     """Strip comments and doc literals from ``source`` under ``rules``."""
-    out = list(source)
+    out = _Output(source)
+    out.literals = {}
     _scan_code(source, out, 0, rules)
     return "".join(out)
 
@@ -627,7 +657,7 @@ RUBY = [
     _heredoc(r"<<([~-]?)([\"'`]?)([A-Z_][A-Za-z0-9_]*)\2", name=3, indent=1),
     # Ruby regex literals may span lines (`/x`) and interpolate.
     _string(r"/(?![/*])", r"/[a-z]*", interp=HASH_BRACE, guard=_ruby_regex_allowed),
-    _string(r"%[qQwWiIrsx]?([^\w\s])", _delimited(1), interp=HASH_BRACE, guard=_ruby_regex_allowed),
+    _string(r"%[qQwWiIrsx]?([^\w\s])", _delimited(1), interp=HASH_BRACE, guard=_ruby_regex_allowed, nested=True),
     _comment("#"),
     _string('"', interp=HASH_BRACE),
     _string("'", skip=r"\\[\\']"),
@@ -638,7 +668,7 @@ PERL = [
     _keep(r"^__(?:END|DATA)__\b[\s\S]*"),
     _comment(r"^=[a-zA-Z]\w*", r"^=cut\b[^\n]*|\Z"),  # POD
     _heredoc(r"<<(~?)([\"']?)([A-Za-z_]\w*)\2", name=3, indent=1),
-    _string(r"(?<![\w$@%])(?:qq|qw|qx|qr|q|m)\s*([^\w\s=,;)])", _delimited(1)),
+    _string(r"(?<![\w$@%])(?:qq|qw|qx|qr|q|m)\s*([^\w\s=,;)])", _delimited(1), nested=True),
     _string(
         r"(?<![\w$@%])(?:s|tr|y)\s*([^\w\s=,;)(\[{<])",
         lambda m: re.compile(
@@ -956,7 +986,7 @@ def strip_python(source: str) -> str:
     return "".join(lines)
 
 
-_YAML_BLOCK_HEADER = re.compile(r"(?:^|[:-]\s)\s*(?:[!&]\S*\s+)*[|>][1-9+-]{0,2}$")
+_YAML_BLOCK_HEADER = re.compile(r"(?:^|[:-]\s)\s*(?:[!&]\S*\s+)*[|>]([1-9+-]{0,2})$")
 
 
 def strip_yaml(source: str) -> str:
@@ -972,17 +1002,18 @@ def strip_yaml(source: str) -> str:
     while i < len(lines):
         header = _scan(lines[i], YAML).rstrip()
         i += 1
-        if lines[i - 1].lstrip().startswith("#") or not _YAML_BLOCK_HEADER.search(header):
+        block = _YAML_BLOCK_HEADER.search(header)
+        if lines[i - 1].lstrip().startswith("#") or not block:
             continue
         parent = len(header) - len(header.lstrip(" "))
-        # shortcut: auto-detects content indentation and ignores an explicit
-        # indicator such as `|2`; parse the indicator if such files appear.
         start = i
         while i < len(lines) and not lines[i].strip():
             i += 1
         if i == len(lines):
             break
-        indent = len(lines[i]) - len(lines[i].lstrip(" "))
+        # `|2` fixes the body indentation, so a more indented first line does not set it.
+        explicit = next((int(c) for c in block.group(1) if c.isdigit()), 0)
+        indent = parent + explicit if explicit else len(lines[i]) - len(lines[i].lstrip(" "))
         if indent <= parent:
             i = start
             continue

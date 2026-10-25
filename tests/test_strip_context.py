@@ -154,6 +154,12 @@ class SlashStripTest(PositionContractTest):
         self.assertNotIn("gone", out)
         out = self.assert_masked("a.js", "x = o.for(a) / b; // gone\n")
         self.assertNotIn("gone", out)
+        # Parens inside literals do not shift the match to an outer `if (`.
+        for line in ('if (f(")") / 2) x(); // gone\n', "if (s.match(/\\)/) / 2) x(); // gone\n"):
+            out = self.assert_masked("a.js", line)
+            self.assertNotIn("gone", out)
+        out = self.assert_masked("a.js", 'if (s == "(") /[/*]deny/.test(s);\n')
+        self.assertIn("/[/*]deny/.test(s);", out)
 
     def test_comment_inside_template_substitution_is_stripped(self) -> None:
         """Inside `${...}` the language is code again, so comments must go."""
@@ -281,6 +287,12 @@ class HashStripTest(PositionContractTest):
         """An unmatched quote inside a block scalar must not hide later comments."""
         out = self.assert_masked("a.yml", 'run: |\n  echo "hi\nx: 1 # gone\n')
         self.assertIn('echo "hi', out)
+        self.assertNotIn("gone", out)
+
+    def test_yaml_explicit_indentation_indicator(self) -> None:
+        """With `|2` the body is two spaces deep even when its first line is deeper."""
+        out = self.assert_masked("a.yaml", "key: |2\n    intro\n  # deny\nx: 1 # gone\n")
+        self.assertIn("# deny", out)
         self.assertNotIn("gone", out)
 
 
@@ -489,15 +501,15 @@ STYLE_CASES: list[tuple[str, str, list[str], list[str]]] = [
     (
         "a.rb",
         ("# frozen_string_literal: true\n=begin\nBlock doc.\n=end\nx = /a#b/ # gone\n"
-        "s = <<~SQL\n  # keep\nSQL\nc = ?#\n__END__\n# data\n"),
-        ["frozen_string_literal: true", "/a#b/", "# keep", "?#", "# data"],
+        "s = <<~SQL\n  # keep\nSQL\nc = ?#\nq = %q{a{b} # keep2} # gone2\n__END__\n# data\n"),
+        ["frozen_string_literal: true", "/a#b/", "# keep", "?#", "%q{a{b} # keep2}", "# data"],
         ["Block doc", "gone"],
     ),
     ("Gemfile", "gem 'rails' # gone\n", ["gem 'rails'"], ["gone"]),
     (
         "a.pl",
-        "my $n = $#a; # gone\n=pod\n\nPOD doc.\n\n=cut\nmy @s = qw(a # keep);\n$x =~ s#a#b#;\n",
-        ["$#a;", "qw(a # keep)", "s#a#b#"],
+        "my $n = $#a; # gone\n=pod\n\nPOD doc.\n\n=cut\nmy @s = qw(a # keep);\n$x =~ s#a#b#;\nq{a{b} # keep2};\n",
+        ["$#a;", "qw(a # keep)", "s#a#b#", "q{a{b} # keep2}"],
         ["gone", "POD doc"],
     ),
     # Lua, Haskell, OCaml, F#, Erlang, Elixir, Julia, R, Clojure, Lisp, Zig, Solidity.
