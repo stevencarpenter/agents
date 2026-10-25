@@ -85,6 +85,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import warnings
 from collections.abc import Callable
 from pathlib import Path
@@ -572,15 +573,38 @@ LANGUAGES_BY_GLOB: list[tuple[str, Callable[[str], str]]] = [
 ]
 
 
-def _language(path_name: str) -> Callable[[str], str] | None:
-    """Return the stripper for a path, or None when its language is unknown."""
+# `#!/usr/bin/env -S python3 -u` names python; an executable with no suffix is common.
+_SHEBANG = re.compile(r"#![ \t]*(?:\S*/)?(?:env[ \t]+(?:-S[ \t]+)?(?:\S*/)?)?([a-z]+)")
+_SHEBANG_LANGUAGES = {
+    "sh": "bash", "bash": "bash", "zsh": "bash", "ksh": "bash", "dash": "bash",
+    "python": "python", "ruby": "ruby", "perl": "perl", "node": "javascript",
+}
+
+
+def _dispatch(path_name: str, source: str = "") -> tuple[str, Callable[[str], str]] | None:
+    """Return (token, stripper) for a path, or None when its language is unknown.
+
+    The token names only the language (``.py``, ``-Makefile``, ``-env``), so a
+    mechanical unit label carries no part of the path beyond that.
+    """
     path = Path(path_name)
     if path.name in LANGUAGES_BY_NAME:
-        return LANGUAGES_BY_NAME[path.name]
+        return "-" + path.name.lstrip("."), LANGUAGES_BY_NAME[path.name]
     for pattern, strip in LANGUAGES_BY_GLOB:
         if fnmatch.fnmatchcase(path.name, pattern):
-            return strip
-    return LANGUAGES_BY_SUFFIX.get(path.suffix.lower())
+            return "-" + pattern.split("*")[0].strip("."), strip
+    suffix = path.suffix.lower()
+    if suffix in LANGUAGES_BY_SUFFIX:
+        return suffix, LANGUAGES_BY_SUFFIX[suffix]
+    shebang = _SHEBANG.match(source)
+    lang = _SHEBANG_LANGUAGES.get(shebang.group(1)) if shebang else None
+    return ("-" + lang, _grammar(lang)) if lang else None
+
+
+def _language(path_name: str, source: str = "") -> Callable[[str], str] | None:
+    """Return the stripper for a path, or None when its language is unknown."""
+    found = _dispatch(path_name, source)
+    return found[1] if found else None
 
 
 def validate_strip(path_name: str, source: str, stripped: str) -> str | None:
@@ -609,14 +633,17 @@ def validate_strip(path_name: str, source: str, stripped: str) -> str | None:
             line = source.count("\n", 0, index) + 1
             return f"character rewritten at line {line} (not blanked)"
     if Path(path_name).suffix.lower() == ".py":
+        # A 200,000-term expression overflows the compiler's stack; that proves nothing.
         try:
             compile(source, path_name, "exec")
-        except SyntaxError:
+        except (SyntaxError, RecursionError, MemoryError):
             return None  # input was already unparseable; nothing to prove
         try:
             compile(stripped, path_name, "exec")
         except SyntaxError as exc:
             return f"stripped Python no longer parses ({exc.msg})"
+        except (RecursionError, MemoryError) as exc:
+            return f"stripped Python could not be compiled ({type(exc).__name__})"
     return None
 
 
@@ -627,7 +654,7 @@ def strip_source(path_name: str, source: str) -> tuple[str, str]:
     attached. An honestly-flagged unstripped file costs the blind arm some
     context; a silently mangled one poisons its findings.
     """
-    strip = _language(path_name)
+    strip = _language(path_name, source)
     if strip is None:
         return source, "copied-verbatim (unknown language)"
     try:
@@ -682,6 +709,14 @@ def process_file(rel: str, data: bytes) -> tuple[str | None, str]:
     return strip_source(rel, text)
 
 
+_PHYSICAL_LINE = re.compile(r"[^\n]*\n|[^\n]+\Z")
+
+
+def _physical_lines(text: str) -> list[str]:
+    """Split at newlines only, as git does; ``str.splitlines`` also splits at form feed."""
+    return _PHYSICAL_LINE.findall(text)
+
+
 def _unified_diff(base: str, head: str, rel: str) -> str:
     """Render one file's unified diff with git-compatible line termination.
 
@@ -701,8 +736,8 @@ def _unified_diff(base: str, head: str, rel: str) -> str:
     """
     lines = list(
         difflib.unified_diff(
-            base.splitlines(keepends=True),
-            head.splitlines(keepends=True),
+            _physical_lines(base),
+            _physical_lines(head),
             fromfile=f"a/{rel}",
             tofile=f"b/{rel}",
         )
@@ -796,9 +831,25 @@ def _base_and_head(
     return base_data, head_path.read_bytes() if head_path.is_file() else None
 
 
-def cmd_diff(args: argparse.Namespace) -> int:
+_NO_CONTENT = "skipped (no file content, such as a submodule)"
+
+
+def _repo_and_out(args: argparse.Namespace) -> tuple[Path, Path]:
+    """Resolve --repo and --out, refusing an --out inside the repo.
+
+    Raises:
+        SystemExit: When --out is inside --repo. Its manifest maps unit labels
+            to paths, and the next run would review it as an untracked file.
+    """
     repo = Path(args.repo).resolve()
     out = Path(args.out).resolve()
+    if out == repo or repo in out.parents:
+        raise SystemExit(f"--out {out} must be outside --repo {repo}")
+    return repo, out
+
+
+def cmd_diff(args: argparse.Namespace) -> int:
+    repo, out = _repo_and_out(args)
     # A tree from an earlier run can hold files this change no longer touches.
     for generated in ("base", "head"):
         shutil.rmtree(out / generated, ignore_errors=True)
@@ -808,7 +859,7 @@ def cmd_diff(args: argparse.Namespace) -> int:
     for base_rel, rel in changed:
         base_data, head_data = _base_and_head(repo, args.base, base_rel, rel)
 
-        entry = {"path": rel, "action": ""}
+        entry = {"path": rel, "action": "" if (base_data, head_data) != (None, None) else _NO_CONTENT}
         if base_rel != rel:
             entry["base_path"] = base_rel
         stripped_base = stripped_head = None
@@ -865,7 +916,7 @@ def _code_lines(text: str, indent_sensitive: bool) -> list[tuple[int, str, str]]
     ``rm -rf / tmp``) and keeps raw leading indentation when it is syntax.
     """
     rows = []
-    for number, line in enumerate(text.splitlines(), 1):
+    for number, line in enumerate(text.split("\n"), 1):
         body = line.strip()
         if not body or _BLANK_STRING.fullmatch(body):
             continue
@@ -874,6 +925,43 @@ def _code_lines(text: str, indent_sensitive: bool) -> list[tuple[int, str, str]]
             key = line[: len(line) - len(line.lstrip())] + key
         rows.append((number, key, line.rstrip()))
     return rows
+
+
+_HUNK_HEADER = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", re.MULTILINE)
+
+
+def _changed_ranges(old: list[str], new: list[str]) -> list[tuple[int, int, int, int]]:
+    """Return the (i1, i2, j1, j2) slices of ``old`` and ``new`` that differ.
+
+    git's histogram diff is used because ``difflib.SequenceMatcher`` is
+    quadratic on repeated lines: a lockfile bump took minutes.
+
+    Raises:
+        SystemExit: If git cannot compare the two line lists.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        a, b = Path(tmp, "a"), Path(tmp, "b")
+        a.write_text("".join(f"{line}\n" for line in old), encoding="utf-8")
+        b.write_text("".join(f"{line}\n" for line in new), encoding="utf-8")
+        result = subprocess.run(
+            ["git", "diff", "--no-index", "--no-ext-diff", "--no-textconv", "--no-color",
+             "--histogram", "-U0", str(a), str(b)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+    if result.returncode not in (0, 1):
+        raise SystemExit(f"git diff --no-index: {result.stderr.strip()}")
+    ranges = []
+    for m in _HUNK_HEADER.finditer(result.stdout):
+        old_count = 1 if m[2] is None else int(m[2])
+        new_count = 1 if m[4] is None else int(m[4])
+        # A count of 0 means the start names the line before the insertion point.
+        i1 = int(m[1]) - (1 if old_count else 0)
+        j1 = int(m[3]) - (1 if new_count else 0)
+        ranges.append((i1, i1 + old_count, j1, j1 + new_count))
+    return ranges
 
 
 def mechanical_hunks(rel: str, base: str, head: str) -> str:
@@ -894,13 +982,8 @@ def mechanical_hunks(rel: str, base: str, head: str) -> str:
     )
     old = _code_lines(base, sensitive)
     new = _code_lines(head, sensitive)
-    matcher = difflib.SequenceMatcher(
-        None, [k for _, k, _ in old], [k for _, k, _ in new], autojunk=False
-    )
     groups = []
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        if tag == "equal":
-            continue
+    for i1, i2, j1, j2 in _changed_ranges([k for _, k, _ in old], [k for _, k, _ in new]):
         rows = [f"-{n}|{d}" for n, _, d in old[i1:i2]]
         rows += [f"+{n}|{d}" for n, _, d in new[j1:j2]]
         groups.append("\n".join(rows))
@@ -915,8 +998,7 @@ def cmd_mechanical(args: argparse.Namespace) -> int:
     map lives only in manifest.json, which is for the dispatcher, never a
     reviewer. Files that cannot be stripped are omitted, not copied verbatim.
     """
-    repo = Path(args.repo).resolve()
-    out = Path(args.out).resolve()
+    repo, out = _repo_and_out(args)
     units = out / "units"
     # Output of an earlier run describes another revision. mechanical_review.py
     # globs units/, so a leftover unit would be reviewed as if it were current.
@@ -930,8 +1012,12 @@ def cmd_mechanical(args: argparse.Namespace) -> int:
         if base_rel != rel:
             entry["base_path"] = base_rel
         manifest.append(entry)
+        pair = _base_and_head(repo, args.base, base_rel, rel)
+        if pair == (None, None):
+            entry["action"] = _NO_CONTENT
+            continue
         texts = []
-        for data in _base_and_head(repo, args.base, base_rel, rel):
+        for data in pair:
             if data is None:
                 texts.append("")
                 continue
@@ -946,9 +1032,8 @@ def cmd_mechanical(args: argparse.Namespace) -> int:
                 entry["action"] = "no-code-change"
                 continue
             unit_count += 1
-            # The suffix (or a suffixless name such as Makefile) only names the language.
-            kind = Path(rel).suffix.lower() or "-" + Path(rel).name.lstrip(".")
-            label = f"f{unit_count:02d}{kind}"
+            found = _dispatch(rel, texts[-1] or texts[0])
+            label = f"f{unit_count:02d}{found[0] if found else ''}"
             entry.update(action="stripped", unit=label)
             (units / f"{label}.diff").write_text(f"file {label}\n{hunks}", encoding="utf-8")
     (out / "manifest.json").write_text(

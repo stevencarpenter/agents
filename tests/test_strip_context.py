@@ -18,6 +18,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
@@ -928,7 +929,8 @@ class DiffOutputTest(unittest.TestCase):
     def test_file_without_trailing_newline_yields_applicable_patch(self) -> None:
         """A missing final newline must not glue lines or file headers together."""
         with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
 
             def run(*a: str) -> None:
                 """Run a git command in the fixture repo."""
@@ -951,7 +953,7 @@ class DiffOutputTest(unittest.TestCase):
             ).stdout.strip()
             (repo / "one.py").write_text("a = 9\nb = 3")
             (repo / "two.py").write_text("c = 4\n")
-            out = repo / "_out"
+            out = Path(tmp) / "out"
             rc = strip_context.main(
                 ["diff", "--repo", str(repo), "--base", base, "--out", str(out)]
             )
@@ -983,7 +985,8 @@ class DiffOutputTest(unittest.TestCase):
     def test_untracked_file_is_included(self) -> None:
         """A newly added file is part of the change under review."""
         with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
 
             def run(*a: str) -> None:
                 """Run a git command in the fixture repo."""
@@ -1005,7 +1008,7 @@ class DiffOutputTest(unittest.TestCase):
             ).stdout.strip()
             (repo / "one.py").write_text("a = 2\n")
             (repo / "new.py").write_text('"""Doc."""\nb = 3\n')
-            out = repo / "_out"
+            out = Path(tmp) / "out"
             strip_context.main(
                 ["diff", "--repo", str(repo), "--base", base, "--out", str(out)]
             )
@@ -1019,7 +1022,8 @@ class DiffOutputTest(unittest.TestCase):
     def test_failure_on_either_side_survives_in_the_manifest(self) -> None:
         """A base that failed to strip must not be relabelled by a clean head."""
         with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
             for args in (
                 ("init", "-q", "-b", "main"),
                 ("config", "user.email", "t@example.com"),
@@ -1030,7 +1034,7 @@ class DiffOutputTest(unittest.TestCase):
             subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
             subprocess.run(["git", "-C", str(repo), "commit", "-qm", "base"], check=True)
             (repo / "a.py").write_text("x = 2\n")
-            out = repo / "_out"
+            out = Path(tmp) / "out"
             strip_context.main(["diff", "--repo", str(repo), "--out", str(out)])
             manifest = json.loads((out / "manifest.json").read_text())
             self.assertTrue(manifest["files"][0]["action"].startswith("copied-verbatim"))
@@ -1214,6 +1218,44 @@ class MechanicalModeTest(unittest.TestCase):
         )
         rc = strip_context.main(["mechanical", "--repo", str(repo), "--out", str(out)])
         self.assertEqual(rc, 0)
+        files = json.loads((out / "manifest.json").read_text())["files"]
+        self.assertEqual(files, [{"path": "sub", "action": strip_context._NO_CONTENT}])
+
+    def test_out_inside_repo_is_refused(self) -> None:
+        """A manifest left in the repo would be reviewed next run, with every path in it."""
+        out = self.run_mechanical({"a.py": "x = 1\n"}, {"a.py": "x = 2\n"})
+        repo = Path(json.loads((out / "manifest.json").read_text())["repo"])
+        with self.assertRaises(SystemExit):
+            strip_context.main(["mechanical", "--repo", str(repo), "--out", str(repo / "out")])
+
+    def test_label_names_only_the_language(self) -> None:
+        """`.env.production` must not put `production` in front of the reviewer."""
+        out = self.run_mechanical(
+            {".env.production": "A=1\n", "Dockerfile.payments": "FROM a\n", "deploy": "#!/bin/sh\necho a\n"},
+            {".env.production": "A=2\n", "Dockerfile.payments": "FROM b\n", "deploy": "#!/bin/sh\necho b\n"},
+        )
+        labels = sorted(f["unit"] for f in json.loads((out / "manifest.json").read_text())["files"])
+        self.assertEqual(labels, ["f01-env", "f02-Dockerfile", "f03-bash"])
+
+    def test_form_feed_does_not_shift_line_numbers(self) -> None:
+        """git counts only newlines, so a page break must not renumber later lines."""
+        out = self.run_mechanical({"a.py": "x = 1\n\x0c\ny = 2\n"}, {"a.py": "x = 1\n\x0c\ny = 3\n"})
+        self.assertIn("+3|y = 3", (out / "units" / "f01.py.diff").read_text())
+
+    def test_repeated_lines_diff_quickly(self) -> None:
+        """A lockfile bump is thousands of near-identical lines."""
+        record = '  "a": {{\n    "version": "{}",\n    "dev": true\n  }},\n'
+        base = "".join(record.format(1) for _ in range(4000))
+        head = "".join(record.format(2 if i % 50 == 0 else 1) for i in range(4000))
+        start = time.monotonic()
+        hunks = strip_context.mechanical_hunks("a.json", base, head)
+        self.assertLess(time.monotonic() - start, 5)
+        self.assertEqual(hunks.count('+'), 80)
+
+    def test_compiler_overflow_is_a_failed_validation(self) -> None:
+        """A huge generated expression must be labeled, not abort the run."""
+        _, action = strip_context.strip_source("a.py", "x = " + "+".join(["1"] * 200000) + "\n")
+        self.assertTrue(action.startswith(("stripped", "copied-verbatim")), action)
 
     def test_unknown_language_is_omitted_not_copied(self) -> None:
         """A file whose comments cannot be removed must not reach a reviewer."""
