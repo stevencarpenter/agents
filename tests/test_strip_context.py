@@ -305,8 +305,9 @@ class HashStripTest(PositionContractTest):
             out = self.assert_masked("a.yaml", value + "\ny: 1 # gone\n")
             self.assertIn("# deny", out, value)
             self.assertNotIn("gone", out, value)
-        out = self.assert_masked("a.yaml", "k: &a don't # gone\n")
-        self.assertNotIn("gone", out)
+        # A quote touching the anchor or tag is part of its name, so `#` starts a comment.
+        for src in ("k: &a don't # gone\n", 'k: &a"x # gone"\n', "k: !t'x # gone'\n"):
+            self.assertNotIn("gone", self.assert_masked("a.yaml", src), src)
 
 
 class SqlAndXmlStripTest(PositionContractTest):

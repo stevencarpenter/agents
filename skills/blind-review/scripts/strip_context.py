@@ -287,15 +287,17 @@ def _yaml_value_start(source: str, i: int, out: list[str]) -> bool:
     """A YAML quote opens a scalar only where a value starts, not in ``don't``.
 
     Anchors (``&a``) and tags (``!!str``) may sit between the indicator and the quote.
+    A quote touching one, as in ``&a"x``, is part of its name.
     """
     j = i - 1
     while True:
+        end = j
         while j >= 0 and source[j] in " \t":
             j -= 1
         k = j
         while k >= 0 and source[k] not in " \t\n[{":
             k -= 1
-        if k == j or source[k + 1] not in "&!":
+        if j == end or k == j or source[k + 1] not in "&!":
             break
         j = k
     return j < 0 or source[j] in "\n:-[{,?"
