@@ -137,6 +137,14 @@ class ReviewLogTest(unittest.TestCase):
         self.log.main(["reconcile"])
         self.assertEqual(self.log.load()[0][fid]["status"], "likely-addressed")
 
+    def test_reconcile_ignores_an_unchanged_inline_comment(self) -> None:
+        """The logged text is comment-free, so the current file must be stripped too."""
+        (self.repo / "a.py").write_text("x = 1\ny = eval(s)  # safe\n")
+        self.log.main(["log", "--out", str(self.out)])
+        self.log.main(["reconcile"])
+        (fid,) = self.log.load()[0]
+        self.assertEqual(self.log.load()[0][fid]["status"], "open")
+
 
 class SandboxTest(unittest.TestCase):
     """The fixed reviewer cwd must stay empty and must not name the repo."""

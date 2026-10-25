@@ -103,6 +103,21 @@ class PythonStripTest(PositionContractTest):
         src = '"""Doc."""\n\n\ndef f(x):\n    """Inner."""\n    return x + 1  # add\n'
         compile(self.assert_masked("a.py", src), "a.py", "exec")
 
+    def test_docstring_in_single_line_suite_is_removed(self) -> None:
+        """A docstring after `def f():` on the same line is still a docstring."""
+        src = 'def value(): """always safe"""; return 1\n'
+        out = self.assert_masked("a.py", src)
+        self.assertNotIn("always safe", out)
+        self.assertIn("return 1", out)
+        compile(out, "a.py", "exec")
+
+    def test_string_after_colon_in_an_expression_survives(self) -> None:
+        """Dict values, annotations, and lambda bodies are data, not docstrings."""
+        src = 'd = {"k": "v"}\nx: "int" = 1\nf = lambda: "w"\n'
+        out = self.assert_masked("a.py", src)
+        for literal in ('"v"', '"int"', '"w"'):
+            self.assertIn(literal, out)
+
 
 class SlashStripTest(PositionContractTest):
     """C-family stripping must survive regex literals and template strings."""
@@ -164,6 +179,18 @@ class SlashStripTest(PositionContractTest):
         for claim in ("a", "b", "c"):
             self.assertNotIn(claim, out.replace("let", ""))
         self.assertIn("let y = 2;", out)
+
+    def test_rust_lifetime_does_not_open_a_string(self) -> None:
+        """`'static` is a lifetime, so the comment after it must still go."""
+        out = self.assert_masked("a.rs", "fn value() -> &'static str { // always safe\n")
+        self.assertNotIn("always safe", out)
+        self.assertIn("&'static str {", out)
+
+    def test_rust_char_literals_still_hide_comment_markers(self) -> None:
+        """`'/'` and `'\\''` are char literals; the text after them is code."""
+        out = self.assert_masked("a.rs", "let a = '/'; let b = '\\''; // gone\n")
+        self.assertIn("let a = '/'; let b = '\\'';", out)
+        self.assertNotIn("gone", out)
 
     def test_template_substitution_tracks_nested_object_braces(self) -> None:
         """A `}` inside `${{...}}` must not close the interpolation."""
@@ -233,6 +260,20 @@ class HashStripTest(PositionContractTest):
         self.assertNotIn("gone", out)
         self.assertIn("echo hi", out)
 
+    def test_yaml_block_scalar_hash_is_data(self) -> None:
+        """An indented `#` in a `|` or `>` block scalar is string content."""
+        src = "pattern: |\n  # deny\nlist:\n  - >-\n    # keep\nother: 1 # gone\n"
+        out = self.assert_masked("a.yaml", src)
+        self.assertIn("# deny", out)
+        self.assertIn("# keep", out)
+        self.assertNotIn("gone", out)
+
+    def test_yaml_block_scalar_quote_does_not_desync(self) -> None:
+        """An unmatched quote inside a block scalar must not hide later comments."""
+        out = self.assert_masked("a.yml", 'run: |\n  echo "hi\nx: 1 # gone\n')
+        self.assertIn('echo "hi', out)
+        self.assertNotIn("gone", out)
+
 
 class SqlAndXmlStripTest(PositionContractTest):
     """The remaining supported families."""
@@ -287,6 +328,350 @@ class SqlAndXmlStripTest(PositionContractTest):
         out = self.assert_masked("a.xml", '<a href="x">y</a><!-- gone -->\n')
         self.assertIn('<a href="x">y</a>', out)
         self.assertNotIn("gone", out)
+
+
+# (file name, source, text that must survive, text that must be removed).
+# Each row pins one comment, docstring, or literal style of a major language.
+STYLE_CASES: list[tuple[str, str, list[str], list[str]]] = [
+    # Python: single-quoted and prefixed docstrings, implicit concatenation,
+    # line continuations, and comments that are really directives.
+    ("a.py", "def f():\n    'Single doc.'\n    return 1\n", ["return 1"], ["Single doc"]),
+    ("a.py", 'R"""Raw doc."""\nx = 1\n', ["x = 1"], ["Raw doc"]),
+    ("a.py", "def f():\n    '''Multi\n    line.'''\n", [], ["Multi", "line."]),
+    ("a.py", "x = 1\n'alpha' 'beta'\n", ["x = 1"], ["alpha", "beta"]),
+    ("a.py", "def f():\n    'cont\\\n    inued'\n", [], ["cont", "inued"]),
+    (
+        "a.py",
+        "#!/usr/bin/env python3\n# -*- coding: utf-8 -*-\n# gone\nx = 1\n",
+        ["#!/usr/bin/env python3", "coding: utf-8"],
+        ["gone"],
+    ),
+    (
+        "a.py",
+        '# /// script\n# dependencies = ["rich"]\n# ///\n# gone\n',
+        ['# dependencies = ["rich"]'],
+        ["gone"],
+    ),
+    ("a.pyi", 'def f() -> int:\n    """Stub doc."""\n', [], ["Stub doc"]),
+    # JavaScript and TypeScript.
+    ("a.mjs", "export const x = 1; // gone\n", ["export const x = 1;"], ["gone"]),
+    (
+        "a.tsx",
+        'const a = <a href="x">https://example.com/docs</a>; // gone\n',
+        ["https://example.com/docs"],
+        ["gone"],
+    ),
+    (
+        "a.ts",
+        '/// <reference types="node" />\n/** Doc. */\nexport const x = 1;\n',
+        ['/// <reference types="node" />'],
+        ["Doc."],
+    ),
+    ("a.js", "#!/usr/bin/env node\nconst x = 1; // gone\n", ["#!/usr/bin/env node"], ["gone"]),
+    # JVM, Swift, Dart, and C# text blocks, raw strings, and nested comments.
+    (
+        "A.java",
+        'String s = """\n  // keep\n  """; // gone\n/** Javadoc. */\n',
+        ["// keep"],
+        ["gone", "Javadoc"],
+    ),
+    ("a.kt", 'val p = """C:\\"""; // gone\n', ['"""C:\\"""'], ["gone"]),
+    (
+        "a.kt",
+        "/* outer /* inner */ tail */ val y = 1\n/** KDoc. */\n",
+        ["val y = 1"],
+        ["outer", "inner", "tail", "KDoc"],
+    ),
+    ("a.scala", "val s = 'sym; // gone\nval c = '\"'; // gone2\n", ["'\"'"], ["gone"]),
+    (
+        "a.swift",
+        'let s = #"a "quoted" // keep"#  // gone\n/* outer /* inner */ tail */ let y = 1\n',
+        ['#"a "quoted" // keep"#', "let y = 1"],
+        ["gone", "outer", "inner", "tail"],
+    ),
+    ("a.swift", 'let s = """\n  // keep\n  """\n/// Doc.\n', ["// keep"], ["Doc."]),
+    (
+        "a.dart",
+        "var s = r'C:\\'; // gone\nvar t = '''\n// keep\n''';\n/// Doc.\n",
+        ["r'C:\\'", "// keep"],
+        ["gone", "Doc."],
+    ),
+    (
+        "a.cs",
+        ('var p = @"C:\\dir\\"; // gone\nvar q = @"say ""hi"" // keep";\n'
+        "/// <summary>Doc.</summary>\n"),
+        ['""hi"" // keep'],
+        ["gone", "summary"],
+    ),
+    ("a.cs", 'var r = """\n  // keep "quoted"\n  """; // gone\n', ['// keep "quoted"'], ["gone"]),
+    ("a.groovy", "def re = /a\\/\\/b/ // gone\n", ["/a\\/\\/b/"], ["gone"]),
+    # C and C++: raw strings, digit separators, char literals.
+    (
+        "a.cpp",
+        'auto s = R"(a "// keep" b)"; // gone\nint n = 1\'000\'000; // gone2\n',
+        ['R"(a "// keep" b)"', "1'000'000;"],
+        ["gone"],
+    ),
+    ("a.cpp", 'auto s = R"x(a )" // keep)x"; // gone\n', ["// keep"], ["gone"]),
+    ("a.c", "char c = '\"'; /* gone */ char d = '/';\n", ["'\"'", "'/'"], ["gone"]),
+    ("a.cu", "int x = 1; // gone\n", ["int x = 1;"], ["gone"]),
+    # Go: raw strings and build directives.
+    (
+        "a.go",
+        ("//go:build linux\n// +build linux\n\n// Package doc.\npackage a\n"
+        "var s = `C:\\` // gone\n//go:embed x.txt\n"),
+        ["//go:build linux", "// +build linux", "//go:embed x.txt", "`C:\\`"],
+        ["Package doc", "gone"],
+    ),
+    # Rust: raw strings, doc attributes, doc comments, lifetimes.
+    (
+        "a.rs",
+        ('let s = r#"a "// keep" b"#; // gone\n#[doc = "Attr doc."]\n'
+        "fn f<'a>(x: &'a str) {} // gone2\n"),
+        ['r#"a "// keep" b"#', "fn f<'a>(x: &'a str) {}"],
+        ["gone", "Attr doc"],
+    ),
+    (
+        "a.rs",
+        '//! Crate doc.\n/// Item doc.\nfn g() { let s = "multi\n// keep\n"; }\n',
+        ["// keep"],
+        ["Crate doc", "Item doc"],
+    ),
+    # PHP: attributes, hash comments, heredocs, HTML outside the PHP tags.
+    (
+        "a.php",
+        ("<?php\n#[Attr]\n$a = 1; # gone\n// gone2\n$s = <<<EOT\n  # keep\n  EOT;\n"
+        "/** Doc. */\n?>\n<p>don't // keep2</p>\n"),
+        ["#[Attr]", "# keep", "don't // keep2"],
+        ["gone", "Doc."],
+    ),
+    # Stylesheets and JSON with comments.
+    (
+        "a.css",
+        "a { background: url(http://x/y.png); } /* gone */\n",
+        ["url(http://x/y.png)"],
+        ["gone"],
+    ),
+    ("a.scss", "$u: url(http://x/y.png); // gone\n/* gone2 */\n", ["url(http://x/y.png)"], ["gone"]),
+    (
+        "tsconfig.json",
+        '{\n  // gone\n  "a": "http://x" /* gone2 */\n}\n',
+        ['"a": "http://x"'],
+        ["gone"],
+    ),
+    # Shells.
+    (
+        "a.sh",
+        "#!/bin/bash\ncat <<EOF\n# keep\nEOF\necho it\\'s # gone\ncat <<-'X'\n\t# keep2\n\tX\n",
+        ["#!/bin/bash", "# keep", "# keep2", "it\\'s"],
+        ["gone"],
+    ),
+    ("a.sh", "x=$((1<<2)) # gone\n", ["x=$((1<<2))"], ["gone"]),
+    ("a.bash", "a=1;# gone\n", ["a=1;"], ["gone"]),
+    (".zshrc", "alias x='y' # gone\n", ["alias x='y'"], ["gone"]),
+    (
+        "a.ps1",
+        ("#Requires -Version 7\n<#\n.SYNOPSIS\nHelp doc.\n#>\n$s = 'it''s # keep' # gone\n"
+        '$h = @"\n# keep2\n"@\n'),
+        ["#Requires -Version 7", "'it''s # keep'", "# keep2"],
+        ["Help doc", "gone"],
+    ),
+    # Ruby and Perl: block docs, heredocs, regex and quote-like literals.
+    (
+        "a.rb",
+        ("# frozen_string_literal: true\n=begin\nBlock doc.\n=end\nx = /a#b/ # gone\n"
+        "s = <<~SQL\n  # keep\nSQL\nc = ?#\n__END__\n# data\n"),
+        ["frozen_string_literal: true", "/a#b/", "# keep", "?#", "# data"],
+        ["Block doc", "gone"],
+    ),
+    ("Gemfile", "gem 'rails' # gone\n", ["gem 'rails'"], ["gone"]),
+    (
+        "a.pl",
+        "my $n = $#a; # gone\n=pod\n\nPOD doc.\n\n=cut\nmy @s = qw(a # keep);\n$x =~ s#a#b#;\n",
+        ["$#a;", "qw(a # keep)", "s#a#b#"],
+        ["gone", "POD doc"],
+    ),
+    # Lua, Haskell, OCaml, F#, Erlang, Elixir, Julia, R, Clojure, Lisp, Zig, Solidity.
+    (
+        "a.lua",
+        ("local s = [[ -- keep ]] -- gone\n--[==[ block\ngone2 ]==] local y = 1\n"
+        "---@param x number\n"),
+        ["[[ -- keep ]]", "local y = 1"],
+        ["gone", "block", "@param"],
+    ),
+    (
+        "a.hs",
+        ("{-# LANGUAGE GADTs #-}\nx = a --> b -- gone\n{- outer {- inner -} tail -}\n"
+        "f' = 'a' -- gone2\n-- | Haddock.\n"),
+        ["{-# LANGUAGE GADTs #-}", "a --> b", "f' = 'a'"],
+        ["gone", "outer", "inner", "tail", "Haddock"],
+    ),
+    (
+        "a.ml",
+        ("let f = ( * ) (* outer (* inner *) tail *)\nlet c = '\"' (* gone *)\n"
+        "type 'a t = 'a list\n"),
+        ["( * )", "'\"'", "type 'a t = 'a list"],
+        ["outer", "inner", "tail", "gone"],
+    ),
+    (
+        "a.fs",
+        '/// Doc.\nlet s = @"C:\\" // gone\nlet t = """// keep"""\n',
+        ['"""// keep"""'],
+        ["Doc.", "gone"],
+    ),
+    ("a.erl", 'X = $%, % gone\nS = "% keep".\n', ["$%", '"% keep"'], ["gone"]),
+    (
+        "a.ex",
+        ('defmodule A do\n  @moduledoc """\n  Module doc.\n  """\n  @doc "Fun doc."\n'
+        "  def f, do: ?# # gone\n  def g, do: ~r/#keep/\nend\n"),
+        ["?#", "~r/#keep/"],
+        ["Module doc", "Fun doc", "gone"],
+    ),
+    (
+        "a.jl",
+        ('"""\n    f(x)\n\nJulia doc.\n"""\nfunction f(x) x\' end # gone\n'
+        '#= outer\n#= inner =# tail =#\ns = "keep # this"\n'),
+        ["x'", '"keep # this"'],
+        ["Julia doc", "gone", "outer", "inner", "tail"],
+    ),
+    (
+        "a.r",
+        "#' Roxygen doc.\nf <- function(x) x # gone\ns <- r\"(a # keep)\"\n",
+        ['r"(a # keep)"'],
+        ["Roxygen", "gone"],
+    ),
+    (
+        "a.clj",
+        '(defn f\n  "Fn doc."\n  [x] x) ; gone\n(def c \\;) ; gone2\n(def s "keep ; this")\n',
+        ["\\;", '"keep ; this"'],
+        ["Fn doc", "gone"],
+    ),
+    ("a.el", '(defun f (x)\n  "Fn doc."\n  x) ; gone\n', ["x)"], ["Fn doc", "gone"]),
+    (
+        "a.zig",
+        "const s =\n    \\\\ http://x // keep\n; // gone\n/// Doc.\n",
+        ["http://x // keep"],
+        ["gone", "Doc."],
+    ),
+    ("a.sol", "/// @notice Doc.\nuint x = 1; // gone\n", ["uint x = 1;"], ["Doc.", "gone"]),
+    # SQL: dollar quotes, quoted identifiers, E-strings, nested comments.
+    (
+        "a.sql",
+        ("CREATE FUNCTION f() RETURNS int AS $$ SELECT '-- keep' -- gone0\n$$ LANGUAGE sql; -- gone\n"
+        'SELECT "a--b" FROM t; /* outer /* inner */ tail */\n'
+        "SELECT E'it\\'s -- keep2';\n"),
+        ["SELECT '-- keep'", '"a--b"', "E'it\\'s -- keep2'"],
+        ["gone", "outer", "inner", "tail"],
+    ),
+    # Config formats.
+    ("a.yaml", "msg: don't # gone\nq: 'a # keep'\n", ["don't", "'a # keep'"], ["gone"]),
+    ("a.toml", "a = 1# gone\ns = '''\n# keep\n'''\n", ["# keep"], ["gone"]),
+    ("setup.cfg", "[x]\n; gone\n# gone2\nvalue = a # keep\n", ["a # keep"], ["gone"]),
+    ("a.properties", "! gone\n# gone2\nkey = a # keep\n", ["a # keep"], ["gone"]),
+    (
+        "Dockerfile",
+        "# syntax=docker/dockerfile:1\n# gone\nENV A=b # keep\nRUN <<EOF\n# keep2\nEOF\n",
+        ["# syntax=docker/dockerfile:1", "b # keep", "# keep2"],
+        ["gone"],
+    ),
+    (".gitignore", "# gone\nfoo #keep\n", ["foo #keep"], ["gone"]),
+    (
+        "Makefile",
+        'all:\n\techo "a # keep" # gone\nX = 1 \\# keep2\n',
+        ['"a # keep"', "\\# keep2"],
+        ["gone"],
+    ),
+    (
+        "justfile",
+        "# gone\nbuild:\n    #!/usr/bin/env bash\n    echo hi # gone2\n",
+        ["#!/usr/bin/env bash", "echo hi"],
+        ["gone"],
+    ),
+    (
+        "requirements-dev.txt",
+        "requests==2.0 # gone\npkg @ https://x/y#egg=z\n",
+        ["#egg=z"],
+        ["gone"],
+    ),
+    (
+        "CMakeLists.txt",
+        '#[[ block\ngone ]]\nset(X "a # keep") # gone2\n',
+        ['"a # keep"'],
+        ["block", "gone"],
+    ),
+    (
+        "a.tf",
+        '# gone\n// gone2\n/* gone3 */\nx = "${var.a} # keep"\ny = <<-EOT\n  # keep2\n  EOT\n',
+        ["# keep", "# keep2"],
+        ["gone"],
+    ),
+    ("a.nix", "{ x = 1; /* gone */ y = a // b; }\n", ["a // b"], ["gone"]),
+    (
+        "a.graphql",
+        ('"""\nType doc.\n"""\ntype A {\n  "Field doc."\n'
+        '  f(arg: String = "keep"): Int # gone\n}\n'),
+        ['"keep"'],
+        ["Type doc", "Field doc", "gone"],
+    ),
+    # Markup with embedded code.
+    (
+        "a.html",
+        ('<script>\nconst s = "<!-- keep -->"; // gone\n</script>\n'
+        "<style>a { color: red; } /* gone2 */</style>\n<![CDATA[ <!-- keep2 --> ]]>\n"
+        "<!-- gone3 -->\n"),
+        ['"<!-- keep -->"', "<!-- keep2 -->"],
+        ["gone"],
+    ),
+    (
+        "a.vue",
+        ('<template><p>x</p><!-- gone --></template>\n<script lang="ts">\n'
+        "const x: number = 1; // gone2\n</script>\n"
+        '<style lang="scss">\n$c: red; // gone3\n</style>\n'),
+        ["const x: number = 1;", "$c: red;"],
+        ["gone"],
+    ),
+    ("a.html", '<script type="text/template"><p>// keep</p></script>\n', ["// keep"], []),
+    # Interpolation that nests quotes, found in real code.
+    (
+        "a.sh",
+        'tag="$(curl "${u}" | grep \'"tag_name":\' | sed \'s/.*"([^"]+)".*/\\1/\')"\n# gone\n',
+        ['grep \'"tag_name":\''],
+        ["gone"],
+    ),
+    (
+        "a.rb",
+        'x << "#{items.map do |n|\n  "  - `#{n}` failed (#{s})."\nend.join}"\n# gone\n',
+        ["failed (#{s})."],
+        ["gone"],
+    ),
+    ("a.rb", "R = /\\A\n  (?:#{HEX}) | # gone\n  x/x\n", ["(?:#{HEX}) |"], []),
+    ("a.rb", "R = /\n  #{A}\n/x\n", ["#{A}"], []),
+    ("a.rb", "c = '\\1'\n/(#{f})(.*)/m\n", ["/(#{f})(.*)/m"], []),
+    ("a.kt", 'val s = "${m["k"]} // keep" // gone\n', ['"${m["k"]} // keep"'], ["gone"]),
+    ("a.swift", 'let s = "\\(f("a")) // keep" // gone\n', ['"\\(f("a")) // keep"'], ["gone"]),
+    ("a.json5", "{ $schema: 'https://x/y.json', // gone\n}\n", ["'https://x/y.json'"], ["gone"]),
+    (
+        "CMakeLists.txt",
+        'set(F -isysroot \\"${ROOT}\\")\n# gone\n',
+        ['\\"${ROOT}\\"'],
+        ["gone"],
+    ),
+    ("Makefile", "all:\n\t@# gone\n\t@echo hi\n", ["@echo hi"], ["gone"]),
+]
+
+
+class LanguageStyleTest(PositionContractTest):
+    """Every listed language keeps its literals and loses its comments and docs."""
+
+    def test_styles(self) -> None:
+        """Each row must strip as a space mask with the expected text in and out."""
+        for name, source, keep, drop in STYLE_CASES:
+            with self.subTest(name=name, source=source[:40]):
+                out = self.assert_masked(name, source)
+                for text in keep:
+                    self.assertIn(text, out)
+                for text in drop:
+                    self.assertNotIn(text, out)
 
 
 class DispatchTest(unittest.TestCase):
@@ -410,6 +795,25 @@ class DiffOutputTest(unittest.TestCase):
             self.assertIn("new.py", paths)
             self.assertNotIn("Doc.", (out / "head" / "new.py").read_text())
 
+    def test_failure_on_either_side_survives_in_the_manifest(self) -> None:
+        """A base that failed to strip must not be relabelled by a clean head."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            for args in (
+                ("init", "-q", "-b", "main"),
+                ("config", "user.email", "t@example.com"),
+                ("config", "user.name", "t"),
+            ):
+                subprocess.run(["git", "-C", str(repo), *args], check=True)
+            (repo / "a.py").write_text("def (:\nx = 1\n")  # base cannot be parsed
+            subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(repo), "commit", "-qm", "base"], check=True)
+            (repo / "a.py").write_text("x = 2\n")
+            out = repo / "_out"
+            strip_context.main(["diff", "--repo", str(repo), "--out", str(out)])
+            manifest = json.loads((out / "manifest.json").read_text())
+            self.assertTrue(manifest["files"][0]["action"].startswith("copied-verbatim"))
+
 
 
 class MechanicalModeTest(unittest.TestCase):
@@ -460,6 +864,14 @@ class MechanicalModeTest(unittest.TestCase):
         unit = (out / "units" / "f01.py.diff").read_text()
         self.assertEqual(unit, "file f01.py\n-6|    return a+b\n+6|    return a - b\n")
         self.assertNotIn("secret_auth", "".join(p.read_text() for p in (out / "units").iterdir()))
+
+    def test_added_docstring_writes_no_unit(self) -> None:
+        """A new docstring, single or multi-line, is documentation, not code."""
+        out = self.run_mechanical(
+            {"a.py": "def f():\n    return 1\n"},
+            {"a.py": "def f():\n    '''One.\n\n    Two.\n    '''\n    return 1\n"},
+        )
+        self.assertEqual(list((out / "units").iterdir()), [])
 
     def test_noise_only_change_writes_no_unit(self) -> None:
         """A change that touches only comments and spacing has nothing to review."""
@@ -555,10 +967,34 @@ class MechanicalModeTest(unittest.TestCase):
 
     def test_unknown_language_is_omitted_not_copied(self) -> None:
         """A file whose comments cannot be removed must not reach a reviewer."""
-        out = self.run_mechanical({"a.lua": "x = 1\n"}, {"a.lua": "x = 2 -- why\n"})
+        out = self.run_mechanical({"a.vb": "x = 1\n"}, {"a.vb": "x = 2 ' why\n"})
         self.assertEqual(list((out / "units").iterdir()), [])
         manifest = json.loads((out / "manifest.json").read_text())
         self.assertTrue(manifest["files"][0]["action"].startswith("omitted"))
+
+    def test_rerun_removes_stale_units_and_results(self) -> None:
+        """A rerun after the change is reverted must leave nothing to review."""
+        out = self.run_mechanical({"a.py": "x = 1\n"}, {"a.py": "x = 2\n"})
+        (out / "results").mkdir()
+        (out / "results" / "f01.py.json").write_text("{}")
+        repo = Path(json.loads((out / "manifest.json").read_text())["repo"])
+        (repo / "a.py").write_text("x = 1\n")
+        strip_context.main(["mechanical", "--repo", str(repo), "--out", str(out)])
+        self.assertEqual(list((out / "units").iterdir()), [])
+        self.assertFalse((out / "results").exists())
+
+    def test_unchanged_rename_has_no_code_change(self) -> None:
+        """A renamed file is compared with its original path, not as all-new."""
+        out = self.run_mechanical({"before.py": "x = 1\ny = 2\n"}, {})
+        repo = Path(json.loads((out / "manifest.json").read_text())["repo"])
+        subprocess.run(["git", "-C", str(repo), "mv", "before.py", "after.py"], check=True)
+        strip_context.main(["mechanical", "--repo", str(repo), "--out", str(out)])
+        self.assertEqual(list((out / "units").iterdir()), [])
+        manifest = json.loads((out / "manifest.json").read_text())
+        self.assertEqual(
+            manifest["files"],
+            [{"path": "after.py", "base_path": "before.py", "action": "no-code-change"}],
+        )
 
 
 def load_mechanical_review() -> ModuleType:

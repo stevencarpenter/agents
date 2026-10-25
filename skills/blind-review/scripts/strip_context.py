@@ -20,7 +20,8 @@ Subcommands:
                                           one unit per file, under anonymous
                                           labels, for context-free reviewers
 
-Documentation files (.md/.rst/.txt/.adoc) are omitted entirely. Unknown or
+Documentation files (.md/.rst/.txt/.adoc) are omitted entirely, except text
+files with a known language such as CMakeLists.txt and requirements.txt. Unknown or
 unparseable files are copied verbatim and flagged in manifest.json, except in
 mechanical mode, which omits them because their comments cannot be removed.
 """
@@ -28,82 +29,114 @@ mechanical mode, which omits them because their comments cannot be removed.
 from __future__ import annotations
 
 import argparse
+import ast
 import difflib
+import fnmatch
+import functools
 import io
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tokenize
+from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import NamedTuple
 
 DOC_SUFFIXES = {".md", ".rst", ".txt", ".adoc", ".mdx"}
-SLASH_SUFFIXES = {
-    ".c",
-    ".h",
-    ".cc",
-    ".cpp",
-    ".hpp",
-    ".cs",
-    ".css",
-    ".go",
-    ".java",
-    ".js",
-    ".jsx",
-    ".kt",
-    ".kts",
-    ".m",
-    ".mm",
-    ".proto",
-    ".rs",
-    ".scala",
-    ".swift",
-    ".ts",
-    ".tsx",
-}
-HASH_SUFFIXES = {
-    ".bash",
-    ".cfg",
-    ".conf",
-    ".hcl",
-    ".ini",
-    ".jl",
-    ".nix",
-    ".pl",
-    ".properties",
-    ".py",
-    ".r",
-    ".rb",
-    ".sh",
-    ".tf",
-    ".tfvars",
-    ".toml",
-    ".yaml",
-    ".yml",
-    ".zsh",
-}
-# Files with no suffix whose comment syntax is still known. A dotfiles repo is
-# mostly these, so falling through to copied-verbatim would leave most of a
-# diff unstripped.
-HASH_STEMS = {
-    "Brewfile",
-    "Dockerfile",
-    "Justfile",
-    "Makefile",
-    "justfile",
-    "makefile",
-    ".envrc",
-    ".gitignore",
-    ".gitattributes",
-}
-SQL_SUFFIXES = {".sql"}
-XML_SUFFIXES = {".html", ".htm", ".svg", ".vue", ".xhtml", ".xml"}
+BACKSLASH = re.compile(r"\\[\s\S]")
+EOL = re.compile(r"(?=\n)|\Z")
+Closer = re.Pattern[str] | Callable[[re.Match[str]], re.Pattern[str]]
+Guard = Callable[[str, int, list[str]], bool]
 
 
-# Characters after which a `/` opens a regex literal rather than dividing. This
-# is the standard lexical heuristic: a regex may follow an operator, a
-# delimiter, or the start of input, but not a value.
-_REGEX_PRECEDERS = set("(,=:[!&|?{};+-*%~^<>")
+class Rule(NamedTuple):
+    """One lexical construct: where it opens, where it closes, and what it is.
+
+    ``kind`` decides what happens to the text: "comment" is blanked, "doc"
+    keeps its delimiters and blanks its contents, "string" and "keep" (code
+    that looks like a comment, such as ``//go:build``) are left alone,
+    "regex" is a JS-style regex literal, and "heredoc" keeps a body that
+    starts on the next line.
+    """
+
+    kind: str
+    open: re.Pattern[str]
+    close: Closer = EOL
+    skip: re.Pattern[str] | None = None  # escape sequences inside a string
+    nested: re.Pattern[str] | None = None  # opener that nests a comment
+    multiline: bool = True  # False: a newline ends an unterminated string
+    interp: tuple[tuple[str, str], ...] = ()  # (opener, closer) of code inside the string
+    guard: Guard | None = None
+
+
+def _rx(pattern: str) -> re.Pattern[str]:
+    return re.compile(pattern, re.MULTILINE)
+
+
+def _comment(open_: str, close: str | Closer | None = None, nested: bool = False) -> Rule:
+    end = EOL if close is None else _rx(close) if isinstance(close, str) else close
+    return Rule("comment", _rx(open_), end, nested=_rx(open_) if nested else None)
+
+
+def _string(
+    open_: str,
+    close: str | Closer | None = None,
+    skip: re.Pattern[str] | str | None = BACKSLASH,
+    multiline: bool = True,
+    interp: tuple[tuple[str, str], ...] = (),
+    guard: Guard | None = None,
+    kind: str = "string",
+) -> Rule:
+    end = _rx(open_) if close is None else _rx(close) if isinstance(close, str) else close
+    esc = _rx(skip) if isinstance(skip, str) else skip
+    return Rule(kind, _rx(open_), end, esc, None, multiline, interp, guard)
+
+
+def _keep(pattern: str) -> Rule:
+    return Rule("keep", _rx(pattern))
+
+
+_PAIRS = {"(": ")", "[": "]", "{": "}", "<": ">"}
+
+
+def _delimited(group: int) -> Closer:
+    """Close a literal with the delimiter it opened with, or its bracket pair."""
+
+    def close(m: re.Match[str]) -> re.Pattern[str]:
+        delim = m.group(group)
+        return re.compile(re.escape(delim if len(delim) > 1 else _PAIRS.get(delim, delim)))
+
+    return close
+
+
+def _long_bracket(m: re.Match[str]) -> re.Pattern[str]:
+    """Close Lua and CMake ``[==[`` with ``]==]``."""
+    return re.compile(r"\]" + m.group(1) + r"\]")
+
+
+def _heredoc(open_: str, name: int, indent: int | None = None, tail: str = r"[ \t]*$") -> Rule:
+    """Build a heredoc rule whose body ends at a line holding the delimiter.
+
+    Args:
+        open_: Opener regex.
+        name: Group holding the delimiter word.
+        indent: Group that, when non-empty, allows an indented closer; None
+            always allows one.
+        tail: What may follow the delimiter on its line.
+    """
+
+    def close(m: re.Match[str]) -> re.Pattern[str]:
+        lead = r"[ \t]*" if indent is None or m.group(indent) else ""
+        return re.compile(rf"^{lead}{re.escape(m.group(name))}{tail}", re.MULTILINE)
+
+    return Rule("heredoc", _rx(open_), close)
+
+
+# No `<`: in JSX, `</a>` is a closing tag, not a regex after `<`.
+_REGEX_PRECEDERS = set("(,=:[!&|?{};+-*%~^>")
 _REGEX_KEYWORDS = frozenset(
     {
         "return",
@@ -120,36 +153,47 @@ _REGEX_KEYWORDS = frozenset(
         "else",
         "yield",
         "await",
+        "and",
+        "or",
+        "not",
+        "if",
+        "elsif",
+        "unless",
+        "when",
+        "while",
+        "until",
+        "split",
+        "grep",
     }
 )
 
 
-def _regex_allowed(out: list[str]) -> bool:
-    """Report whether a `/` at this position may open a regex literal.
+def _regex_allowed(source: str, i: int, out: list[str]) -> bool:
+    """Report whether a ``/`` at ``i`` may open a regex literal.
 
-    Args:
-        out: Output characters emitted so far, most recent last. Comment text
-            has already been blanked to spaces, so it cannot influence this.
-
-    Returns:
-        True when the preceding significant token permits a regex literal.
+    A regex may follow an operator, a delimiter, a keyword, or the start of
+    input, but not a value. ``out`` already has comments blanked, so a
+    comment cannot influence the decision.
     """
-    text = "".join(out)
-    stripped = text.rstrip()
-    if not stripped:
+    j = i - 1
+    while j >= 0 and out[j] in " \t\r\n":
+        j -= 1
+    if j < 0 or out[j] in _REGEX_PRECEDERS:
         return True
-    last = stripped[-1]
-    if last in _REGEX_PRECEDERS:
-        return True
-    if last.isalnum() or last == "_":
-        word = ""
-        for ch in reversed(stripped):
-            if ch.isalnum() or ch == "_":
-                word = ch + word
-            else:
-                break
-        return word in _REGEX_KEYWORDS
+    if out[j].isalnum() or out[j] in "_$":
+        k = j
+        while k >= 0 and (out[k].isalnum() or out[k] in "_$"):
+            k -= 1
+        return "".join(out[k + 1 : j + 1]) in _REGEX_KEYWORDS
     return False
+
+
+def _ruby_regex_allowed(source: str, i: int, out: list[str]) -> bool:
+    """Ruby ends a statement at a newline, so a line-leading ``/`` opens a regex."""
+    j = i - 1
+    while j >= 0 and out[j] in " \t":
+        j -= 1
+    return j < 0 or out[j] in "\r\n" or _regex_allowed(source, i, out)
 
 
 def _scan_regex(source: str, start: int) -> int:
@@ -161,8 +205,7 @@ def _scan_regex(source: str, start: int) -> int:
 
     Returns:
         The literal's length in characters including flags, or 0 when the text
-        does not terminate as a regex on this line (in which case the caller
-        falls back to comment handling).
+        does not terminate as a regex on this line.
     """
     i, n = start + 1, len(source)
     in_class = False
@@ -187,316 +230,834 @@ def _scan_regex(source: str, start: int) -> int:
     return 0
 
 
-def strip_python(source: str) -> str:
-    """Strip comments and docstrings from Python source, preserving positions.
-
-    Comments become spaces. A standalone string expression statement (docstring
-    or bare string constant) becomes '""' padded with blank lines. Falls back
-    by raising on tokenize errors; caller copies verbatim.
-    """
-    lines = source.splitlines(keepends=True)
-
-    def blank_span(srow: int, scol: int, erow: int, ecol: int, first_repl: str) -> None:
-        for row in range(srow, erow + 1):
-            idx = row - 1
-            line = lines[idx]
-            start = scol if row == srow else 0
-            end = ecol if row == erow else len(line.rstrip("\n\r"))
-            repl = first_repl if row == srow else ""
-            pad = " " * max(0, (end - start) - len(repl))
-            lines[idx] = line[:start] + repl + pad + line[end:]
-
-    prev_significant = None
-    for tok in tokenize.generate_tokens(io.StringIO(source).readline):
-        if tok.type == tokenize.COMMENT:
-            blank_span(*tok.start, *tok.end, "")
-        # Standalone string statement: previous significant token opens a
-        # suite or line (or start of file): treat as docstring and blank.
-        elif tok.type == tokenize.STRING and prev_significant in (
-            None,
-            "NEWLINE",
-            "INDENT",
-            "DEDENT",
-        ):
-            blank_span(*tok.start, *tok.end, '""')
-        if tok.type not in (tokenize.NL, tokenize.COMMENT):
-            prev_significant = tokenize.tok_name[tok.type]
-    return "".join(lines)
+def _not_digit_separator(source: str, i: int, out: list[str]) -> bool:
+    """Reject the ``'`` in C++14 ``1'000'000``; accept ``u8'a'``."""
+    j = i
+    while j > 0 and (source[j - 1].isalnum() or source[j - 1] in "_'."):
+        j -= 1
+    return not source[j:i][:1].isdigit()
 
 
-def strip_slash(source: str, nested_blocks: bool = False) -> str:
-    """Strip // and /* */ comments from C-family source, space-preserving.
-
-    String-aware for '\"', \"'\", and backtick template literals (escape-aware).
-    nested_blocks enables Rust-style nested /* /* */ */.
-    """
-    out: list[str] = []
-    i, n = 0, len(source)
-    state = "code"  # code | line | block | str
-    quote = ""
-    depth = 0
-    # Each entry is the unmatched-brace count for a template substitution.
-    # A stack is required because braces inside an interpolation can be
-    # object/block delimiters, and template literals can be nested.
-    subst_braces: list[int] = []
-    while i < n:
-        ch = source[i]
-        nxt = source[i + 1] if i + 1 < n else ""
-        if state == "code":
-            # A `/` after a value is division; after an operator or delimiter it
-            # opens a regex literal. Without this test `/a//b/` reads as code
-            # plus a line comment and everything after the inner `//` is
-            # deleted, handing the blind reviewer broken source.
-            if ch == "/" and nxt not in ("/", "*") and _regex_allowed(out):
-                consumed = _scan_regex(source, i)
-                if consumed:
-                    out.append(source[i : i + consumed])
-                    i += consumed
-                    continue
-            if ch == "/" and nxt == "/":
-                state = "line"
-                out.append("  ")
-                i += 2
-                continue
-            if ch == "/" and nxt == "*":
-                state = "block"
-                depth = 1
-                out.append("  ")
-                i += 2
-                continue
-            if ch in "\"'`":
-                state = "str"
-                quote = ch
-            # Braces in a template substitution are code, so only the brace
-            # that opened the current `${...}` returns to the template string.
-            if subst_braces:
-                if ch == "{":
-                    subst_braces[-1] += 1
-                elif ch == "}":
-                    subst_braces[-1] -= 1
-                    if subst_braces[-1] == 0:
-                        subst_braces.pop()
-                        state = "str"
-                        quote = "`"
-            out.append(ch)
-            i += 1
-        elif state == "line":
-            if ch == "\n":
-                state = "code"
-                out.append(ch)
-            else:
-                out.append(" ")
-            i += 1
-        elif state == "block":
-            if ch == "*" and nxt == "/":
-                depth -= 1
-                out.append("  ")
-                i += 2
-                if depth == 0:
-                    state = "code"
-                continue
-            if nested_blocks and ch == "/" and nxt == "*":
-                depth += 1
-                out.append("  ")
-                i += 2
-                continue
-            out.append(ch if ch == "\n" else " ")
-            i += 1
-        else:  # str
-            if ch == "\\":  # escapes are meaningful in templates too
-                out.append(ch + nxt)
-                i += 2
-                continue
-            if quote == "`" and ch == "$" and nxt == "{":
-                # Inside ${...} the language is code again, so a real comment
-                # there would otherwise survive into the "blind" copy.
-                subst_braces.append(1)
-                state = "code"
-                out.append(ch + nxt)
-                i += 2
-                continue
-            if ch == quote:
-                state = "code"
-            elif ch == "\n" and quote != "`":
-                state = "code"  # unterminated string line: bail to code
-            out.append(ch)
-            i += 1
-    return "".join(out)
+def _yaml_value_start(source: str, i: int, out: list[str]) -> bool:
+    """A YAML quote opens a scalar only where a value starts, not in ``don't``."""
+    j = i - 1
+    while j >= 0 and source[j] in " \t":
+        j -= 1
+    return j < 0 or source[j] in "\n:-[{,?"
 
 
-def strip_hash(source: str, indented_strings: bool = False) -> str:
-    """Strip #-comments (shell/yaml/toml/ruby/...), quote- and position-aware.
+_JULIA_DEF = re.compile(
+    r"\s*(?:@\w+\s+)*(?:function|macro|struct|mutable\s+struct|abstract\s+type"
+    r"|primitive\s+type|module|baremodule|const|[A-Za-z_]\w*(?:\{[^}\n]*\})?\([^)\n]*\)\s*=)"
+)
+_JULIA_STRING = re.compile(r'"""[\s\S]*?"""|"(?:[^"\\]|\\[\s\S])*"')
 
-    A # opens a comment only at line start or after whitespace, outside
-    quotes: so ${#var}, "a#b", and foo#bar survive.
 
-    When ``indented_strings`` is true (Nix), ``''...''`` is a string.
-    A closer is ``''`` not followed by ``'``, ``$``, or ``\\`` (Nix escapes).
-    ``${...}`` interpolations are Nix code again: comments strip, braces nest,
-    and an inner ``''...''`` is another indented string.
-    """
-    out: list[str] = []
-    stack: list[str] = ["code"]
-    quote = ""
-    interp_depth: list[int] = []
-    i = 0
-    n = len(source)
-    while i < n:
-        ch = source[i]
-        nxt = source[i + 1] if i + 1 < n else ""
-        state = stack[-1]
-        if state in ("code", "nix_interp"):
-            if indented_strings and ch == "'" and nxt == "'":
-                stack.append("nix_indent")
-                out.extend((ch, nxt))
-                i += 2
-                continue
-            if ch == "#" and (i == 0 or source[i - 1] in " \t\n\r"):
-                while i < n and source[i] != "\n":
-                    out.append(" ")
-                    i += 1
-                continue
-            if state == "nix_interp":
-                if ch == "{":
-                    interp_depth[-1] += 1
-                elif ch == "}":
-                    interp_depth[-1] -= 1
-                    out.append(ch)
-                    i += 1
-                    if interp_depth[-1] == 0:
-                        interp_depth.pop()
-                        stack.pop()
-                    continue
-            quotes = '"' if indented_strings else "\"'"
-            if ch in quotes:
-                stack.append("str")
-                quote = ch
-            out.append(ch)
-            i += 1
-        elif state == "nix_indent":
-            if ch == "'" and nxt == "'":
-                third = source[i + 2] if i + 2 < n else ""
-                if third in ("'", "$", "\\"):
-                    out.extend((ch, nxt, third))
-                    i += 3
-                    continue
-                stack.pop()
-                out.extend((ch, nxt))
-                i += 2
-                continue
-            if ch == "$" and nxt == "{":
-                stack.append("nix_interp")
-                interp_depth.append(1)
-                out.extend((ch, nxt))
-                i += 2
-                continue
-            out.append(ch)
-            i += 1
+def _julia_doc(source: str, i: int, out: list[str]) -> bool:
+    """A Julia docstring starts a line and is followed by a definition."""
+    if source[source.rfind("\n", 0, i) + 1 : i].strip():
+        return False
+    m = _JULIA_STRING.match(source, i)
+    return m is not None and _JULIA_DEF.match(source, m.end()) is not None
+
+
+def _graphql_description(source: str, i: int, out: list[str]) -> bool:
+    """A GraphQL string is a description unless it is a value."""
+    j = i - 1
+    while j >= 0 and source[j] in " \t\r\n":
+        j -= 1
+    return j < 0 or source[j] not in ':=[,"'
+
+
+def _blank(source: str, out: list[str], start: int, end: int, keep_continuation: bool = False) -> None:
+    """Blank ``source[start:end]`` in ``out``, keeping line breaks."""
+    for k in range(start, end):
+        ch = source[k]
+        if ch in "\r\n" or (keep_continuation and ch == "\\" and source[k + 1 : k + 2] in "\r\n"):
+            continue
+        out[k] = " "
+
+
+def _closer(rule: Rule, m: re.Match[str]) -> re.Pattern[str]:
+    return rule.close if isinstance(rule.close, re.Pattern) else rule.close(m)
+
+
+def _comment_end(source: str, rule: Rule, m: re.Match[str]) -> int:
+    close = _closer(rule, m)
+    if rule.nested is None:
+        c = close.search(source, m.end())
+        return c.end() if c else len(source)
+    depth, j = 1, m.end()
+    while depth:
+        c = close.search(source, j)
+        if c is None:
+            return len(source)
+        o = rule.nested.search(source, j, c.start())
+        if o is not None:
+            depth, j = depth + 1, o.end()
         else:
-            if ch == "\\" and quote == '"':
-                out.append(ch)
-                if nxt:
-                    out.append(nxt)
-                    i += 2
-                    continue
-            elif ch == quote:
-                stack.pop()
-            out.append(ch)
-            i += 1
+            depth, j = depth - 1, c.end()
+    return j
+
+
+def _string_end(
+    source: str, out: list[str], rule: Rule, m: re.Match[str], rules: Sequence[Rule]
+) -> tuple[int, int | None]:
+    """Return (end of the literal, start of its closer or None if unterminated)."""
+    close = _closer(rule, m)
+    j, n = m.end(), len(source)
+    while j < n:
+        # Interpolation first: Swift's `\(` would otherwise read as an escape.
+        opener = next(((op, cl) for op, cl in rule.interp if source.startswith(op, j)), None)
+        if opener is not None:
+            j = _scan_code(source, out, j + len(opener[0]), rules, close=opener[1])
+            continue
+        if rule.skip is not None:
+            s = rule.skip.match(source, j)
+            if s and s.end() > j:
+                j = s.end()
+                continue
+        c = close.match(source, j)
+        if c:
+            return c.end(), j
+        if not rule.multiline and source[j] == "\n":
+            return j, None
+        j += 1
+    return n, None
+
+
+def _scan_code(source: str, out: list[str], i: int, rules: Sequence[Rule], close: str = "") -> int:
+    """Blank comments in ``out`` from ``i``; return where scanning stopped.
+
+    With ``close`` set (``}`` or ``)``), the scan is inside an interpolation
+    such as ``${...}`` or ``$(...)`` and returns just after its closer.
+    """
+    n = len(source)
+    nest = {"}": "{", ")": "("}.get(close, "")
+    found: list[re.Match[str] | None | bool] = [False] * len(rules)
+    pending: list[re.Pattern[str]] = []
+    depth = 0
+    while i < n:
+        start, choice = n, None
+        for k, rule in enumerate(rules):
+            m = found[k]
+            if m is False or (isinstance(m, re.Match) and m.start() < i):
+                m = found[k] = rule.open.search(source, i)
+            if isinstance(m, re.Match) and m.start() < start:
+                start = m.start()
+        for k, rule in enumerate(rules):
+            m = found[k]
+            if not isinstance(m, re.Match) or m.start() != start:
+                continue
+            if rule.guard is None or rule.guard(source, start, out):
+                choice = (rule, m)
+                break
+        gap_end = start if choice else min(start + 1, n)
+        if close or pending:
+            resumed = None
+            for k in range(i, gap_end):
+                ch = source[k]
+                if close and ch == nest:
+                    depth += 1
+                elif close and ch == close:
+                    if depth == 0:
+                        return k + 1
+                    depth -= 1
+                if pending and ch == "\n":
+                    resumed = k + 1
+                    for closer in pending:
+                        c = closer.search(source, resumed)
+                        resumed = c.end() if c else n
+                    pending.clear()
+                    break
+            if resumed is not None:
+                i = resumed
+                continue
+        if choice is None:
+            i = gap_end
+            continue
+        rule, m = choice
+        if rule.kind == "keep":
+            i = m.end()
+        elif rule.kind == "heredoc":
+            # An opener with no closing line is a shift operator or a typo.
+            if _closer(rule, m).search(source, m.end()):
+                pending.append(_closer(rule, m))
+                i = m.end()
+            else:
+                i = start + 1
+        elif rule.kind == "regex":
+            i = start + (_scan_regex(source, start) or 1)
+        elif rule.kind == "comment":
+            i = _comment_end(source, rule, m)
+            _blank(source, out, start, i)
+        else:
+            i, body_end = _string_end(source, out, rule, m, rules)
+            # An unterminated doc may be a misread; blanking to EOF would delete code.
+            if rule.kind == "doc" and body_end is not None:
+                _blank(source, out, m.end(), body_end, keep_continuation=True)
+        if i <= start:
+            i = start + 1
+    return n
+
+
+def _scan(source: str, rules: Sequence[Rule]) -> str:
+    """Strip comments and doc literals from ``source`` under ``rules``."""
+    out = list(source)
+    _scan_code(source, out, 0, rules)
     return "".join(out)
 
 
-def strip_sql(source: str) -> str:
-    """Strip -- and /* */ comments from SQL, space-preserving, string-aware."""
-    out: list[str] = []
+# Shared rule groups. Order matters only between rules that open at the same
+# position: the earlier rule wins, so `"""` precedes `"` and `///` directives
+# precede `//`.
+SHEBANG = _keep(r"\A#!.*")
+BLOCK = _comment(r"/\*", r"\*/")
+NESTED_BLOCK = _comment(r"/\*", r"\*/", nested=True)
+LINE = _comment("//")
+URL_SAFE_LINE = _comment(r"(?<![A-Za-z]:)//")  # `https://x` in JSX text or CSS url()
+DQ = _string('"', multiline=False)
+SQ = _string("'", multiline=False)
+REGEX = Rule("regex", _rx(r"/(?![/*])"), guard=_regex_allowed)
+CODE_ESCAPE = _keep(r"\\[\s\S]")
+# A `'` followed by a name and no closing `'` is a lifetime, symbol, or type
+# variable (`'static`, `'sym`, `'a list`), not a char literal.
+CHAR = _string(r"(?<![\w'])'(?![A-Za-z_](?!'))", "'", multiline=False)
+SHELL_HASH = _comment(r"(?<![^\s;&|()])#")
+WORD_HASH = _comment(r"(?<!\S)#")
+LINE_HASH = _comment(r"^[ \t]*#")
+SH_HEREDOC = _heredoc(r"(?<!<)<<(-?)[ \t]*([\"']?)\\?([A-Za-z_]\w*)\2", name=3, indent=1)
+CHAR_LITERAL = _keep(r"(?<![\w?!])\?\\?[^\s]")  # Ruby, Elixir, Elisp `?#`
+DOLLAR_BRACE = (("${", "}"),)
+HASH_BRACE = (("#{", "}"),)
+SHELL_SUBST = (("$(", ")"), ("${", "}"))
+
+C = [
+    BLOCK,
+    LINE,
+    _string(
+        r'(?<!\w)(?:u8|[uUL])?R"([^()\\\s]{0,16})\(',
+        lambda m: re.compile(r"\)" + re.escape(m.group(1)) + '"'),
+        skip=None,
+    ),
+    DQ,
+    _string("'", multiline=False, guard=_not_digit_separator),
+]
+CSHARP = [
+    BLOCK,
+    LINE,
+    _string(r'\$*("{3,})', lambda m: re.compile(m.group(1)), skip=None),
+    _string(r'(?:\$@|@\$|@)"', '"', skip='""'),
+    DQ,
+    SQ,
+]
+JAVA = [BLOCK, LINE, _string('"""'), DQ, SQ]
+KOTLIN = [
+    NESTED_BLOCK,
+    LINE,
+    _string('"""', skip=None, interp=DOLLAR_BRACE),
+    _string('"', multiline=False, interp=DOLLAR_BRACE),
+    SQ,
+]
+SCALA = [
+    NESTED_BLOCK,
+    LINE,
+    _string('"""', skip=None, interp=DOLLAR_BRACE),
+    _string('"', multiline=False, interp=DOLLAR_BRACE),
+    CHAR,
+]
+SWIFT_INTERP = (("\\(", ")"),)
+SWIFT = [
+    NESTED_BLOCK,
+    LINE,
+    _string(r'(#+)("""|")', lambda m: re.compile(re.escape(m.group(2) + m.group(1))), skip=None),
+    _string('"""', interp=SWIFT_INTERP),
+    _string('"', multiline=False, interp=SWIFT_INTERP),
+]
+DART = [
+    NESTED_BLOCK,
+    LINE,
+    _string(r"(?<![\w$])r'''", "'''", skip=None),
+    _string(r'(?<![\w$])r"""', '"""', skip=None),
+    _string("'''", interp=DOLLAR_BRACE),
+    _string('"""', interp=DOLLAR_BRACE),
+    _string(r"(?<![\w$])r'", "'", skip=None, multiline=False),
+    _string(r'(?<![\w$])r"', '"', skip=None, multiline=False),
+    _string("'", multiline=False, interp=DOLLAR_BRACE),
+    _string('"', multiline=False, interp=DOLLAR_BRACE),
+]
+GROOVY = [
+    SHEBANG,
+    BLOCK,
+    LINE,
+    _string(r"\$/", r"/\$", skip=r"\$[$/]"),
+    REGEX,
+    _string("'''"),
+    _string('"""', interp=DOLLAR_BRACE),
+    SQ,
+    _string('"', multiline=False, interp=DOLLAR_BRACE),
+]
+GO = [
+    _keep(r"^//(?:go:|line |export |extern )[^\n]*"),
+    _keep(r"^// \+build[^\n]*"),
+    BLOCK,
+    LINE,
+    _string("`", skip=None),
+    DQ,
+    SQ,
+]
+RUST = [
+    _string(r'#!?\[doc\s*=\s*"', '"', kind="doc"),
+    NESTED_BLOCK,
+    LINE,
+    _string(r'(?<!\w)b?r(#*)"', lambda m: re.compile('"' + m.group(1)), skip=None),
+    _string('"'),
+    _string(r"'(?![A-Za-z_](?!'))", "'", multiline=False),
+]
+JS = [
+    SHEBANG,
+    _keep(r"^[ \t]*///[ \t]*<(?:reference|amd-module|amd-dependency)\b[^\n]*"),
+    BLOCK,
+    URL_SAFE_LINE,
+    REGEX,
+    _string("`", interp=DOLLAR_BRACE),
+    DQ,
+    SQ,
+]
+CSS = [BLOCK, DQ, SQ]
+SCSS = [BLOCK, URL_SAFE_LINE, DQ, SQ]
+JSONC = [BLOCK, LINE, DQ, SQ]  # JSON5 allows single-quoted strings
+ZIG = [_keep(r"\\\\[^\n]*"), LINE, DQ, SQ]
+PHP = [
+    _string(r"\A(?!<\?)", r"<\?(?:php\b|=)?", skip=None),  # HTML before the first tag
+    _string(r"\?>", r"<\?(?:php\b|=)?", skip=None),  # HTML between tags is output
+    _keep(r"#\["),  # PHP 8 attribute
+    BLOCK,
+    _comment(r"//|#", r"(?=\n|\?>)|\Z"),
+    _heredoc(r"<<<[ \t]*([\"']?)([A-Za-z_]\w*)\1", name=2, tail=r"\b"),
+    _string('"', interp=(("{$", "}"), ("${", "}"))),
+    _string("'", skip=r"\\[\\']"),
+]
+SHELL = [
+    SHEBANG,
+    CODE_ESCAPE,
+    SH_HEREDOC,
+    SHELL_HASH,
+    _string(r"\$'", "'"),
+    _string("'", skip=None),
+    _string('"', interp=SHELL_SUBST),
+    _string("`"),
+]
+FISH = [SHEBANG, CODE_ESCAPE, SHELL_HASH, _string("'", skip=r"\\['\\]"), _string('"')]
+MAKE = [
+    CODE_ESCAPE,
+    _comment(r"(?<![^\s;&|()@+-])#"),  # `@`, `-`, `+` prefix a recipe line
+    _string("'", skip=None, multiline=False),
+    _string('"', multiline=False),
+]
+JUST = [
+    SHEBANG,
+    _keep(r"^[ \t]+#!.*"),  # a shebang recipe line selects the interpreter
+    CODE_ESCAPE,
+    SH_HEREDOC,
+    SHELL_HASH,
+    _string('"""'),
+    _string("'''", skip=None),
+    _string("```", skip=None),
+    _string("'", skip=None),
+    _string('"', interp=SHELL_SUBST),
+    _string("`"),
+]
+DOCKER = [
+    _keep(r"\A(?:[ \t]*#[ \t]*(?:syntax|escape|check)[ \t]*=[^\n]*\n)+"),  # parser directives
+    SH_HEREDOC,
+    LINE_HASH,
+]
+LINE_HASH_ONLY = [LINE_HASH]
+INI = [_comment(r"^[ \t]*[#;]")]
+PROPERTIES = [_comment(r"^[ \t]*[#!]")]
+CONF = [WORD_HASH, _string("'", skip=None, multiline=False), _string('"', multiline=False)]
+REQUIREMENTS = [WORD_HASH]
+TOML = [
+    _comment("#"),
+    _string('"""'),
+    _string("'''", skip=None),
+    _string('"', multiline=False),
+    _string("'", skip=None, multiline=False),
+]
+YAML = [
+    WORD_HASH,
+    _string("'", skip="''", guard=_yaml_value_start),
+    _string('"', guard=_yaml_value_start),
+]
+RUBY = [
+    SHEBANG,
+    _keep(
+        r"^#[ \t]*(?:frozen_string_literal|encoding|coding|warn_indent|warn_past_scope"
+        r"|shareable_constant_value)[ \t]*:[^\n]*"
+    ),
+    _keep(r"^__END__\n[\s\S]*"),  # data section
+    _comment(r"^=begin\b", r"^=end\b[^\n]*|\Z"),
+    CHAR_LITERAL,
+    _heredoc(r"<<([~-]?)([\"'`]?)([A-Z_][A-Za-z0-9_]*)\2", name=3, indent=1),
+    # Ruby regex literals may span lines (`/x`) and interpolate.
+    _string(r"/(?![/*])", r"/[a-z]*", interp=HASH_BRACE, guard=_ruby_regex_allowed),
+    _string(r"%[qQwWiIrsx]?([^\w\s])", _delimited(1), interp=HASH_BRACE, guard=_ruby_regex_allowed),
+    _comment("#"),
+    _string('"', interp=HASH_BRACE),
+    _string("'", skip=r"\\[\\']"),
+    _string("`", interp=HASH_BRACE),
+]
+PERL = [
+    SHEBANG,
+    _keep(r"^__(?:END|DATA)__\b[\s\S]*"),
+    _comment(r"^=[a-zA-Z]\w*", r"^=cut\b[^\n]*|\Z"),  # POD
+    _heredoc(r"<<(~?)([\"']?)([A-Za-z_]\w*)\2", name=3, indent=1),
+    _string(r"(?<![\w$@%])(?:qq|qw|qx|qr|q|m)\s*([^\w\s=,;)])", _delimited(1)),
+    _string(
+        r"(?<![\w$@%])(?:s|tr|y)\s*([^\w\s=,;)(\[{<])",
+        lambda m: re.compile(
+            f"{re.escape(m.group(1))}(?:[^{re.escape(m.group(1))}\\\\]|\\\\.)*{re.escape(m.group(1))}"
+        ),
+    ),
+    REGEX,
+    _comment(r"(?<!\$)#"),
+    _string('"'),
+    _string("'", skip=r"\\[\\']"),
+    _string("`"),
+]
+R = [
+    _comment("#"),
+    _string(
+        r"(?<![\w.])[rR]([\"'])(-*)([\[({])",
+        lambda m: re.compile(re.escape(_PAIRS[m.group(3)] + m.group(2) + m.group(1))),
+        skip=None,
+    ),
+    _string('"'),
+    _string("'"),
+    _string("`"),
+]
+JULIA = [
+    _comment("#=", "=#", nested=True),
+    _string('"""', kind="doc", guard=_julia_doc),
+    _string('"', kind="doc", guard=_julia_doc),
+    _comment("#"),
+    _string('"""'),
+    _string('"'),
+    _string(r"(?<![\w')\]}.])'", "'", multiline=False),  # `x'` is a transpose
+    _string("`"),
+]
+ELIXIR = [
+    CHAR_LITERAL,
+    _string(r'@(?:moduledoc|doc|typedoc)\s+(?:~[sS])?"""', '"""', kind="doc"),
+    _string(r'@(?:moduledoc|doc|typedoc)\s+(?:~[sS])?"', '"', kind="doc"),
+    _string(r"~[a-zA-Z]+(\"\"\"|'''|[/|\"'(\[{<])", _delimited(1), interp=HASH_BRACE),
+    _comment("#"),
+    _string('"""', interp=HASH_BRACE),
+    _string("'''", interp=HASH_BRACE),
+    _string('"', interp=HASH_BRACE),
+    _string("'", interp=HASH_BRACE),
+]
+HASKELL = [
+    _keep(r"\{-#[\s\S]*?#-\}"),  # pragmas change compilation
+    _comment(r"\{-", r"-\}", nested=True),
+    _comment(r"--+(?![!#$%&*+./<=>?@\\^|~:])"),  # `-->` is an operator
+    _string('"'),
+    CHAR,
+]
+OCAML = [
+    _comment(r"\(\*(?!\))", r"\*\)", nested=True),  # `( * )` is an operator
+    _string(r"\{([a-z_]*)\|", lambda m: re.compile(re.escape("|" + m.group(1) + "}")), skip=None),
+    _string('"'),
+    CHAR,
+]
+FSHARP = [
+    _comment(r"\(\*(?!\))", r"\*\)", nested=True),
+    LINE,
+    _string('"""', skip=None),
+    _string('@"', '"', skip='""'),
+    _string('"'),
+    CHAR,
+]
+ERLANG = [_keep(r"\$\\?[\s\S]"), _comment("%"), _string('"'), _string("'")]
+CLOJURE = [
+    CODE_ESCAPE,  # char literals such as \; and \"
+    _string(
+        r'\((?:defn-?|defmacro|defmulti|defprotocol|ns)\s+(?:\^\S+\s+)*[^\s()\[\]{}";]+\s+"',
+        '"',
+        kind="doc",
+    ),
+    _comment(";"),
+    _string('"'),
+]
+LISP = [
+    CODE_ESCAPE,
+    CHAR_LITERAL,
+    _string(
+        r'\((?:defun|defmacro|cl-defun|cl-defmacro|defsubst|defgeneric)\s+\S+\s+\([^()]*\)\s+"',
+        '"',
+        kind="doc",
+    ),
+    _comment(r"#\|", r"\|#", nested=True),
+    _comment(";"),
+    _string('"'),
+]
+POWERSHELL = [
+    _keep(r"^(?i:#requires)\b[^\n]*"),
+    _comment("<#", "#>"),  # comment-based help
+    _keep(r"`[\s\S]"),
+    _string(r'@"[ \t]*$', r'^"@', skip=None),
+    _string(r"@'[ \t]*$", r"^'@", skip=None),
+    _comment(r"(?<![^\s;|&({])#"),
+    _string('"', skip=r'`[\s\S]|""'),
+    _string("'", skip="''"),
+]
+LUA = [
+    SHEBANG,
+    _comment(r"--\[(=*)\[", _long_bracket),
+    _comment("--"),
+    _string(r"\[(=*)\[", _long_bracket, skip=None),
+    DQ,
+    SQ,
+]
+SQL = [
+    _comment(r"/\*", r"\*/", nested=True),
+    _comment("--"),
+    _string(r"(?<!\w)[eE]'", "'", skip=r"\\[\s\S]|''"),
+    _string("'", skip="''"),
+    # A `$$` or `$tag$` body is almost always PL/pgSQL code, so scan it as SQL.
+    _keep(r"\$([A-Za-z_]\w*)?\$"),
+    _string('"', skip='""'),
+    _string("`", skip="``"),
+]
+HCL = [
+    _comment("#"),
+    BLOCK,
+    LINE,
+    _heredoc(r"<<(-?)([A-Za-z_]\w*)", name=2),
+    _string('"', interp=(("${", "}"), ("%{", "}")), multiline=False),
+]
+NIX = [
+    WORD_HASH,
+    BLOCK,
+    # `''` ends an indented string unless followed by `'`, `$`, or `\`.
+    _string("''", r"''(?![$'\\])", skip=r"''[$']|''\\[\s\S]", interp=DOLLAR_BRACE),
+    _string('"', interp=DOLLAR_BRACE),
+]
+GRAPHQL = [
+    _comment("#"),
+    _string('"""', skip=r'\\"""', kind="doc", guard=_graphql_description),
+    _string('"', multiline=False, kind="doc", guard=_graphql_description),
+    _string('"""', skip=r'\\"""'),
+    DQ,
+]
+CMAKE = [
+    CODE_ESCAPE,  # `\"` in an unquoted argument is not a quote
+    _comment(r"#\[(=*)\[", _long_bracket),
+    _comment("#"),
+    _string(r"\[(=*)\[", _long_bracket, skip=None),
+    _string('"'),
+]
+
+_TAG_NAME = re.compile(r"<([A-Za-z][\w:.-]*)")
+_SCRIPT_TYPES = {
+    "module",
+    "text/javascript",
+    "application/javascript",
+    "text/babel",
+    "text/typescript",
+    "application/json",
+    "application/ld+json",
+    "importmap",
+}
+
+
+def _embedded_rules(name: str, tag: str) -> Sequence[Rule] | None:
+    """Pick the rules for a ``<script>`` or ``<style>`` body, or None to keep it."""
+    lang_m = re.search(r"""\blang\s*=\s*["']?([\w-]+)""", tag, re.IGNORECASE)
+    lang = lang_m.group(1).lower() if lang_m else ""
+    if name == "style":
+        if lang in ("scss", "less", "sass"):
+            return SCSS
+        return CSS if lang in ("", "css", "postcss") else None
+    type_m = re.search(r"""\btype\s*=\s*["']?([^"'\s>]+)""", tag, re.IGNORECASE)
+    kind = type_m.group(1).lower() if type_m else ""
+    if lang in ("", "js", "javascript", "jsx", "ts", "typescript", "tsx") and (
+        not kind or kind in _SCRIPT_TYPES
+    ):
+        return JS
+    return None
+
+
+def _markup(source: str, raw_text: bool) -> str:
+    """Strip ``<!-- -->`` comments, keeping quoted attributes and CDATA.
+
+    With ``raw_text`` (HTML, Vue, Svelte, SVG), ``<script>`` and ``<style>``
+    bodies are code: an HTML comment marker in them is not a comment, and
+    their own comments are stripped with the JS or CSS rules.
+    """
+    out = list(source)
     i, n = 0, len(source)
-    state = "code"
     while i < n:
-        ch = source[i]
-        nxt = source[i + 1] if i + 1 < n else ""
-        if state == "code":
-            if ch == "-" and nxt == "-":
-                state = "line"
-                out.append("  ")
-                i += 2
-                continue
-            if ch == "/" and nxt == "*":
-                state = "block"
-                out.append("  ")
-                i += 2
-                continue
-            if ch == "'":
-                state = "str"
-            out.append(ch)
-            i += 1
-        elif state == "line":
-            if ch == "\n":
-                state = "code"
-                out.append(ch)
-            else:
-                out.append(" ")
-            i += 1
-        elif state == "block":
-            if ch == "*" and nxt == "/":
-                state = "code"
-                out.append("  ")
-                i += 2
-                continue
-            out.append(ch if ch == "\n" else " ")
-            i += 1
-        else:  # str: '' escapes a quote
-            if ch == "'" and nxt == "'":
-                out.append("''")
-                i += 2
-                continue
-            if ch == "'":
-                state = "code"
-            out.append(ch)
+        if source.startswith("<!--", i):
+            end = source.find("-->", i + 4)
+            end = n if end < 0 else end + 3
+            _blank(source, out, i, end)
+            i = end
+        elif source.startswith("<![CDATA[", i):
+            end = source.find("]]>", i + 9)
+            i = n if end < 0 else end + 3
+        elif source[i] == "<" and i + 1 < n and (source[i + 1].isalpha() or source[i + 1] in "/?!"):
+            # The validator cannot tell blanked attribute text from a stripped
+            # comment, so quoted attribute values must be skipped whole.
+            j, quote = i + 1, ""
+            while j < n and (quote or source[j] != ">"):
+                if quote:
+                    quote = "" if source[j] == quote else quote
+                elif source[j] in "\"'":
+                    quote = source[j]
+                j += 1
+            tag = source[i : j + 1]
+            i = j + 1
+            name_m = _TAG_NAME.match(tag)
+            name = name_m.group(1).lower() if name_m else ""
+            if raw_text and name in ("script", "style") and not tag.endswith("/>"):
+                close = re.compile(rf"</{name}\s*>", re.IGNORECASE).search(source, i)
+                end = close.start() if close else n
+                rules = _embedded_rules(name, tag)
+                if rules is not None:
+                    out[i:end] = _scan(source[i:end], rules)
+                i = end
+        else:
             i += 1
     return "".join(out)
 
 
 def strip_xml(source: str) -> str:
-    """Strip <!-- --> comments, space-preserving, attribute-aware."""
-    # Preserve `<!--` inside quoted attributes. The space-mask validator cannot
-    # distinguish blanked attribute text from a stripped comment.
-    out: list[str] = []
-    i, n = 0, len(source)
-    state = "text"
-    quote = ""
-    while i < n:
-        ch = source[i]
-        if state == "text":
-            if source.startswith("<!--", i):
-                state = "comment"
-                out.append("    ")
-                i += 4
-                continue
-            if ch == "<":
-                state = "tag"
-            out.append(ch)
+    """Strip XML comments."""
+    return _markup(source, raw_text=False)
+
+
+def strip_html(source: str) -> str:
+    """Strip HTML comments and the comments in embedded scripts and styles."""
+    return _markup(source, raw_text=True)
+
+
+_PY_CODING = re.compile(r"^[ \t\f]*#.*?coding[:=][ \t]*[-\w.]+")
+# PEP 723 inline script metadata: dependencies, so code, not commentary.
+_PY_SCRIPT_BLOCK = re.compile(r"^# /// [a-zA-Z0-9-]+$\s(?:^#(?:| .*)$\s)+^# ///$", re.MULTILINE)
+
+
+def strip_python(source: str) -> str:
+    """Strip comments and docstrings from Python source, preserving positions.
+
+    Comments become spaces, except a shebang, a PEP 263 coding line, and PEP
+    723 script metadata. A string expression statement (a docstring or a
+    bare string constant) keeps its prefix and quotes and loses its content,
+    so the result is a space mask that still parses. Raises on tokenize or
+    parse errors; the caller copies verbatim.
+    """
+    lines = source.splitlines(keepends=True)
+    kept_rows: set[int] = set()
+    if lines and lines[0].startswith("#!"):
+        kept_rows.add(1)
+    kept_rows.update(row for row in (1, 2) if row <= len(lines) and _PY_CODING.match(lines[row - 1]))
+    for m in _PY_SCRIPT_BLOCK.finditer(source):
+        first = source.count("\n", 0, m.start()) + 1
+        kept_rows.update(range(first, first + m.group().count("\n") + 1))
+
+    def blank_span(srow: int, scol: int, erow: int, ecol: int) -> None:
+        for row in range(srow, erow + 1):
+            line = lines[row - 1]
+            chars = list(line)
+            start = scol if row == srow else 0
+            end = ecol if row == erow else len(line)
+            # A backslash before a newline continues a single-quoted string.
+            _blank(line, chars, start, min(end, len(line)), keep_continuation=True)
+            lines[row - 1] = "".join(chars)
+
+    def char_col(row: int, byte_col: int) -> int:
+        # ast columns are UTF-8 byte offsets; tokenize and slicing use characters.
+        return len(lines[row - 1].encode("utf-8")[:byte_col].decode("utf-8"))
+
+    # A string expression statement's syntactic position, not the previous
+    # token, tells it apart from a dict value or annotation, and covers
+    # `def f(): """doc"""; return 1`.
+    docs = [
+        (
+            (node.lineno, char_col(node.lineno, node.col_offset)),
+            (node.end_lineno, char_col(node.end_lineno, node.end_col_offset)),
+        )
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, (str, bytes))
+        and node.end_lineno is not None
+        and node.end_col_offset is not None
+    ]
+    for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+        if tok.type == tokenize.COMMENT and tok.start[0] not in kept_rows:
+            blank_span(*tok.start, *tok.end)
+        elif tok.type == tokenize.STRING and any(s <= tok.start and tok.end <= e for s, e in docs):
+            text = tok.string
+            prefix = len(text) - len(text.lstrip("rRbBuU"))
+            quote = 3 if text[prefix : prefix + 3] in ('"""', "'''") else 1
+            (srow, scol), (erow, ecol) = tok.start, tok.end
+            blank_span(srow, scol + prefix + quote, erow, ecol - quote)
+    return "".join(lines)
+
+
+_YAML_BLOCK_HEADER = re.compile(r"(?:^|[:-]\s)\s*(?:[!&]\S*\s+)*[|>][1-9+-]{0,2}$")
+
+
+def strip_yaml(source: str) -> str:
+    """Strip YAML #-comments but keep block scalar bodies, which are data.
+
+    In ``key: |`` followed by ``  # deny``, the ``#`` line is string content.
+    Bodies are masked before the scan, so a quote inside one cannot shift
+    quote state for the lines after it, and are restored afterwards.
+    """
+    lines = source.splitlines(keepends=True)
+    body: set[int] = set()
+    i = 0
+    while i < len(lines):
+        header = _scan(lines[i], YAML).rstrip()
+        i += 1
+        if lines[i - 1].lstrip().startswith("#") or not _YAML_BLOCK_HEADER.search(header):
+            continue
+        parent = len(header) - len(header.lstrip(" "))
+        # shortcut: auto-detects content indentation and ignores an explicit
+        # indicator such as `|2`; parse the indicator if such files appear.
+        start = i
+        while i < len(lines) and not lines[i].strip():
             i += 1
-        elif state == "tag":
-            if ch in ('"', "'"):
-                state, quote = "attr", ch
-            elif ch == ">":
-                state = "text"
-            out.append(ch)
+        if i == len(lines):
+            break
+        indent = len(lines[i]) - len(lines[i].lstrip(" "))
+        if indent <= parent:
+            i = start
+            continue
+        while i < len(lines) and (not lines[i].strip() or lines[i].startswith(" " * indent)):
             i += 1
-        elif state == "attr":
-            if ch == quote:
-                state, quote = "tag", ""
-            out.append(ch)
-            i += 1
-        else:  # comment
-            if source.startswith("-->", i):
-                state = "text"
-                out.append("   ")
-                i += 3
-                continue
-            out.append(ch if ch == "\n" else " ")
-            i += 1
-    return "".join(out)
+        body.update(range(start, i))
+    masked = "".join(
+        "".join(c if c in "\r\n" else " " for c in line) if n in body else line
+        for n, line in enumerate(lines)
+    )
+    stripped = _scan(masked, YAML).splitlines(keepends=True)
+    return "".join(lines[n] if n in body else line for n, line in enumerate(stripped))
+
+
+def _rules(rules: Sequence[Rule]) -> Callable[[str], str]:
+    return functools.partial(_scan, rules=rules)
+
+
+def _suffixes(spec: str, strip: Callable[[str], str]) -> dict[str, Callable[[str], str]]:
+    return dict.fromkeys(spec.split(), strip)
+
+
+LANGUAGES_BY_SUFFIX: dict[str, Callable[[str], str]] = {
+    **_suffixes(".py .pyi .pyw", strip_python),
+    **_suffixes(
+        ".c .h .cc .cpp .cxx .c++ .hpp .hh .hxx .h++ .ino .m .mm .cu .cuh .glsl .vert .frag"
+        " .hlsl .metal .proto .sol",
+        _rules(C),
+    ),
+    **_suffixes(".cs", _rules(CSHARP)),
+    **_suffixes(".java", _rules(JAVA)),
+    **_suffixes(".kt .kts", _rules(KOTLIN)),
+    **_suffixes(".scala .sc", _rules(SCALA)),
+    **_suffixes(".swift", _rules(SWIFT)),
+    **_suffixes(".dart", _rules(DART)),
+    **_suffixes(".groovy .gradle", _rules(GROOVY)),
+    **_suffixes(".go", _rules(GO)),
+    **_suffixes(".rs", _rules(RUST)),
+    **_suffixes(".js .jsx .mjs .cjs .ts .tsx .mts .cts", _rules(JS)),
+    **_suffixes(".css", _rules(CSS)),
+    **_suffixes(".scss .sass .less", _rules(SCSS)),
+    **_suffixes(".json .jsonc .json5", _rules(JSONC)),
+    **_suffixes(".zig", _rules(ZIG)),
+    **_suffixes(".php", _rules(PHP)),
+    **_suffixes(".sh .bash .zsh .ksh", _rules(SHELL)),
+    **_suffixes(".fish", _rules(FISH)),
+    **_suffixes(".mk", _rules(MAKE)),
+    **_suffixes(".dockerfile", _rules(DOCKER)),
+    **_suffixes(".toml", _rules(TOML)),
+    **_suffixes(".yaml .yml", strip_yaml),
+    **_suffixes(".ini .cfg", _rules(INI)),
+    **_suffixes(".properties", _rules(PROPERTIES)),
+    **_suffixes(".conf", _rules(CONF)),
+    **_suffixes(".rb .rake .gemspec .ru", _rules(RUBY)),
+    **_suffixes(".pl .pm", _rules(PERL)),
+    **_suffixes(".r", _rules(R)),
+    **_suffixes(".jl", _rules(JULIA)),
+    **_suffixes(".ex .exs", _rules(ELIXIR)),
+    **_suffixes(".hs", _rules(HASKELL)),
+    **_suffixes(".ml .mli", _rules(OCAML)),
+    **_suffixes(".fs .fsi .fsx", _rules(FSHARP)),
+    **_suffixes(".erl .hrl", _rules(ERLANG)),
+    **_suffixes(".clj .cljs .cljc .edn", _rules(CLOJURE)),
+    **_suffixes(".el .lisp", _rules(LISP)),
+    **_suffixes(".ps1 .psm1 .psd1", _rules(POWERSHELL)),
+    **_suffixes(".lua", _rules(LUA)),
+    **_suffixes(".sql", _rules(SQL)),
+    **_suffixes(".tf .tfvars .hcl", _rules(HCL)),
+    **_suffixes(".nix", _rules(NIX)),
+    **_suffixes(".graphql .gql", _rules(GRAPHQL)),
+    **_suffixes(".cmake", _rules(CMAKE)),
+    **_suffixes(".html .htm .xhtml .vue .svelte .svg", strip_html),
+    **_suffixes(
+        ".xml .plist .xsd .xsl .xslt .csproj .fsproj .vbproj .props .targets .xaml"
+        " .storyboard .xib",
+        strip_xml,
+    ),
+}
+# Files with no suffix, or whose suffix would mislead (CMakeLists.txt is not
+# documentation). A dotfiles repo is mostly these.
+LANGUAGES_BY_NAME: dict[str, Callable[[str], str]] = {
+    **_suffixes("Dockerfile Containerfile", _rules(DOCKER)),
+    **_suffixes("Makefile makefile GNUmakefile", _rules(MAKE)),
+    **_suffixes("Justfile justfile .justfile", _rules(JUST)),
+    **_suffixes(
+        "Brewfile Gemfile Rakefile Podfile Vagrantfile Guardfile Fastfile Appfile Dangerfile",
+        _rules(RUBY),
+    ),
+    **_suffixes("CMakeLists.txt", _rules(CMAKE)),
+    **_suffixes(
+        ".envrc .env .bashrc .bash_profile .bash_aliases .bash_logout .profile .zshrc"
+        " .zshenv .zprofile .zlogin .zlogout",
+        _rules(SHELL),
+    ),
+    **_suffixes(
+        ".gitignore .gitattributes .dockerignore .npmignore .prettierignore .eslintignore"
+        " .helmignore CODEOWNERS",
+        _rules(LINE_HASH_ONLY),
+    ),
+    **_suffixes(
+        ".editorconfig .gitconfig .gitmodules .npmrc .flake8 .pylintrc .coveragerc",
+        _rules(INI),
+    ),
+    **_suffixes("go.mod go.work", _rules(GO)),
+    **_suffixes("Pipfile", _rules(TOML)),
+}
+LANGUAGES_BY_GLOB: list[tuple[str, Callable[[str], str]]] = [
+    ("requirements*.txt", _rules(REQUIREMENTS)),
+    ("constraints*.txt", _rules(REQUIREMENTS)),
+    ("Dockerfile.*", _rules(DOCKER)),
+    ("Containerfile.*", _rules(DOCKER)),
+    (".env.*", _rules(SHELL)),
+]
+
+
+def _language(path_name: str) -> Callable[[str], str] | None:
+    """Return the stripper for a path, or None when its language is unknown."""
+    path = Path(path_name)
+    if path.name in LANGUAGES_BY_NAME:
+        return LANGUAGES_BY_NAME[path.name]
+    for pattern, strip in LANGUAGES_BY_GLOB:
+        if fnmatch.fnmatchcase(path.name, pattern):
+            return strip
+    return LANGUAGES_BY_SUFFIX.get(path.suffix.lower())
 
 
 def validate_strip(path_name: str, source: str, stripped: str) -> str | None:
@@ -543,31 +1104,17 @@ def strip_source(path_name: str, source: str) -> tuple[str, str]:
     attached. An honestly-flagged unstripped file costs the blind arm some
     context; a silently mangled one poisons its findings.
     """
-    name = Path(path_name).name
-    suffix = Path(path_name).suffix.lower()
+    strip = _language(path_name)
+    if strip is None:
+        return source, "copied-verbatim (unknown language)"
     try:
-        if suffix == ".py":
-            stripped, action = strip_python(source), "stripped"
-        elif suffix in SLASH_SUFFIXES:
-            stripped = strip_slash(source, nested_blocks=suffix == ".rs")
-            action = "stripped"
-        elif suffix in HASH_SUFFIXES or name in HASH_STEMS:
-            stripped, action = (
-                strip_hash(source, indented_strings=suffix == ".nix"),
-                "stripped",
-            )
-        elif suffix in SQL_SUFFIXES:
-            stripped, action = strip_sql(source), "stripped"
-        elif suffix in XML_SUFFIXES:
-            stripped, action = strip_xml(source), "stripped"
-        else:
-            return source, "copied-verbatim (unknown language)"
+        stripped = strip(source)
     except (tokenize.TokenError, IndentationError, SyntaxError):
         return source, "copied-verbatim (parse error)"
     reason = validate_strip(path_name, source, stripped)
     if reason is not None:
         return source, f"copied-verbatim (strip validation failed: {reason})"
-    return stripped, action
+    return stripped, "stripped"
 
 
 def _is_binary(data: bytes) -> bool:
@@ -601,8 +1148,7 @@ def _git(repo: Path, *args: str) -> str:
 
 def process_file(rel: str, data: bytes) -> tuple[str | None, str]:
     """Return (stripped_text_or_None, action) for raw file content."""
-    suffix = Path(rel).suffix.lower()
-    if suffix in DOC_SUFFIXES:
+    if Path(rel).suffix.lower() in DOC_SUFFIXES and _language(rel) is None:
         return None, "omitted-doc"
     if _is_binary(data):
         return None, "skipped-binary"
@@ -677,20 +1223,39 @@ def _assert_diff_applies(repo: Path, diff_path: Path) -> None:
         )
 
 
-def _changed_files(repo: Path, base: str) -> list[str]:
-    """List files changed between ``base`` and the worktree, untracked included."""
+def _changed_files(repo: Path, base: str) -> list[tuple[str, str]]:
+    """List (base_path, head_path) changed between ``base`` and the worktree.
+
+    The two paths differ only for a rename, whose base must be read from the
+    original path. Untracked files are included.
+    """
     # Include untracked files so both review passes receive the same changes.
     # -z: without it git quotes unusual names ("caf\303\251.py"), which then match no file.
-    tracked = _git(repo, "diff", "--name-only", "-z", base).split("\0")
+    fields = _git(repo, "diff", "--name-status", "-M", "-z", base).split("\0")
+    pairs: list[tuple[str, str]] = []
+    i = 0
+    while i < len(fields) and fields[i]:
+        if fields[i].startswith(("R", "C")):  # C appears under diff.renames=copies
+            pairs.append((fields[i + 1], fields[i + 2]))
+            i += 3
+        else:
+            pairs.append((fields[i + 1], fields[i + 1]))
+            i += 2
     untracked = _git(repo, "ls-files", "--others", "--exclude-standard", "-z").split("\0")
-    return list(dict.fromkeys(rel for rel in [*tracked, *untracked] if rel))
+    pairs += [(rel, rel) for rel in untracked if rel]
+    return list(dict.fromkeys(pairs))
 
 
-def _base_and_head(repo: Path, base: str, rel: str) -> tuple[bytes | None, bytes | None]:
-    """Return the file's bytes at ``base`` and in the worktree; None when absent."""
+def _base_and_head(
+    repo: Path, base: str, base_rel: str, rel: str
+) -> tuple[bytes | None, bytes | None]:
+    """Return the bytes of ``base_rel`` at ``base`` and of ``rel`` in the worktree.
+
+    Either is None when absent.
+    """
     try:
         base_data: bytes | None = subprocess.run(
-            ["git", "-C", str(repo), "show", f"{base}:{rel}"],
+            ["git", "-C", str(repo), "show", f"{base}:{base_rel}"],
             capture_output=True,
             check=True,
         ).stdout
@@ -714,10 +1279,12 @@ def cmd_diff(args: argparse.Namespace) -> int:
     changed = _changed_files(repo, args.base)
     manifest: list[dict[str, str]] = []
     diff_chunks: list[str] = []
-    for rel in changed:
-        base_data, head_data = _base_and_head(repo, args.base, rel)
+    for base_rel, rel in changed:
+        base_data, head_data = _base_and_head(repo, args.base, base_rel, rel)
 
         entry = {"path": rel, "action": ""}
+        if base_rel != rel:
+            entry["base_path"] = base_rel
         stripped_base = stripped_head = None
         for label, data, tree in (
             ("base", base_data, "base"),
@@ -726,7 +1293,10 @@ def cmd_diff(args: argparse.Namespace) -> int:
             if data is None:
                 continue
             stripped, action = process_file(rel, data)
-            entry["action"] = action
+            # A failure on either side must stay visible; a clean head must not
+            # relabel a base that was copied verbatim.
+            if entry["action"] in ("", "stripped"):
+                entry["action"] = action
             if stripped is None:
                 continue
             dest = out / tree / rel
@@ -754,22 +1324,24 @@ def cmd_diff(args: argparse.Namespace) -> int:
 
 
 # Leading whitespace is syntax here, so a re-indent is a code change.
-INDENT_SENSITIVE_SUFFIXES = {".py", ".yaml", ".yml"}
-INDENT_SENSITIVE_STEMS = {"Makefile", "makefile"}
+INDENT_SENSITIVE_SUFFIXES = {".py", ".pyi", ".pyw", ".yaml", ".yml", ".hs", ".fs", ".fsx", ".mk"}
+INDENT_SENSITIVE_STEMS = {"Makefile", "makefile", "GNUmakefile"}
+# A line holding only a blanked docstring or one of its quote delimiters.
+_BLANK_STRING = re.compile(r"""[rRbBuU]{0,2}(\"\"\"|'''|"|')(?:\s*\1)?""")
 
 
 def _code_lines(text: str, indent_sensitive: bool) -> list[tuple[int, str, str]]:
     """Return (line_number, compare_key, display) for each line that holds code.
 
     Blank lines (including comment-only lines, which the stripper blanked) and
-    the ``""`` docstring placeholder are dropped. The key collapses each run of
+    lines holding only a blanked docstring or its quotes are dropped. The key collapses each run of
     whitespace to one space (deleting it would equate ``rm -rf /tmp`` and
     ``rm -rf / tmp``) and keeps raw leading indentation when it is syntax.
     """
     rows = []
     for number, line in enumerate(text.splitlines(), 1):
         body = line.strip()
-        if not body or body == '""':
+        if not body or _BLANK_STRING.fullmatch(body):
             continue
         key = " ".join(body.split())
         if indent_sensitive:
@@ -820,14 +1392,20 @@ def cmd_mechanical(args: argparse.Namespace) -> int:
     repo = Path(args.repo).resolve()
     out = Path(args.out).resolve()
     units = out / "units"
-    units.mkdir(parents=True, exist_ok=True)
+    # Output of an earlier run describes another revision. mechanical_review.py
+    # globs units/, so a leftover unit would be reviewed as if it were current.
+    for generated in ("units", "payloads", "results"):
+        shutil.rmtree(out / generated, ignore_errors=True)
+    units.mkdir(parents=True)
     manifest: list[dict[str, str]] = []
     unit_count = 0
-    for rel in _changed_files(repo, args.base):
+    for base_rel, rel in _changed_files(repo, args.base):
         entry = {"path": rel, "action": ""}
+        if base_rel != rel:
+            entry["base_path"] = base_rel
         manifest.append(entry)
         texts = []
-        for data in _base_and_head(repo, args.base, rel):
+        for data in _base_and_head(repo, args.base, base_rel, rel):
             if data is None:
                 texts.append("")
                 continue

@@ -34,6 +34,9 @@ import os
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import strip_context
+
 LEDGER = Path(
     os.environ.get("BLIND_REVIEW_LEDGER", Path.home() / ".local/share/blind-review/findings.jsonl")
 )
@@ -130,9 +133,15 @@ def cmd_reconcile(_: argparse.Namespace) -> int:
             continue
         path = Path(f["repo"]) / f["path"]
         try:
-            lines = path.read_text(encoding="utf-8").splitlines()
-        except OSError:
+            source = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
             continue  # repo moved or file deleted: not evidence either way
+        # line_text is the stripped unit row, so compare stripped text too: an
+        # unchanged trailing comment is not a fix.
+        stripped, action = strip_context.strip_source(f["path"], source)
+        if action != "stripped":
+            continue
+        lines = stripped.splitlines()
         window = lines[max(0, f["line"] - 4) : f["line"] + 3]
         if f["line_text"].strip() not in (line.strip() for line in window):
             events.append({"type": "status", "id": f["id"], "status": "likely-addressed",

@@ -186,16 +186,22 @@ any files the stripper could not process. In sidecar mode: one line
 
 - Identifier names still bias the blind pass (`sanitize_input` suggests
   its purpose).
-- Lexer edge cases: Rust raw strings (`r#"..."#`) and other exotic
-  literals may still strip imperfectly. Every strip is checked afterward
-  against a space-mask contract (same length, same line count, only
-  blanking) and, for Python, against `compile()`; anything that fails
-  degrades to `copied-verbatim (strip validation failed: …)` in
-  `manifest.json` rather than reaching the blind arm mangled. The check
-  catches deletions and rewrites, not a comment that leaks through
-  unstripped, so still skim `manifest.json` on exotic code.
-- Only known languages are stripped (see the suffix tables and
-  `HASH_STEMS` in `strip_context.py`). Anything else is flagged
+- Stripping is lexical, not a parse: one rule table per language
+  (`LANGUAGES_BY_SUFFIX`, `LANGUAGES_BY_NAME`, and `LANGUAGES_BY_GLOB` in
+  `strip_context.py`) covers raw strings, text blocks, heredocs, nested
+  and block comments, interpolation, and docstrings. Comments that change
+  behavior stay: shebangs, `//go:build`, PEP 723 metadata, Ruby magic
+  comments, TypeScript `/// <reference>`, Haskell pragmas, and Dockerfile
+  parser directives. Every strip is checked afterward against a
+  space-mask contract (same length, same line count, only blanking) and,
+  for Python, against `compile()`; anything that fails degrades to
+  `copied-verbatim (strip validation failed: …)` in `manifest.json`. The
+  check catches deletions and rewrites. It cannot catch blanked string
+  data or a comment that leaks through, so skim `manifest.json` on exotic
+  code. Known gaps: MySQL `#` comments and backslash escapes, C `#if 0`
+  blocks (kept as code), and text in JSX elements that contains ` // `.
+- Only known languages are stripped. Anything else (for example Visual
+  Basic, MATLAB, Fortran, or assembly) is flagged
   `copied-verbatim (unknown language)`, which means its comments reach
   the blind arm: check the manifest before trusting a run whose diff is
   mostly unsupported files.
