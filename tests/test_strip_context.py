@@ -1129,6 +1129,7 @@ class MechanicalModeTest(unittest.TestCase):
             ("a.js", 'const v = [\n  ""\n];\n', "const v = [\n];\n"),
             ("a.py", 'f"{allow()}"\n', 'f"{deny()}"\n'),
             ("a.sh", "cat <<EOF\na\n\nb\nEOF\n", "cat <<EOF\na\nb\nEOF\n"),
+            ("a.py", 'value = """a\n  \nb"""\n', 'value = """a\n    \nb"""\n'),
         ]
         for rel, base, head in cases:
             with self.subTest(base=base):

@@ -1045,15 +1045,16 @@ def _code_lines(
             parts.append((max(s, start) - start, min(e, end) - start))
         body = line.strip()
         if not body:
-            if parts:
-                rows.append((number, "", ""))  # a blank line inside a multi-line string
+            if parts:  # a blank or whitespace-only line inside a multi-line string is data
+                rows.append((number, _compare_key(line, parts), line))
             continue
         if number - 1 in doc_rows and _BLANK_STRING.fullmatch(body):
             continue
         key = _compare_key(line, parts)
         if indent_sensitive and not (parts and parts[0][0] == 0):
             key = line[: len(line) - len(line.lstrip())] + key
-        rows.append((number, key, line.rstrip()))
+        ends_in_literal = parts and parts[-1][1] == len(line)
+        rows.append((number, key, line if ends_in_literal else line.rstrip()))
     return rows
 
 
