@@ -201,6 +201,7 @@ KEEP = {
         rb'|//go:embed(?:[ \t]+(?:"[^"\n]*"|`[^`\n]*`|(?:[^\s/"`]|/(?!/))+))+'
         rb"|//go:generate[ \t][^\n]*"  # a command go generate runs
         rb"|//go:linkname[ \t]+\S+(?:[ \t]+\S+)?"
+        rb"|//go:debug[ \t]+[\w.-]+=[\w.-]+(?:,[\w.-]+=[\w.-]+)*|//go:fix[ \t]+inline"
         rb"|//go:wasmimport[ \t]+\S+[ \t]+\S+|//go:wasmexport[ \t]+\S+"
         rb"|//go:(?:noinline|nosplit|noescape|norace|nocheckptr|uintptrescapes|nowritebarrierrec"
         rb"|nowritebarrier|systemstack|notinheap)"
@@ -962,13 +963,14 @@ def _repo_and_out(args: argparse.Namespace) -> tuple[Path, Path]:
     """Resolve --repo and --out, refusing an --out inside the repo.
 
     Raises:
-        SystemExit: When --out is inside --repo. Its manifest maps unit labels
-            to paths, and the next run would review it as an untracked file.
+        SystemExit: When one directory holds the other. Inside the repo, the
+            manifest (which maps unit labels to paths) would be reviewed next
+            run; above it, cleaning --out/head or --out/units could delete it.
     """
     repo = Path(args.repo).resolve()
     out = Path(args.out).resolve()
-    if out == repo or repo in out.parents:
-        raise SystemExit(f"--out {out} must be outside --repo {repo}")
+    if out == repo or repo in out.parents or out in repo.parents:
+        raise SystemExit(f"--out {out} and --repo {repo} must not contain each other")
     return repo, out
 
 
@@ -1098,6 +1100,7 @@ def _code_lines(
     text: str,
     indent_sensitive: bool,
     layout: tuple[set[int], list[tuple[int, int]]] | None = (set(), []),
+    inline_comments: bool = False,
 ) -> list[tuple[int, str, str]]:
     """Return (line_number, compare_key, display) for each line that holds code.
 
@@ -1113,8 +1116,10 @@ def _code_lines(
     # A blank line after a `\`-continued line ends the command (or value), so it counts.
     ends_continued = [False] + [_CONTINUED.search(line) is not None for line in lines[:-1]]
     if layout is None:
+        # These formats comment only whole lines, so trailing spaces are value data,
+        # except where a trailing comment was blanked (requirements files).
         return [
-            (n, line.rstrip(), line.rstrip())
+            (n, line.rstrip() if inline_comments else line.rstrip("\r"), line.rstrip())
             for n, line in enumerate(lines, 1)
             if line.strip() or ends_continued[n - 1]
         ]
@@ -1198,8 +1203,10 @@ def mechanical_hunks(rel: str, base: str, head: str) -> str:
         separated by ``@@``; empty when no code line changed.
     """
     sensitive = _grammar_name(rel, head or base) in INDENT_SENSITIVE_LANGUAGES
-    old = _code_lines(base, sensitive, _layout(rel, base))
-    new = _code_lines(head, sensitive, _layout(rel, head))
+    found = _dispatch(rel, head or base)
+    inline = found is not None and found[1] is REQUIREMENTS_LINES
+    old = _code_lines(base, sensitive, _layout(rel, base), inline)
+    new = _code_lines(head, sensitive, _layout(rel, head), inline)
     groups = []
     for i1, i2, j1, j2 in _changed_ranges([k for _, k, _ in old], [k for _, k, _ in new]):
         rows = [f"-{n}|{d}" for n, _, d in old[i1:i2]]

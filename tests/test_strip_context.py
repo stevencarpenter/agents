@@ -1147,6 +1147,7 @@ class MechanicalModeTest(unittest.TestCase):
             ("a.sh", "echo one \\\n\necho two\n", "echo one \\\necho two\n"),
             ("a.properties", "a=x\\\n# deny\n", "a=x\\\n# allow\n"),
             ("a.properties", "# c\rkey=a\n", "# c\rkey=b\n"),
+            ("a.properties", "message=hello\n", "message=hello \n"),
         ]
         for rel, base, head in cases:
             with self.subTest(base=base):
@@ -1202,10 +1203,11 @@ class MechanicalModeTest(unittest.TestCase):
         self.assertEqual(action, "stripped")
         self.assertIn("//go:embed html/index.html", out)
         self.assertNotIn("gone", out)
-        src = "package a\n//go:build linux && !cgo\n//go:noinline\n//go:custom gone\n//go:noinline gone too\nfunc f() {}\n"
+        src = "//go:debug panicnil=1\npackage a\n//go:build linux && !cgo\n//go:noinline\n//go:custom gone\n//go:noinline gone too\nfunc f() {}\n"
         out, action = strip_context.strip_source("a.go", src)
         self.assertEqual(action, "stripped")
         self.assertIn("//go:build linux && !cgo", out)
+        self.assertIn("//go:debug panicnil=1", out)
         self.assertIn("//go:noinline\n", out)
         self.assertNotIn("gone", out)
 
@@ -1287,6 +1289,15 @@ class MechanicalModeTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         files = json.loads((out / "manifest.json").read_text())["files"]
         self.assertEqual(files, [{"path": "sub", "action": strip_context._NO_CONTENT}])
+
+    def test_out_above_repo_is_refused(self) -> None:
+        """Cleaning --out/head must never delete a repo that lives there."""
+        out = self.run_mechanical({"a.py": "x = 1\n"}, {"a.py": "x = 2\n"})
+        repo = Path(json.loads((out / "manifest.json").read_text())["repo"])
+        for mode in ("mechanical", "diff"):
+            with self.assertRaises(SystemExit):
+                strip_context.main([mode, "--repo", str(repo), "--out", str(repo.parent)])
+        self.assertTrue((repo / ".git").is_dir())
 
     def test_out_inside_repo_is_refused(self) -> None:
         """A manifest left in the repo would be reviewed next run, with every path in it."""
