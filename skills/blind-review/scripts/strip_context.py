@@ -550,8 +550,11 @@ KOTLIN = [
 SCALA = [
     NESTED_BLOCK,
     LINE,
-    _string('"""', skip=None, interp=DOLLAR_BRACE),
-    _string('"', multiline=False, interp=DOLLAR_BRACE),
+    # Only a prefixed literal such as `s"..."` interpolates; `$$` is an escaped `$`.
+    _string(r'[A-Za-z_]\w*"""', '"""', skip=r"\$\$", interp=DOLLAR_BRACE),
+    _string(r'[A-Za-z_]\w*"', '"', skip=r'\$[$"]|\\[\s\S]', multiline=False, interp=DOLLAR_BRACE),
+    _string('"""', skip=None),
+    _string('"', multiline=False),
     CHAR,
 ]
 SWIFT_INTERP = (("\\(", ")"),)
@@ -741,7 +744,8 @@ ELIXIR = [
     CHAR_LITERAL,
     _string(r'@(?:moduledoc|doc|typedoc)\s+(?:~[sS])?"""', '"""', kind="doc"),
     _string(r'@(?:moduledoc|doc|typedoc)\s+(?:~[sS])?"', '"', kind="doc"),
-    _string(r"~[a-zA-Z]+(\"\"\"|'''|[/|\"'(\[{<])", _delimited(1), interp=HASH_BRACE),
+    _string(r"~[a-z](\"\"\"|'''|[/|\"'(\[{<])", _delimited(1), interp=HASH_BRACE),
+    _string(r"~[A-Z][A-Z0-9]*(\"\"\"|'''|[/|\"'(\[{<])", _delimited(1)),  # `~S` does not interpolate
     _comment("#"),
     _string('"""', interp=HASH_BRACE),
     _string("'''", interp=HASH_BRACE),
@@ -962,6 +966,13 @@ def _markup(source: str, raw_text: bool, html: bool = False, expr: str = "") -> 
                     quote = "" if source[j] == quote else quote
                 elif source[j] in "\"'":
                     quote = source[j]
+                elif expr == "{" and source[j] == "{":
+                    # A Svelte attribute `{a > 1}` is JS, so its `>` does not end the tag.
+                    end = _scan_code(source, out, j + 1, JS, close="}")
+                    if end < n:
+                        j = end
+                        continue
+                    out[j + 1 :] = source[j + 1 :]  # unclosed: undo the scan
                 j += 1
             tag = source[i : j + 1]
             i = j + 1

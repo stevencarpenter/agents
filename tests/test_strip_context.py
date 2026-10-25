@@ -718,6 +718,27 @@ STYLE_CASES: list[tuple[str, str, list[str], list[str]]] = [
         ["gone"],
     ),
     ("a.kt", 'val s = "${m["k"]} // keep" // gone\n', ['"${m["k"]} // keep"'], ["gone"]),
+    # Only a prefixed Scala literal interpolates; `$$` is an escaped `$`.
+    (
+        "a.scala",
+        ('val a = "${1 // keep}" // gone\nval b = s"${m("k")} // keep2" // gone2\n'
+        'val c = s"$${1 // keep3}" // gone3\nval d = f"""${x /* gone4 */}"""\n'),
+        ['"${1 // keep}"', '"${m("k")} // keep2"', '"$${1 // keep3}"', '"""${x '],
+        ["gone"],
+    ),
+    # Lowercase Elixir sigils interpolate; uppercase sigils keep their body.
+    (
+        "a.ex",
+        's = ~S|#{1 # keep}| # gone\nt = ~s|#{1 # gone2\n}|\nu = ~HTML"""\n#{a # keep2}\n"""\n',
+        ["~S|#{1 # keep}|", "#{a # keep2}"],
+        ["gone"],
+    ),
+    (
+        "a.svelte",
+        '<div data-x={a > 1 ? "<!-- keep -->" : ""} y={b /* gone */}>ok</div><!-- gone2 -->\n',
+        ['"<!-- keep -->"', "ok</div>"],
+        ["gone"],
+    ),
     ("a.swift", 'let s = "\\(f("a")) // keep" // gone\n', ['"\\(f("a")) // keep"'], ["gone"]),
     ("a.json5", "{ $schema: 'https://x/y.json', // gone\n}\n", ["'https://x/y.json'"], ["gone"]),
     (
