@@ -82,11 +82,16 @@ def cmd_log(args: argparse.Namespace) -> int:
     events = []
     for result_file in sorted((out / "results").glob("*.json")):
         result = json.loads(result_file.read_text())
-        rows = (out / "units" / f"{result['unit']}.diff").read_text().splitlines()
+        unit = (out / "units" / f"{result['unit']}.diff").read_text()
+        rows = unit.splitlines()
+        # Key on the repo and the reviewed text, not the out dir name, so two
+        # repos or a later change reviewed into a reused out dir stay distinct.
+        unit_hash = hashlib.sha256(unit.encode()).hexdigest()
         for f in result["findings"]:
             prefix = f"{f['side']}{f['line']}|"
             line_text = next((r[len(prefix):] for r in rows if r.startswith(prefix)), None)
-            key = f"{run_id}|{result['unit']}|{f['side']}{f['line']}|{f['claim']}"
+            key = (f"{manifest['repo']}|{paths[result['unit']]}|{unit_hash}"
+                   f"|{f['side']}{f['line']}|{f['claim']}")
             events.append({
                 "type": "finding",
                 "id": hashlib.sha256(key.encode()).hexdigest()[:10],

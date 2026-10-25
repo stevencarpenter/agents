@@ -146,6 +146,13 @@ class SlashStripTest(PositionContractTest):
         self.assertIn("const z = 2;", out)
         self.assertNotIn("gone", out)
 
+    def test_regex_after_a_control_flow_condition(self) -> None:
+        """`if (ok) /re/` opens a regex; `(a + b) / c` still divides."""
+        out = self.assert_masked("a.js", "if (ok) /[/*]deny/.test(s);\nx = (a + b) / c; // gone\n")
+        self.assertIn("/[/*]deny/.test(s);", out)
+        self.assertIn("x = (a + b) / c;", out)
+        self.assertNotIn("gone", out)
+
     def test_comment_inside_template_substitution_is_stripped(self) -> None:
         """Inside `${...}` the language is code again, so comments must go."""
         out = self.assert_masked("a.js", "const t = `v ${a /* gone */ + b} w`;\n")
@@ -559,8 +566,10 @@ STYLE_CASES: list[tuple[str, str, list[str], list[str]]] = [
         "a.sql",
         ("CREATE FUNCTION f() RETURNS int AS $$ SELECT '-- keep' -- gone0\n$$ LANGUAGE sql; -- gone\n"
         'SELECT "a--b" FROM t; /* outer /* inner */ tail */\n'
-        "SELECT E'it\\'s -- keep2';\n"),
-        ["SELECT '-- keep'", '"a--b"', "E'it\\'s -- keep2'"],
+        "SELECT E'it\\'s -- keep2';\n"
+        "DO $x$ BEGIN NULL; -- gone2\nEND $x$;\n"
+        "UPDATE c SET t = $$-- keep3$$, u = $q$ /* keep4 */ $q$;\n"),
+        ["SELECT '-- keep'", '"a--b"', "E'it\\'s -- keep2'", "END $x$;", "$$-- keep3$$", "/* keep4 */ $q$;"],
         ["gone", "outer", "inner", "tail"],
     ),
     # Config formats.

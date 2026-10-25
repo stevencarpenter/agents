@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shutil
 import tempfile
 import unittest
 from importlib.machinery import SourceFileLoader
@@ -126,6 +127,20 @@ class ReviewLogTest(unittest.TestCase):
         self.log.main(["mark", fid, "false-positive"])
         self.log.main(["mark", fid, "accepted"])
         self.assertEqual(self.log.load()[0][fid]["status"], "accepted")
+
+    def test_ids_depend_on_repo_and_reviewed_text(self) -> None:
+        """Same out dir name in another repo, or new unit text, is a new finding."""
+        self.log.main(["log", "--out", str(self.out)])
+        other = self.tmp / "other" / self.out.name
+        shutil.copytree(self.out, other)
+        manifest = json.loads((other / "manifest.json").read_text())
+        manifest["repo"] = str(self.tmp / "repo2")
+        (other / "manifest.json").write_text(json.dumps(manifest))
+        self.log.main(["log", "--out", str(other)])
+        self.assertEqual(len(self.log.load()[0]), 2)
+        (self.out / "units" / "f01.py.diff").write_text("file f01.py\n+2|y = eval(t)\n")
+        self.log.main(["log", "--out", str(self.out)])
+        self.assertEqual(len(self.log.load()[0]), 3)
 
     def test_reconcile_marks_changed_lines_only(self) -> None:
         """An unchanged flagged line stays open; a rewritten one is likely-addressed."""

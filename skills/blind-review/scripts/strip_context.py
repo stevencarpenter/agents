@@ -180,12 +180,29 @@ def _regex_allowed(source: str, i: int, out: list[str]) -> bool:
         j -= 1
     if j < 0 or out[j] in _REGEX_PRECEDERS:
         return True
+    if out[j] == ")":
+        # `if (ok) /re/` starts a statement; `(a + b) / c` divides.
+        depth = 0
+        while j >= 0:
+            depth += {")": 1, "(": -1}.get(out[j], 0)
+            if depth == 0:
+                break
+            j -= 1
+        j -= 1
+        while j >= 0 and out[j] in " \t\r\n":
+            j -= 1
+        return _word_before(out, j) in ("if", "while", "for", "with")
     if out[j].isalnum() or out[j] in "_$":
-        k = j
-        while k >= 0 and (out[k].isalnum() or out[k] in "_$"):
-            k -= 1
-        return "".join(out[k + 1 : j + 1]) in _REGEX_KEYWORDS
+        return _word_before(out, j) in _REGEX_KEYWORDS
     return False
+
+
+def _word_before(out: list[str], j: int) -> str:
+    """Return the identifier that ends at ``out[j]``."""
+    k = j
+    while k >= 0 and (out[k].isalnum() or out[k] in "_$"):
+        k -= 1
+    return "".join(out[k + 1 : j + 1])
 
 
 def _ruby_regex_allowed(source: str, i: int, out: list[str]) -> bool:
@@ -388,6 +405,12 @@ def _scan_code(source: str, out: list[str], i: int, rules: Sequence[Rule], close
                 i = start + 1
         elif rule.kind == "regex":
             i = start + (_scan_regex(source, start) or 1)
+        elif rule.kind == "body":
+            # Code quoted as a literal, such as a PL/pgSQL `AS $$ ... $$` body.
+            c = _closer(rule, m).search(source, m.end())
+            end = c.start() if c else n
+            _scan_code(source[:end], out, m.end(), rules)
+            i = c.end() if c else n
         elif rule.kind == "comment":
             i = _comment_end(source, rule, m)
             _blank(source, out, start, i)
@@ -720,13 +743,29 @@ LUA = [
     DQ,
     SQ,
 ]
+DOLLAR_QUOTE = r"\$(?:[A-Za-z_]\w*)?\$"
+_ROUTINE_BODY_PRECEDER = re.compile(r"(?<!\w)(?:AS|DO(?:\s+LANGUAGE\s+\w+)?)\s*\Z", re.IGNORECASE)
+
+
+def _same_text(m: re.Match[str]) -> re.Pattern[str]:
+    """Close a ``$tag$`` quote with the same tag."""
+    return re.compile(re.escape(m.group(0)))
+
+
+def _sql_routine_body(source: str, i: int, out: list[str]) -> bool:
+    """A dollar quote after ``AS`` or ``DO`` holds a routine body, not data."""
+    return _ROUTINE_BODY_PRECEDER.search("".join(out[max(0, i - 200) : i])) is not None
+
+
 SQL = [
     _comment(r"/\*", r"\*/", nested=True),
     _comment("--"),
     _string(r"(?<!\w)[eE]'", "'", skip=r"\\[\s\S]|''"),
     _string("'", skip="''"),
-    # A `$$` or `$tag$` body is almost always PL/pgSQL code, so scan it as SQL.
-    _keep(r"\$([A-Za-z_]\w*)?\$"),
+    # `AS $$` and `DO $$` quote a routine body, which is code; any other
+    # dollar-quoted text is string data.
+    Rule("body", _rx(DOLLAR_QUOTE), _same_text, guard=_sql_routine_body),
+    _string(DOLLAR_QUOTE, _same_text, skip=None),
     _string('"', skip='""'),
     _string("`", skip="``"),
 ]
