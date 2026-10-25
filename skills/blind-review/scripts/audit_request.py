@@ -31,8 +31,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mechanical_review
 
 
-def capture(argv: list[str], text: str, cwd: Path) -> dict:
-    """Run the reviewer once against a recording server and return the first body."""
+def capture(argv: list[str], text: str, cwd: Path) -> list[dict]:
+    """Run the reviewer once against a recording server and return every request body.
+
+    One invocation sends several requests (retries after the stub's 400), and
+    a leak in any of them reaches the model.
+    """
     bodies: list[bytes] = []
 
     class Recorder(http.server.BaseHTTPRequestHandler):
@@ -58,9 +62,10 @@ def capture(argv: list[str], text: str, cwd: Path) -> dict:
         server.shutdown()
     if not bodies:
         raise SystemExit("the CLI sent no request; ANTHROPIC_BASE_URL may be ignored")
-    body = json.loads(bodies[0])
-    body.pop("metadata", None)  # per-session IDs, not prompt content
-    return body
+    parsed = [json.loads(raw) for raw in bodies]
+    for body in parsed:
+        body.pop("metadata", None)  # per-session IDs, not prompt content
+    return parsed
 
 
 def texts(body: dict) -> list[tuple[str, str]]:
@@ -87,13 +92,14 @@ def main(argv: list[str] | None = None) -> int:
     unit = min((out / "units").glob("*.diff"))
     cmd = mechanical_review.reviewer_argv(args.model, args.effort)
     cwd = mechanical_review.sandbox(repo.name)
-    first, second = (capture(cmd, unit.read_text(), cwd) for _ in range(2))
+    run_a, run_b = (capture(cmd, unit.read_text(), cwd) for _ in range(2))
+    first, second = run_a[0], run_b[0]
 
     print(f"model={first.get('model')} temperature={first.get('temperature')} "
           f"thinking={first.get('thinking')} tools={[t.get('name') for t in first.get('tools', [])]}")
     for where, text in texts(first):
         print(f"--- {where} ---\n{text}")
-    raw = json.dumps(first) + json.dumps(second)
+    raw = json.dumps(run_a + run_b)
     leaks = [needle for needle in (str(repo), repo.name) if needle in raw]
     a = json.dumps(first, indent=1, sort_keys=True).splitlines()
     b = json.dumps(second, indent=1, sort_keys=True).splitlines()

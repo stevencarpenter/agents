@@ -13,6 +13,7 @@ context-blind review surfaces different findings than status-quo review.
 
 from __future__ import annotations
 
+import argparse
 import datetime
 import json
 import sys
@@ -21,9 +22,14 @@ from pathlib import Path
 LOG = Path.home() / ".local" / "share" / "blind-review" / "pairs.jsonl"
 
 
-def main() -> int:
-    raw = Path(sys.argv[1]).read_text() if len(sys.argv) > 1 else sys.stdin.read()
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("record", nargs="?", type=Path, help="JSON record file (default: stdin)")
+    args = parser.parse_args(argv)
+    raw = args.record.read_text(encoding="utf-8") if args.record else sys.stdin.read()
     record = json.loads(raw)
+    if not isinstance(record, dict):
+        raise SystemExit("the record must be a JSON object")
     record.setdefault(
         "recorded_at",
         datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),

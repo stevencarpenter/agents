@@ -60,6 +60,19 @@ class BenchScoringTest(unittest.TestCase):
         """Score one rep whose only unit has ``findings``."""
         return bench.score_rep(CASE, UNITS, {"f01.py": {"findings": list(findings)}})
 
+    def test_unknown_case_id_is_refused(self) -> None:
+        """A typo must not record an empty run as a result."""
+        with self.assertRaises(SystemExit):
+            bench.main(["run", "--case", "c99-typo", "--record"])
+
+    def test_fixture_commits_ignore_user_git_config(self) -> None:
+        """A global signing setup must not break the fixture repos."""
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "gitconfig"
+            config.write_text("[commit]\n\tgpgsign = true\n[gpg]\n\tprogram = /nonexistent-gpg\n")
+            with mock.patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": str(config)}):
+                bench.build_units(bench.load_cases()[0], Path(tmp) / "case")
+
     def test_bug_hit_within_one_line_on_the_same_side(self) -> None:
         """Line 6 is within tolerance of anchor 5; the other side is not."""
         self.assertTrue(self.score(finding("+", 6))["outcome"]["bug"])
@@ -175,6 +188,39 @@ class ReviewLogTest(unittest.TestCase):
         self.log.main(["reconcile"])
         self.assertEqual(self.log.load()[0][fid]["status"], "likely-addressed")
 
+    def test_reconcile_keeps_a_moved_but_unchanged_line_open(self) -> None:
+        """Imports added above the flagged line move it; that is not a fix."""
+        self.log.main(["log", "--out", str(self.out)])
+        (self.repo / "a.py").write_text("import a\nimport b\nimport c\nimport d\nimport e\nx = 1\ny = eval(s)\n")
+        self.log.main(["reconcile"])
+        (fid,) = self.log.load()[0]
+        self.assertEqual(self.log.load()[0][fid]["status"], "open")
+
+    def test_failed_review_is_reported_not_logged_as_clean(self) -> None:
+        """A failed unit must not read as a file with no findings."""
+        (self.out / "results" / "f01.py.json").write_text(
+            json.dumps({"unit": "f01.py", "ok": False, "error": "api down", "findings": []})
+        )
+        self.assertEqual(self.log.main(["log", "--out", str(self.out)]), 1)
+        self.assertEqual(self.log.load()[0], {})
+
+    def test_duplicate_findings_in_one_run_log_once(self) -> None:
+        """Two identical findings in one result are one finding."""
+        result = json.loads((self.out / "results" / "f01.py.json").read_text())
+        result["findings"] *= 2
+        (self.out / "results" / "f01.py.json").write_text(json.dumps(result))
+        self.log.main(["log", "--out", str(self.out)])
+        self.assertEqual(len(self.log.LEDGER.read_text().splitlines()), 1)
+
+    def test_torn_ledger_line_is_skipped(self) -> None:
+        """A write cut short must not make every later command fail."""
+        self.log.main(["log", "--out", str(self.out)])
+        with self.log.LEDGER.open("a") as fh:
+            fh.write('{"type":"fin')
+        (fid,) = self.log.load()[0]
+        self.log.main(["mark", fid, "accepted"])
+        self.assertEqual(self.log.load()[0][fid]["status"], "accepted")
+
     def test_reconcile_ignores_an_unchanged_inline_comment(self) -> None:
         """The logged text is comment-free, so the current file must be stripped too."""
         (self.repo / "a.py").write_text("x = 1\ny = eval(s)  # safe\n")
@@ -196,6 +242,17 @@ class SandboxTest(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     mechanical_review.sandbox("blind-review")
                 (box / "stray.txt").write_text("x")
+                with self.assertRaises(SystemExit):
+                    mechanical_review.sandbox("repo-x")
+
+    def test_refuses_symlinked_sandbox(self) -> None:
+        """On a shared /tmp another user could point the path at their own directory."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "elsewhere"
+            target.mkdir()
+            box = Path(tmp) / "blind-review-sandbox"
+            box.symlink_to(target)
+            with mock.patch.object(mechanical_review, "SANDBOX", box):
                 with self.assertRaises(SystemExit):
                     mechanical_review.sandbox("repo-x")
 

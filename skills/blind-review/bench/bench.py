@@ -67,7 +67,7 @@ Every case runs ``--reps`` times. Scores:
 resolved model ID to ``results.jsonl``; ``summary`` prints that history.
 
 Usage: bench.py run [--model sonnet] [--effort high] [--reps 3] [--jobs 4]
-                    [--case ID ...] [--record]
+                    [--case ID]... [--record]
        bench.py summary
 """
 
@@ -78,6 +78,7 @@ import datetime
 import hashlib
 import itertools
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -99,11 +100,16 @@ def load_cases(ids: list[str] | None = None) -> list[dict]:
 
 
 def git(repo: Path, *args: str) -> None:
-    """Run git in a fixture repo with a fixed identity."""
+    """Run git in a fixture repo with a fixed identity and no user config.
+
+    A global ``commit.gpgsign`` or ``core.hooksPath`` would make the fixture
+    commit fail or prompt.
+    """
     subprocess.run(
         ["git", "-C", str(repo), "-c", "user.email=b@example.com", "-c", "user.name=b", *args],
         check=True,
         capture_output=True,
+        env={**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"},
     )
 
 
@@ -173,6 +179,9 @@ def jaccard(sets: list[set]) -> float:
 def run(args: argparse.Namespace) -> int:
     """Run every case ``--reps`` times, print the scores, and optionally record them."""
     cases = load_cases(args.case)
+    missing = set(args.case or ()) - {c["id"] for c in cases}
+    if missing or not cases:
+        raise SystemExit(f"no such case: {', '.join(sorted(missing)) or '(none loaded)'}")
     cmd = mechanical_review.reviewer_argv(args.model, args.effort)
     root = Path(tempfile.mkdtemp(prefix="bench-"))
     built = {c["id"]: build_units(c, root / c["id"]) for c in cases}

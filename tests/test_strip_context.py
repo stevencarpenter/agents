@@ -20,6 +20,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from types import ModuleType
@@ -1318,7 +1319,38 @@ class MechanicalReviewArgvTest(unittest.TestCase):
         fake = [sys.executable, "-c", "print('{\"is_error\": false}')"]
         result = module.review_unit(unit, out, fake, "no-such-repo-name")
         self.assertFalse(result["ok"])
-        self.assertEqual(result["error"], "no structured_output")
+        self.assertEqual(result["error"], "no valid structured_output")
+
+    def test_bad_replies_fail_the_unit_and_good_ones_pass(self) -> None:
+        """Only a reply whose findings match the schema counts as a review."""
+        module = load_mechanical_review()
+        out = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", str(out)], check=False))
+        for sub in ("units", "payloads", "results"):
+            (out / sub).mkdir()
+        unit = out / "units" / "f01.py.diff"
+        unit.write_text("file f01.py\n+1|x = 1\n")
+        good = {"side": "+", "line": 1, "severity": "low", "confidence": "low",
+                "category": "idiom", "claim": "c", "evidence": "e"}
+        replies = {
+            "[]": False,
+            '{"structured_output": null}': False,
+            '{"structured_output": {}}': False,
+            '{"structured_output": {"findings": "none"}}': False,
+            '{"structured_output": {"findings": [{"claim": "x"}]}}': False,
+            json.dumps({"structured_output": {"findings": [{**good, "line": None}]}}): False,
+            json.dumps({"structured_output": {"findings": [good]}}): True,
+            '{"structured_output": {"findings": []}}': True,
+        }
+        for reply, ok in replies.items():
+            with self.subTest(reply=reply):
+                fake = [sys.executable, "-c", f"print({reply!r})"]
+                self.assertEqual(module.review_unit(unit, out, fake, "no-such-repo-name")["ok"], ok)
+        missing = module.review_unit(unit, out, ["/nonexistent/claude"], "no-such-repo-name")
+        self.assertFalse(missing["ok"])
+        with mock.patch.object(module, "TIMEOUT_SECONDS", 0.2):
+            slow = [sys.executable, "-c", "import time; time.sleep(5)"]
+            self.assertIn("TimeoutExpired", module.review_unit(unit, out, slow, "no-such-repo-name")["error"])
 
     def test_isolation_flags(self) -> None:
         """Dropping any of these flags lets non-diff text reach the model."""

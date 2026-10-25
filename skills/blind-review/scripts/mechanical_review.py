@@ -23,6 +23,7 @@ import argparse
 import functools
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -125,8 +126,16 @@ SANDBOX = Path(tempfile.gettempdir()) / "blind-review-sandbox"
 
 
 def sandbox(repo_name: str) -> Path:
-    """Return the empty, fixed reviewer working directory, creating it if needed."""
+    """Return the empty, fixed reviewer working directory, creating it if needed.
+
+    Raises:
+        SystemExit: When the directory is a symlink, belongs to another user,
+            names the repo, or is not empty.
+    """
     SANDBOX.mkdir(exist_ok=True)
+    # On a shared /tmp another user could pre-create the path or point it elsewhere.
+    if SANDBOX.is_symlink() or (hasattr(os, "getuid") and SANDBOX.stat().st_uid != os.getuid()):
+        raise SystemExit(f"sandbox {SANDBOX} is a symlink or not owned by you")
     # The cwd is the one path the reviewer sees; a session scratchpad path names the repo.
     if repo_name in str(SANDBOX):
         raise SystemExit(f"sandbox {SANDBOX} names the repo; set TMPDIR elsewhere")
@@ -146,32 +155,72 @@ def cli_version() -> str:
         return "unavailable"
 
 
+# A reviewer call that hangs must fail its unit, not stall every other unit.
+TIMEOUT_SECONDS = 900
+
+
+def _findings(reply: object) -> list[dict] | None:
+    """Return the reply's findings, or None when they do not match SCHEMA.
+
+    The CLI is asked for SCHEMA, but nothing enforces it here, and a malformed
+    finding would crash the ledger and the bench scorer later.
+    """
+    output = reply.get("structured_output") if isinstance(reply, dict) else None
+    findings = output.get("findings") if isinstance(output, dict) else None
+    if not isinstance(findings, list):
+        return None
+    required = SCHEMA["properties"]["findings"]["items"]["required"]
+    for f in findings:
+        if not isinstance(f, dict) or any(k not in f for k in required):
+            return None
+        if f["side"] not in ("+", "-") or type(f["line"]) is not int:
+            return None
+    return findings
+
+
 def review_unit(unit: Path, out: Path, argv: list[str], repo_name: str) -> dict:
     """Review one unit in a fresh empty directory and record payload and result."""
     text = unit.read_text(encoding="utf-8")
     (out / "payloads" / f"{unit.stem}.json").write_text(
         json.dumps({"argv": argv, "stdin": text}, indent=2), encoding="utf-8"
     )
-    proc = subprocess.run(
-        argv, input=text, cwd=sandbox(repo_name), capture_output=True, text=True, check=False
-    )
+    reply: object = None
     try:
-        reply = json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        reply = {"is_error": True, "result": proc.stdout[-2000:]}
-    # A reply without structured output is a failed review, not a clean file.
-    ok = proc.returncode == 0 and not reply.get("is_error") and "structured_output" in reply
+        proc = subprocess.run(
+            argv,
+            input=text,
+            cwd=sandbox(repo_name),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired, SystemExit) as exc:
+        findings, error = None, f"{type(exc).__name__}: {exc}"
+    else:
+        try:
+            reply = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            reply = None
+        findings = _findings(reply) if proc.returncode == 0 else None
+        if isinstance(reply, dict) and reply.get("is_error"):
+            findings = None
+        error = str(
+            proc.stderr
+            or (reply.get("result") if isinstance(reply, dict) else proc.stdout)
+            or "no valid structured_output"
+        )[-2000:]
+    reply_fields = reply if isinstance(reply, dict) else {}
     result = {
         "unit": unit.stem,
-        "ok": ok,
-        "findings": (reply.get("structured_output") or {}).get("findings", []),
-        "usage": reply.get("usage"),
-        "model_id": ",".join(sorted(reply.get("modelUsage") or {})),
+        # A reply without valid structured output is a failed review, not a clean file.
+        "ok": findings is not None,
+        "findings": findings or [],
+        "usage": reply_fields.get("usage"),
+        "model_id": ",".join(sorted(reply_fields.get("modelUsage") or {})),
         "cli_version": cli_version(),
         "input_sha256": hashlib.sha256(json.dumps([argv, text]).encode()).hexdigest(),
-        "error": None
-        if ok
-        else str(proc.stderr or reply.get("result") or "no structured_output")[-2000:],
+        "error": None if findings is not None else error,
     }
     (out / "results" / f"{unit.stem}.json").write_text(
         json.dumps(result, indent=2), encoding="utf-8"
@@ -195,6 +244,7 @@ def main(argv: list[str] | None = None) -> int:
     for sub in ("payloads", "results"):
         (out / sub).mkdir(exist_ok=True)
     repo_name = Path(json.loads((out / "manifest.json").read_text())["repo"]).name
+    sandbox(repo_name)  # fail before any review starts
     cmd = reviewer_argv(args.model, args.effort)
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         results = list(pool.map(lambda u: review_unit(u, out, cmd, repo_name), units))

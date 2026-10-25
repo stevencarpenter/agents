@@ -95,7 +95,10 @@ def now() -> str:
 def append(events: list[dict]) -> None:
     """Append events to the ledger, creating it if needed."""
     LEDGER.parent.mkdir(parents=True, exist_ok=True)
+    torn = LEDGER.exists() and LEDGER.stat().st_size and not LEDGER.read_bytes().endswith(b"\n")
     with LEDGER.open("a", encoding="utf-8") as fh:
+        if torn and events:
+            fh.write("\n")  # an interrupted write must not swallow the next event
         for event in events:
             fh.write(json.dumps(event, ensure_ascii=False) + "\n")
 
@@ -106,8 +109,12 @@ def load() -> tuple[dict[str, dict], list[dict]]:
     escapes: list[dict] = []
     if not LEDGER.exists():
         return findings, escapes
-    for line in LEDGER.read_text(encoding="utf-8").splitlines():
-        event = json.loads(line)
+    for number, line in enumerate(LEDGER.read_text(encoding="utf-8").splitlines(), 1):
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            print(f"warning: {LEDGER}:{number} is not JSON; skipped", file=sys.stderr)
+            continue
         if event["type"] == "finding":
             findings[event["id"]] = {**event, "status": "open"}
         elif event["type"] == "status" and event["id"] in findings:
@@ -124,8 +131,14 @@ def cmd_log(args: argparse.Namespace) -> int:
     paths = {f["unit"]: f["path"] for f in manifest["files"] if "unit" in f}
     run_id = out.name
     events = []
+    failed = 0
     for result_file in sorted((out / "results").glob("*.json")):
         result = json.loads(result_file.read_text())
+        if not result.get("ok", True):
+            # A failed review is not a clean one; it must not read as 0 findings.
+            print(f"FAILED {result['unit']}: {result.get('error')}", file=sys.stderr)
+            failed += 1
+            continue
         unit = (out / "units" / f"{result['unit']}.diff").read_text()
         rows = unit.splitlines()
         # Key on the repo and the reviewed text, not the out dir name, so two
@@ -154,12 +167,12 @@ def cmd_log(args: argparse.Namespace) -> int:
                 "model_id": result.get("model_id", ""),
             })
     known = load()[0]
-    new = [e for e in events if e["id"] not in known]
+    new = list({e["id"]: e for e in events if e["id"] not in known}.values())
     append(new)
     for e in new:
         print(f"{e['id']}  {e['severity']:<6} {e['path']}:{e['side']}{e['line']}  {e['claim'][:70]}")
     print(f"logged {len(new)} finding(s) -> {LEDGER}")
-    return 0
+    return 1 if failed else 0
 
 
 def cmd_mark(args: argparse.Namespace) -> int:
@@ -190,9 +203,8 @@ def cmd_reconcile(_: argparse.Namespace) -> int:
         stripped, action = strip_context.strip_source(f["path"], source)
         if action != "stripped":
             continue
-        lines = stripped.splitlines()
-        window = lines[max(0, f["line"] - 4) : f["line"] + 3]
-        if f["line_text"].strip() not in (line.strip() for line in window):
+        # Edits above the line move it, so look for it anywhere in the file.
+        if f["line_text"].strip() not in {line.strip() for line in stripped.split("\n")}:
             events.append({"type": "status", "id": f["id"], "status": "likely-addressed",
                            "note": "flagged line changed", "at": now(), "auto": True})
     append(events)
