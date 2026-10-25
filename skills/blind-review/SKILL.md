@@ -226,8 +226,9 @@ any files the stripper could not process. In sidecar mode: one line
   whitespace comparison treats any run of spaces as one space (leading
   indentation still counts in Python, YAML, and Makefiles, and adding or
   removing a space between tokens always counts). Inside literals, as the
-  grammar finds them, whitespace and blank lines count exactly. A file with
-  no grammar, such as an INI file, is compared by collapsed whitespace only.
+  grammar finds them (embedded scripts and template expressions included),
+  whitespace and blank lines count exactly. A file with no grammar, such as
+  an INI file, is compared line by line exactly, apart from trailing spaces.
 - Scope bundling: the context arm has comments AND repo-wide tools
   (grep, history, other files), so blind-vs-context differences measure
   "does more information of any kind help", not purely comment bias. The

@@ -1130,6 +1130,11 @@ class MechanicalModeTest(unittest.TestCase):
             ("a.py", 'f"{allow()}"\n', 'f"{deny()}"\n'),
             ("a.sh", "cat <<EOF\na\n\nb\nEOF\n", "cat <<EOF\na\nb\nEOF\n"),
             ("a.py", 'value = """a\n  \nb"""\n', 'value = """a\n    \nb"""\n'),
+            ("a.vue", '<template><p>{{ "deny  all" }}</p></template>\n', '<template><p>{{ "deny all" }}</p></template>\n'),
+            ("a.vue", '<script>\nconst v = "a  b";\n</script>\n', '<script>\nconst v = "a b";\n</script>\n'),
+            ("a.svelte", '<p>{"a  b"}</p>\n', '<p>{"a b"}</p>\n'),
+            ("a.html", '<p title="a  b">x</p>\n', '<p title="a b">x</p>\n'),
+            ("setup.cfg", "[x]\nvalue = a  b\n", "[x]\nvalue = a b\n"),
         ]
         for rel, base, head in cases:
             with self.subTest(base=base):

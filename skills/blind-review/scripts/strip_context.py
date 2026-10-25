@@ -354,14 +354,39 @@ def _embedded_language(element: Node, data: bytes) -> str | None:
     return None  # a template or other data block
 
 
+# (literal spans, docstring spans) in absolute byte offsets.
+Layout = tuple[list[tuple[int, int]], list[tuple[int, int]]]
+
+
+def _record_layout(root: Node, base: int, docs: list[Node], layout: Layout) -> None:
+    """Record the outermost literal nodes of ``root`` and its docstrings, offset by ``base``."""
+    doc_spans = [(n.start_byte, n.end_byte) for n in docs]
+    layout[1].extend((base + s, base + e) for s, e in doc_spans)
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        # A docstring's blanked interior is not data, so it is compared like code.
+        if (node.start_byte, node.end_byte) in doc_spans:
+            continue
+        holds_doc = any(node.start_byte <= s and e <= node.end_byte for s, e in doc_spans)
+        if node.is_named and not holds_doc and _LITERAL_KIND.search(node.type):
+            layout[0].append((base + node.start_byte, base + node.end_byte))
+        else:
+            stack.extend(node.children)
+
+
 def _collect(
     lang: str,
     data: bytes,
     base: int,
     spans: list[tuple[int, int, bool]],
     fragment: bool = False,
+    layout: Layout | None = None,
 ) -> None:
     """Append (start, end, is_doc) byte spans to blank in ``data``, offset by ``base``.
+
+    With ``layout``, also record the literal and docstring byte spans of every
+    tree parsed, for the mechanical comparison.
 
     A ``fragment`` (a macro body, a recipe line, a template expression) need
     not be a whole program, so its comments are taken even from a tree with
@@ -383,7 +408,10 @@ def _collect(
         if lang == "dockerfile" and data[data.rfind(b"\n", 0, node.start_byte) + 1 : node.start_byte].strip():
             continue
         spans.append((base + node.start_byte, base + node.end_byte, False))
-    for node in _docstrings(lang, root):
+    doc_nodes = _docstrings(lang, root)
+    if layout is not None:
+        _record_layout(root, base, doc_nodes, layout)
+    for node in doc_nodes:
         text = data[node.start_byte : node.end_byte]
         quote = _DOC_QUOTE.match(text)
         if quote and len(text) >= quote.end() + len(quote.group(1)) and text.endswith(quote.group(1)):
@@ -392,7 +420,7 @@ def _collect(
         # The grammar keeps a macro body as raw text, so comments in it need their own parse.
         for arg in _captures(_query(lang, "(preproc_arg) @arg"), root, "arg"):
             arg_text = data[arg.start_byte : arg.end_byte]
-            _collect(lang, arg_text, base + arg.start_byte, spans, fragment=True)
+            _collect(lang, arg_text, base + arg.start_byte, spans, fragment=True, layout=layout)
     if lang == "make":
         # Outside recipes and define bodies, make ends a line at any unescaped `#`.
         protected = [(n.start_byte, n.end_byte) for n in _captures(_query(lang, "[(recipe_line) (raw_text)] @p"), root, "p")]
@@ -403,17 +431,19 @@ def _collect(
         for line in _captures(_query(lang, "(recipe_line) @line"), root, "line"):
             text = data[line.start_byte : line.end_byte]
             skip = len(text) - len(text.lstrip(b"@+- \t"))
-            _collect("bash", text[skip:], base + line.start_byte + skip, spans, fragment=True)
+            _collect("bash", text[skip:], base + line.start_byte + skip, spans, fragment=True, layout=layout)
     if markup:
         for element in _captures(_query(lang, "[(script_element) (style_element)] @el"), root, "el"):
             body = next((c for c in element.children if c.type == "raw_text"), None)
             inner = _embedded_language(element, data)
             if body is not None and inner is not None:
-                _collect(inner, data[body.start_byte : body.end_byte], base + body.start_byte, spans)
+                _collect(inner, data[body.start_byte : body.end_byte], base + body.start_byte, spans, layout=layout)
     if lang == "svelte":
         # Template expressions are JS, though a fragment such as `items as item` is not a program.
         for expr in _captures(_query(lang, "(svelte_raw_text) @js"), root, "js"):
-            _collect("javascript", data[expr.start_byte : expr.end_byte], base + expr.start_byte, spans, fragment=True)
+            _collect(
+                "javascript", data[expr.start_byte : expr.end_byte], base + expr.start_byte, spans, True, layout
+            )
 
 
 @functools.cache
@@ -488,7 +518,11 @@ def strip_vue(source: str) -> str:
     Raises:
         SyntaxError: When they never agree; a guess could blank template text.
     """
-    data = source.encode("utf-8")
+    return _blank(source, _vue_spans(source.encode("utf-8")))
+
+
+def _vue_spans(data: bytes, layout: Layout | None = None) -> list[tuple[int, int, bool]]:
+    """Return the blank spans of a Vue component; see ``strip_vue``."""
     parser = Parser(_language_object("html"))
     root = parser.parse(data).root_node
     for _ in range(8):
@@ -504,10 +538,10 @@ def strip_vue(source: str) -> str:
     else:
         raise SyntaxError("vue interpolations and tags do not settle")
     spans: list[tuple[int, int, bool]] = []
-    _collect("html", bytes(masked), 0, spans)
+    _collect("html", bytes(masked), 0, spans, layout=layout)
     for start, end in interpolations:
-        _collect("javascript", data[start + 2 : end - 2], start + 2, spans, fragment=True)
-    return _blank(source, spans)
+        _collect("javascript", data[start + 2 : end - 2], start + 2, spans, fragment=True, layout=layout)
+    return spans
 
 
 def _lines(pattern: str) -> Callable[[str], str]:
@@ -955,6 +989,7 @@ _BLANK_STRING = re.compile(r"""[rRbBuU]{0,2}(\"\"\"|'''|"|')(?:\s*\1)?""")
 # Node kinds whose text is data, so whitespace inside them counts.
 _LITERAL_KIND = re.compile(
     r"string|heredoc|regex|sigil|str_lit|char_literal|rune_literal|character_literal|quote_scalar|block_scalar"
+    r"|attribute_value"
 )
 _WHITESPACE = re.compile(r"\s+")
 
@@ -968,36 +1003,38 @@ def _grammar_name(rel: str, text: str) -> str | None:
     return None
 
 
-def _layout(rel: str, text: str) -> tuple[set[int], list[tuple[int, int]]]:
+def _layout(rel: str, text: str) -> tuple[set[int], list[tuple[int, int]]] | None:
     """Return (docstring rows, literal spans as str indices) of a stripped text.
 
     The stripped text still parses, because only comment and docstring
-    interiors were blanked. Without a grammar, or when it does not parse,
-    both are empty and every line is compared by its collapsed whitespace.
+    interiors were blanked, so the stripper's own parses (embedded scripts,
+    template expressions, macro bodies) are repeated to find literals. Without
+    a grammar (a line-oriented config format, whose comments are whole lines)
+    the result is None, and each line is compared exactly.
     """
-    lang = _grammar_name(rel, text)
-    if lang is None:
-        return set(), []
-    root = Parser(_language_object(lang)).parse(text.encode("utf-8")).root_node
-    if root.has_error:
-        return set(), []
-    docs = _docstrings(lang, root)
-    rows = {row for n in docs for row in range(n.start_point.row, n.end_point.row + 1)}
-    doc_spans = [(n.start_byte, n.end_byte) for n in docs]
-    to_char = _char_index(text)
-    literals: list[tuple[int, int]] = []
-    stack = [root]
-    while stack:
-        node = stack.pop()
-        # A docstring's blanked interior is not data, so it is compared like code.
-        if (node.start_byte, node.end_byte) in doc_spans:
-            continue
-        holds_doc = any(node.start_byte <= s and e <= node.end_byte for s, e in doc_spans)
-        if node.is_named and not holds_doc and _LITERAL_KIND.search(node.type):
-            literals.append((to_char(node.start_byte), to_char(node.end_byte)))
+    found = _dispatch(rel, text)
+    strip = found[1] if found else None
+    data = text.encode("utf-8")
+    layout: Layout = ([], [])
+    try:
+        if isinstance(strip, functools.partial) and strip.func is _tree_sitter:
+            _collect(strip.args[0], data, 0, [], layout=layout)
+        elif strip is strip_vue:
+            _vue_spans(data, layout)
         else:
-            stack.extend(node.children)
-    return rows, sorted(literals)
+            return None
+    except SyntaxError:
+        return set(), []
+    literals, docs = layout
+    rows = {row for s, e in docs for row in range(data.count(b"\n", 0, s), data.count(b"\n", 0, e) + 1)}
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(literals):  # an embedded parse may sit inside an outer literal
+        if merged and start < merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(end, merged[-1][1]))
+        else:
+            merged.append((start, end))
+    to_char = _char_index(text)
+    return rows, [(to_char(s), to_char(e)) for s, e in merged]
 
 
 def _compare_key(line: str, parts: list[tuple[int, int]]) -> str:
@@ -1017,8 +1054,7 @@ def _compare_key(line: str, parts: list[tuple[int, int]]) -> str:
 def _code_lines(
     text: str,
     indent_sensitive: bool,
-    doc_rows: set[int] | None = None,
-    literals: list[tuple[int, int]] | None = None,
+    layout: tuple[set[int], list[tuple[int, int]]] | None = (set(), []),
 ) -> list[tuple[int, str, str]]:
     """Return (line_number, compare_key, display) for each line that holds code.
 
@@ -1027,10 +1063,12 @@ def _code_lines(
     the key collapses each run of whitespace to one space (deleting it would
     equate ``rm -rf /tmp`` and ``rm -rf / tmp``); inside ``literals``,
     whitespace and blank lines are data and count. Raw leading indentation is
-    kept when it is syntax.
+    kept when it is syntax. With no ``layout`` (no grammar), each line is
+    compared exactly, apart from trailing whitespace.
     """
-    doc_rows = doc_rows or set()
-    literals = literals or []
+    if layout is None:
+        return [(n, line.rstrip(), line.rstrip()) for n, line in enumerate(text.split("\n"), 1) if line.strip()]
+    doc_rows, literals = layout
     rows = []
     offset = first = 0
     for number, line in enumerate(text.split("\n"), 1):
@@ -1108,8 +1146,8 @@ def mechanical_hunks(rel: str, base: str, head: str) -> str:
         separated by ``@@``; empty when no code line changed.
     """
     sensitive = _grammar_name(rel, head or base) in INDENT_SENSITIVE_LANGUAGES
-    old = _code_lines(base, sensitive, *_layout(rel, base))
-    new = _code_lines(head, sensitive, *_layout(rel, head))
+    old = _code_lines(base, sensitive, _layout(rel, base))
+    new = _code_lines(head, sensitive, _layout(rel, head))
     groups = []
     for i1, i2, j1, j2 in _changed_ranges([k for _, k, _ in old], [k for _, k, _ in new]):
         rows = [f"-{n}|{d}" for n, _, d in old[i1:i2]]
