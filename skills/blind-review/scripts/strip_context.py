@@ -220,6 +220,16 @@ def _ruby_regex_allowed(source: str, i: int, out: list[str]) -> bool:
     return j < 0 or out[j] in "\r\n" or _regex_allowed(source, i, out)
 
 
+def _ruby_percent_allowed(source: str, i: int, out: list[str]) -> bool:
+    """Also accept a command argument: ``puts %q{x}``, but not ``x %= 2``."""
+    if _ruby_regex_allowed(source, i, out):
+        return True
+    j = i - 1
+    while j >= 0 and out[j] in " \t":
+        j -= 1
+    return j < i - 1 and j >= 0 and (out[j].isalnum() or out[j] == "_") and source[i + 1 : i + 2] != "="
+
+
 def _scan_regex(source: str, start: int) -> int:
     """Measure a regex literal beginning at ``start``.
 
@@ -657,7 +667,9 @@ RUBY = [
     _heredoc(r"<<([~-]?)([\"'`]?)([A-Z_][A-Za-z0-9_]*)\2", name=3, indent=1),
     # Ruby regex literals may span lines (`/x`) and interpolate.
     _string(r"/(?![/*])", r"/[a-z]*", interp=HASH_BRACE, guard=_ruby_regex_allowed),
-    _string(r"%[qQwWiIrsx]?([^\w\s])", _delimited(1), interp=HASH_BRACE, guard=_ruby_regex_allowed, nested=True),
+    # %q, %w, %i, and %s do not interpolate; %Q, %W, %I, %r, %x, and bare % do.
+    _string(r"%[qwis]([^\w\s])", _delimited(1), guard=_ruby_percent_allowed, nested=True),
+    _string(r"%[QWIrx]?([^\w\s])", _delimited(1), interp=HASH_BRACE, guard=_ruby_percent_allowed, nested=True),
     _comment("#"),
     _string('"', interp=HASH_BRACE),
     _string("'", skip=r"\\[\\']"),
@@ -986,6 +998,7 @@ def strip_python(source: str) -> str:
     return "".join(lines)
 
 
+_YAML_NODE_START = re.compile(r" *(?:- +)*")
 _YAML_BLOCK_HEADER = re.compile(r"(?:^|[:-]\s)\s*(?:[!&]\S*\s+)*[|>]([1-9+-]{0,2})$")
 
 
@@ -1005,7 +1018,11 @@ def strip_yaml(source: str) -> str:
         block = _YAML_BLOCK_HEADER.search(header)
         if lines[i - 1].lstrip().startswith("#") or not block:
             continue
-        parent = len(header) - len(header.lstrip(" "))
+        # The owning node starts after any `- ` indicators: at the key, or at the last `-`.
+        node = _YAML_NODE_START.match(header)
+        lead = node.end() if node else 0
+        dash = header.rfind("-", 0, lead) if header[lead : lead + 1] in "|>!&" else -1
+        parent = dash if dash >= 0 else lead
         start = i
         while i < len(lines) and not lines[i].strip():
             i += 1

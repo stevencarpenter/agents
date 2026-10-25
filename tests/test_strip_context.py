@@ -294,6 +294,10 @@ class HashStripTest(PositionContractTest):
         out = self.assert_masked("a.yaml", "key: |2\n    intro\n  # deny\nx: 1 # gone\n")
         self.assertIn("# deny", out)
         self.assertNotIn("gone", out)
+        # In `- key: |2` the key starts at column 2, so the body is 4 deep.
+        out = self.assert_masked("a.yaml", "- key: |2\n    body\n  # gone\n")
+        self.assertIn("body", out)
+        self.assertNotIn("gone", out)
 
 
 class SqlAndXmlStripTest(PositionContractTest):
@@ -671,6 +675,12 @@ STYLE_CASES: list[tuple[str, str, list[str], list[str]]] = [
     ("a.rb", "R = /\\A\n  (?:#{HEX}) | # gone\n  x/x\n", ["(?:#{HEX}) |"], []),
     ("a.rb", "R = /\n  #{A}\n/x\n", ["#{A}"], []),
     ("a.rb", "c = '\\1'\n/(#{f})(.*)/m\n", ["/(#{f})(.*)/m"], []),
+    (
+        "a.rb",
+        "puts %q{# keep}\ns = %q{#{1 # keep2}}\nx %= 2 # gone\nt = %Q{#{a} b} # gone2\n",
+        ["puts %q{# keep}", "%q{#{1 # keep2}}", "x %= 2", "%Q{#{a} b}"],
+        ["gone"],
+    ),
     ("a.kt", 'val s = "${m["k"]} // keep" // gone\n', ['"${m["k"]} // keep"'], ["gone"]),
     ("a.swift", 'let s = "\\(f("a")) // keep" // gone\n', ['"\\(f("a")) // keep"'], ["gone"]),
     ("a.json5", "{ $schema: 'https://x/y.json', // gone\n}\n", ["'https://x/y.json'"], ["gone"]),
