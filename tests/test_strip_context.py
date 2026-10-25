@@ -837,6 +837,33 @@ class ReviewCaseTest(PositionContractTest):
                 for text in drop:
                     self.assertNotIn(text, out)
 
+    def test_directives_keep_no_free_text(self) -> None:
+        """A comment stays only when it is wholly a directive, where the tool reads it."""
+        cases = [
+            ("a.go", 'package a\nfunc ExampleF() {\n\tfmt.Println("hi")\n\t// Output:\n\t// hi\n}\n', ["// Output:", "// hi"], []),
+            ("a.go", "package a\nfunc F() {\n\t// Output: gone\n}\n", [], ["gone"]),
+            ("a.go", "//go:build linux\n// +build linux\n\npackage a\n", ["//go:build linux", "// +build linux"], []),
+            ("a.ts", '/// <reference path="a.d.ts" />\n/// <reference path="b.d.ts" /> gone\n', ['path="a.d.ts"'], ["gone"]),
+            ("a.rb", "# frozen_string_literal: true\nx = 1\n# frozen_string_literal: true\n", ["# frozen"], []),
+            ("a.rb", "# frozen_string_literal: true, gone\nx = 1\n", [], ["gone"]),
+            ("Dockerfile", "# syntax=docker/dockerfile:1 gone\nFROM x\n", [], ["gone"]),
+            ("a.ps1", "#Requires -Version 7\n$x = 1\n  #Requires -Version 7 gone too\n", ["#Requires -Version 7"], ["gone"]),
+        ]
+        for name, source, keep, drop in cases:
+            with self.subTest(name=name, source=source[:40]):
+                out = self.assert_masked(name, source)
+                for text in keep:
+                    self.assertIn(text, out)
+                for text in drop:
+                    self.assertNotIn(text, out)
+        out = self.assert_masked("a.rb", "# frozen_string_literal: true\nx = 1\n# frozen_string_literal: true\n")
+        self.assertEqual(out.count("frozen"), 1, "a magic comment after code is commentary")
+
+    def test_fragment_that_does_not_parse_still_loses_comments(self) -> None:
+        """A template expression need not be a program; its comments must not leak."""
+        out = self.assert_masked("a.svelte", "{#each items as item /* gone */}{item}{/each}\n")
+        self.assertNotIn("gone", out)
+
     def test_grammar_gaps_are_labeled(self) -> None:
         """Valid code a pinned grammar cannot parse is flagged, never half-stripped."""
         for name, source in PARSE_ERROR_CASES:

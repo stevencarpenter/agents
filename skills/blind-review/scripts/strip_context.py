@@ -186,21 +186,30 @@ DOC_QUERIES = {
     """,
 }
 
-# Comments that are code: build constraints, compiler and tool directives.
+# Comments that are code: build constraints, compiler and tool directives. Each
+# pattern must match the whole comment, so free text cannot ride along with a
+# directive to the blind reviewer.
+_REFERENCE = re.compile(
+    rb"///[ \t]*<(?:reference|amd-module|amd-dependency)(?:[ \t]+[\w-]+[ \t]*=[ \t]*(?:\"[^\"\n]*\"|'[^'\n]*'))*[ \t]*/>"
+)
 KEEP = {
-    "go": re.compile(rb"//(?:go:|line |export |extern )|// \+build|//\s*(?:Unordered )?[Oo]utput:"),
-    "javascript": re.compile(rb"///\s*<(?:reference|amd-module|amd-dependency)\b"),
-    "typescript": re.compile(rb"///\s*<(?:reference|amd-module|amd-dependency)\b"),
-    "tsx": re.compile(rb"///\s*<(?:reference|amd-module|amd-dependency)\b"),
+    "go": re.compile(rb"//(?:go:\w+|line|export|extern)(?:[ \t]+[^\s/]+)*|// \+build(?:[ \t]+[^\s/]+)+"),
+    "javascript": _REFERENCE,
+    "typescript": _REFERENCE,
+    "tsx": _REFERENCE,
     "ruby": re.compile(
         rb"#[ \t]*(?:frozen_string_literal|encoding|coding|warn_indent|warn_past_scope"
-        rb"|shareable_constant_value)[ \t]*:"
+        rb"|shareable_constant_value)[ \t]*:[ \t]*[\w-]+[ \t]*"
     ),
-    "powershell": re.compile(rb"(?i)#requires\b"),
-    "swift": re.compile(rb"// swift-tools-version:"),
-    "sql": re.compile(rb"/\*[!+]"),  # MySQL executable comments and optimizer hints
-    "dockerfile": re.compile(rb"#[ \t]*(?i:syntax|escape|check)[ \t]*="),
+    "powershell": re.compile(rb"(?i)#requires(?:[ \t]+-\w+(?:[ \t]+[\w.,@{}=';\"-]+)?)+[ \t]*"),
+    "swift": re.compile(rb"//[ \t]*swift-tools-version:[ \t]*[\d.]+[ \t]*"),
+    # MySQL runs `/*! ... */` and reads `/*+ ... */` as optimizer hints.
+    "sql": re.compile(rb"/\*[!+][\s\S]*"),
+    "dockerfile": re.compile(rb"#[ \t]*(?i:syntax|escape|check)[ \t]*=[ \t]*\S+[ \t]*"),
 }
+# These directives count only before the first statement.
+_HEADER_DIRECTIVES = {"ruby", "dockerfile", "swift"}
+_GO_OUTPUT = re.compile(rb"//[ \t]*(?:Unordered )?[Oo]utput:")
 _PY_CODING = re.compile(rb"#.*?coding[:=][ \t]*[-\w.]+")
 # PEP 723 inline script metadata: dependencies, so code, not commentary.
 _PY_SCRIPT_BLOCK = re.compile(rb"^# /// [a-zA-Z0-9-]+\r?\n(?:#(?:| [^\r\n]*)\r?\n)+# ///\r?$", re.MULTILINE)
@@ -240,29 +249,46 @@ def _captures(query: Query, node: Node, name: str) -> list[Node]:
 
 def _kept(lang: str, node: Node, data: bytes, py_blocks: list[range]) -> bool:
     """Return True when a comment node carries code, so it must stay."""
-    text = data[node.start_byte : node.end_byte]
+    text = data[node.start_byte : node.end_byte].rstrip()
     if node.start_byte == 0 and text.startswith(b"#!"):
         return True
     keep = KEEP.get(lang)
-    if keep is not None and keep.match(text):
-        if lang != "dockerfile":
+    if keep is not None and keep.fullmatch(text) and (node.start_point.column == 0 or lang == "sql"):
+        if lang not in _HEADER_DIRECTIVES:
             return True
-        # A parser directive counts only before the first instruction.
-        prev = node.prev_sibling
-        while prev is not None and prev.type == "comment":
-            prev = prev.prev_sibling
+        prev = node.prev_named_sibling
+        while prev is not None and prev.type in COMMENT_KINDS:
+            prev = prev.prev_named_sibling
         return prev is None
     if lang == "python":
         return (node.start_point.row < 2 and _PY_CODING.match(text) is not None) or any(
             node.start_byte in block for block in py_blocks
         )
     if lang == "go":
-        # A cgo preamble is C code in the comments just before `import "C"`.
-        nxt = node.next_named_sibling
-        while nxt is not None and nxt.type == "comment":
-            nxt = nxt.next_named_sibling
-        return nxt is not None and nxt.type == "import_declaration" and b'"C"' in data[nxt.start_byte : nxt.end_byte]
+        return _go_output(node, data) or _cgo_preamble(node, data)
     return False
+
+
+def _cgo_preamble(node: Node, data: bytes) -> bool:
+    """A cgo preamble is C code in the comments just before `import "C"`."""
+    nxt = node.next_named_sibling
+    while nxt is not None and nxt.type == "comment":
+        nxt = nxt.next_named_sibling
+    return nxt is not None and nxt.type == "import_declaration" and b'"C"' in data[nxt.start_byte : nxt.end_byte]
+
+
+def _go_output(node: Node, data: bytes) -> bool:
+    """`go test` compares an Example function's `// Output:` comments with its stdout."""
+    func = node.parent
+    while func is not None and func.type != "function_declaration":
+        func = func.parent
+    if func is None:
+        return False
+    name = func.child_by_field_name("name")
+    if name is None or not data[name.start_byte : name.end_byte].startswith(b"Example"):
+        return False
+    # The expected output is the `// Output:` comment and every comment after it.
+    return _GO_OUTPUT.search(data, func.start_byte, node.end_byte) is not None
 
 
 def _in_text_element(node: Node, data: bytes) -> bool:
@@ -310,22 +336,20 @@ def _collect(
     data: bytes,
     base: int,
     spans: list[tuple[int, int, bool]],
-    strict: bool,
-    tolerant: bool = False,
+    fragment: bool = False,
 ) -> None:
     """Append (start, end, is_doc) byte spans to blank in ``data``, offset by ``base``.
 
-    A fragment that does not parse is skipped, unless ``tolerant``: a macro
-    body is not a program, but the lexer still finds its comments.
+    A ``fragment`` (a macro body, a recipe line, a template expression) need
+    not be a whole program, so its comments are taken even from a tree with
+    errors: the lexer still finds them, and skipping would leak them.
 
     Raises:
-        SyntaxError: When ``strict`` and the grammar cannot parse ``data``.
+        SyntaxError: When ``data`` is not a fragment and the grammar cannot parse it.
     """
     root = Parser(_language_object(lang)).parse(data).root_node
-    if root.has_error and not tolerant:
-        if strict:
-            raise SyntaxError(f"{lang} parse error at line {_first_error(root).start_point.row + 1}")
-        return
+    if root.has_error and not fragment:
+        raise SyntaxError(f"{lang} parse error at line {_first_error(root).start_point.row + 1}")
     comments, docs = _queries(lang)
     py_blocks = [range(m.start(), m.end()) for m in _PY_SCRIPT_BLOCK.finditer(data)] if lang == "python" else []
     markup = lang in ("html", "svelte")
@@ -345,7 +369,7 @@ def _collect(
         # The grammar keeps a macro body as raw text, so comments in it need their own parse.
         for arg in _captures(_query(lang, "(preproc_arg) @arg"), root, "arg"):
             arg_text = data[arg.start_byte : arg.end_byte]
-            _collect(lang, arg_text, base + arg.start_byte, spans, strict=False, tolerant=True)
+            _collect(lang, arg_text, base + arg.start_byte, spans, fragment=True)
     if lang == "make":
         # Outside recipes and define bodies, make ends a line at any unescaped `#`.
         protected = [(n.start_byte, n.end_byte) for n in _captures(_query(lang, "[(recipe_line) (raw_text)] @p"), root, "p")]
@@ -356,17 +380,17 @@ def _collect(
         for line in _captures(_query(lang, "(recipe_line) @line"), root, "line"):
             text = data[line.start_byte : line.end_byte]
             skip = len(text) - len(text.lstrip(b"@+- \t"))
-            _collect("bash", text[skip:], base + line.start_byte + skip, spans, strict=False)
+            _collect("bash", text[skip:], base + line.start_byte + skip, spans, fragment=True)
     if markup:
         for element in _captures(_query(lang, "[(script_element) (style_element)] @el"), root, "el"):
             body = next((c for c in element.children if c.type == "raw_text"), None)
             inner = _embedded_language(element, data)
             if body is not None and inner is not None:
-                _collect(inner, data[body.start_byte : body.end_byte], base + body.start_byte, spans, strict)
+                _collect(inner, data[body.start_byte : body.end_byte], base + body.start_byte, spans)
     if lang == "svelte":
-        # Template expressions are JS; a fragment such as `items as item` is not a program.
+        # Template expressions are JS, though a fragment such as `items as item` is not a program.
         for expr in _captures(_query(lang, "(svelte_raw_text) @js"), root, "js"):
-            _collect("javascript", data[expr.start_byte : expr.end_byte], base + expr.start_byte, spans, strict=False)
+            _collect("javascript", data[expr.start_byte : expr.end_byte], base + expr.start_byte, spans, fragment=True)
 
 
 @functools.cache
@@ -404,7 +428,7 @@ def _blank(source: str, spans: list[tuple[int, int, bool]]) -> str:
 
 def _tree_sitter(lang: str, source: str) -> str:
     spans: list[tuple[int, int, bool]] = []
-    _collect(lang, source.encode("utf-8"), 0, spans, strict=True)
+    _collect(lang, source.encode("utf-8"), 0, spans)
     return _blank(source, spans)
 
 
@@ -431,9 +455,9 @@ def strip_vue(source: str) -> str:
             interpolations.append(m)
             masked[m.start() : m.end()] = bytes(b if b in b"\r\n" else 32 for b in m.group())
     spans: list[tuple[int, int, bool]] = []
-    _collect("html", bytes(masked), 0, spans, strict=True)
+    _collect("html", bytes(masked), 0, spans)
     for m in interpolations:
-        _collect("javascript", m.group(1), m.start(1), spans, strict=False)
+        _collect("javascript", m.group(1), m.start(1), spans, fragment=True)
     return _blank(source, spans)
 
 
