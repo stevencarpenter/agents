@@ -687,8 +687,9 @@ STYLE_CASES: list[tuple[str, str, list[str], list[str]]] = [
     ("a.rb", "c = '\\1'\n/(#{f})(.*)/m\n", ["/(#{f})(.*)/m"], []),
     (
         "a.rb",
-        "puts %q{# keep}\ns = %q{#{1 # keep2}}\nx %= 2 # gone\nt = %Q{#{a} b} # gone2\n",
-        ["puts %q{# keep}", "%q{#{1 # keep2}}", "x %= 2", "%Q{#{a} b}"],
+        "puts %q{# keep}\ns = %q{#{1 # keep2}}\nx %= 2 # gone\nt = %Q{#{a} b} # gone2\n"
+        "puts /# keep3/.source\nx = a /b # gone3\n",
+        ["puts %q{# keep}", "%q{#{1 # keep2}}", "x %= 2", "%Q{#{a} b}", "/# keep3/.source", "a /b"],
         ["gone"],
     ),
     ("a.kt", 'val s = "${m["k"]} // keep" // gone\n', ['"${m["k"]} // keep"'], ["gone"]),

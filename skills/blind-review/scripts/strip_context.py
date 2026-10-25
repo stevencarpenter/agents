@@ -220,14 +220,25 @@ def _ruby_regex_allowed(source: str, i: int, out: list[str]) -> bool:
     return j < 0 or out[j] in "\r\n" or _regex_allowed(source, i, out)
 
 
-def _ruby_percent_allowed(source: str, i: int, out: list[str]) -> bool:
-    """Also accept a command argument: ``puts %q{x}``, but not ``x %= 2``."""
-    if _ruby_regex_allowed(source, i, out):
-        return True
+def _ruby_command_argument(source: str, i: int, out: list[str]) -> bool:
+    """``puts %q{x}`` or ``puts /x/``: an identifier, a space, and no space or ``=`` after."""
     j = i - 1
     while j >= 0 and out[j] in " \t":
         j -= 1
-    return j < i - 1 and j >= 0 and (out[j].isalnum() or out[j] == "_") and source[i + 1 : i + 2] != "="
+    return (j < i - 1 and j >= 0 and (out[j].isalnum() or out[j] == "_")
+            and source[i + 1 : i + 2] not in ("", " ", "\t", "\n", "="))
+
+
+def _ruby_percent_allowed(source: str, i: int, out: list[str]) -> bool:
+    """Also accept a command argument: ``puts %q{x}``, but not ``x %= 2``."""
+    return _ruby_regex_allowed(source, i, out) or _ruby_command_argument(source, i, out)
+
+
+def _ruby_slash_allowed(source: str, i: int, out: list[str]) -> bool:
+    """Also accept ``puts /x/`` when the regex closes on its line, so ``a /b`` cannot swallow lines."""
+    return _ruby_regex_allowed(source, i, out) or (
+        _ruby_command_argument(source, i, out) and _scan_regex(source, i) > 0
+    )
 
 
 def _scan_regex(source: str, start: int) -> int:
@@ -666,7 +677,7 @@ RUBY = [
     CHAR_LITERAL,
     _heredoc(r"<<([~-]?)([\"'`]?)([A-Z_][A-Za-z0-9_]*)\2", name=3, indent=1),
     # Ruby regex literals may span lines (`/x`) and interpolate.
-    _string(r"/(?![/*])", r"/[a-z]*", interp=HASH_BRACE, guard=_ruby_regex_allowed),
+    _string(r"/(?![/*])", r"/[a-z]*", interp=HASH_BRACE, guard=_ruby_slash_allowed),
     # %q, %w, %i, and %s do not interpolate; %Q, %W, %I, %r, %x, and bare % do.
     _string(r"%[qwis]([^\w\s])", _delimited(1), guard=_ruby_percent_allowed, nested=True),
     _string(r"%[QWIrx]?([^\w\s])", _delimited(1), interp=HASH_BRACE, guard=_ruby_percent_allowed, nested=True),
