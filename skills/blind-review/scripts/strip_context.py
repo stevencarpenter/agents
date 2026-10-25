@@ -574,6 +574,23 @@ def _lines(pattern: str) -> Callable[[str], str]:
     return lambda source: compiled.sub(lambda m: " " * len(m.group()), source)
 
 
+def strip_properties(source: str) -> str:
+    r"""Strip `#` and `!` comment lines from a Java `.properties` file.
+
+    A line that follows a `\`-continued value line is part of that value,
+    even when it starts with `#`, as ``java.util.Properties.load`` reads it.
+    """
+    out, continued = [], False
+    for line in _physical_lines(source):
+        body = line.rstrip("\r\n")
+        if not continued and body.lstrip(" \t\f")[:1] in ("#", "!"):
+            out.append(" " * len(body) + line[len(body) :])
+            continue  # a comment line never continues
+        out.append(line)
+        continued = _CONTINUED.search(body) is not None
+    return "".join(out)
+
+
 def _grammar(lang: str) -> Callable[[str], str]:
     return functools.partial(_tree_sitter, lang)
 
@@ -614,7 +631,7 @@ LANGUAGES_BY_SUFFIX: dict[str, Callable[[str], str]] = {
     **_suffixes(".toml", _grammar("toml")),
     **_suffixes(".yaml .yml", _grammar("yaml")),
     **_suffixes(".ini .cfg", INI_LINES),
-    **_suffixes(".properties", _lines(r"^[ \t]*[#!][^\r\n]*")),
+    **_suffixes(".properties", strip_properties),
     **_suffixes(".conf", HASH_LINES),
     **_suffixes(".rb .rake .gemspec .ru", _grammar("ruby")),
     **_suffixes(".pl .pm .t", _grammar("perl")),
@@ -1016,6 +1033,7 @@ _LITERAL_KIND = re.compile(
     r"|attribute_value|^text$|^CharData$"  # markup text: `<pre>` and CSS can make its whitespace render
 )
 _WHITESPACE = re.compile(r"\s+")
+_CONTINUED = re.compile(r"(?<!\\)(?:\\\\)*\\\r?$")
 
 
 def _grammar_name(rel: str, text: str) -> str | None:
@@ -1090,12 +1108,19 @@ def _code_lines(
     kept when it is syntax. With no ``layout`` (no grammar), each line is
     compared exactly, apart from trailing whitespace.
     """
+    lines = text.split("\n")
+    # A blank line after a `\`-continued line ends the command (or value), so it counts.
+    ends_continued = [False] + [_CONTINUED.search(line) is not None for line in lines[:-1]]
     if layout is None:
-        return [(n, line.rstrip(), line.rstrip()) for n, line in enumerate(text.split("\n"), 1) if line.strip()]
+        return [
+            (n, line.rstrip(), line.rstrip())
+            for n, line in enumerate(lines, 1)
+            if line.strip() or ends_continued[n - 1]
+        ]
     doc_rows, literals = layout
     rows = []
     offset = first = 0
-    for number, line in enumerate(text.split("\n"), 1):
+    for number, line in enumerate(lines, 1):
         start, end = offset, offset + len(line)
         offset = end + 1
         while first < len(literals) and literals[first][1] <= start:
@@ -1109,6 +1134,8 @@ def _code_lines(
         if not body:
             if parts:  # a blank or whitespace-only line inside a multi-line string is data
                 rows.append((number, _compare_key(line, parts), line))
+            elif ends_continued[number - 1]:
+                rows.append((number, "", ""))
             continue
         if number - 1 in doc_rows and _BLANK_STRING.fullmatch(body):
             continue

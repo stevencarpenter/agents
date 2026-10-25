@@ -1144,6 +1144,8 @@ class MechanicalModeTest(unittest.TestCase):
             ("setup.cfg", "[x]\nvalue = a  b\n", "[x]\nvalue = a b\n"),
             ("a.html", "<pre>deny  all</pre>\n", "<pre>deny all</pre>\n"),
             ("a.xml", "<a>deny  all</a>\n", "<a>deny all</a>\n"),
+            ("a.sh", "echo one \\\n\necho two\n", "echo one \\\necho two\n"),
+            ("a.properties", "a=x\\\n# deny\n", "a=x\\\n# allow\n"),
         ]
         for rel, base, head in cases:
             with self.subTest(base=base):
