@@ -1121,6 +1121,30 @@ class MechanicalModeTest(unittest.TestCase):
         )
         self.assertEqual(list((out / "units").iterdir()), [])
 
+    def test_data_changes_that_look_like_noise_are_reviewed(self) -> None:
+        """Whitespace in a literal, an empty-string element, and an f-string are code."""
+        cases = [
+            ("a.py", 'value = "deny  all"\n', 'value = "deny all"\n'),
+            ("a.py", 'values = [\n    ""\n]\n', "values = [\n]\n"),
+            ("a.js", 'const v = [\n  ""\n];\n', "const v = [\n];\n"),
+            ("a.py", 'f"{allow()}"\n', 'f"{deny()}"\n'),
+            ("a.sh", "cat <<EOF\na\n\nb\nEOF\n", "cat <<EOF\na\nb\nEOF\n"),
+        ]
+        for rel, base, head in cases:
+            with self.subTest(base=base):
+                base_s, base_action = strip_context.strip_source(rel, base)
+                head_s, head_action = strip_context.strip_source(rel, head)
+                self.assertEqual((base_action, head_action), ("stripped", "stripped"))
+                self.assertNotEqual(strip_context.mechanical_hunks(rel, base_s, head_s), "")
+
+    def test_vue_attribute_braces_are_text(self) -> None:
+        """`{{` in a static attribute is not an interpolation, so `//` there is data."""
+        out = self.run_mechanical(
+            {"a.vue": '<template><div title="{{ 1 // deny }}"></div></template>\n'},
+            {"a.vue": '<template><div title="{{ 1 // allow }}"></div></template>\n'},
+        )
+        self.assertIn("allow", (out / "units" / "f01.vue.diff").read_text())
+
     def test_noise_only_change_writes_no_unit(self) -> None:
         """A change that touches only comments and spacing has nothing to review."""
         out = self.run_mechanical(

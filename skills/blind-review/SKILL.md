@@ -222,12 +222,12 @@ any files the stripper could not process. In sidecar mode: one line
   and uses adaptive thinking, and no flag changes either. Measure stability
   with `bench.py` reps; do not treat one run as the answer.
 - `--mechanical` limits: per-file units cannot see cross-file effects or
-  unchanged code that a change depends on; the whitespace comparison treats
-  any run of spaces as one space, so a change in run length inside a string
-  literal is hidden (leading indentation still counts in Python, YAML, and
-  Makefiles, and adding or removing a space between tokens always counts).
-  Blank lines are skipped, so adding or removing one inside a heredoc or a
-  multi-line string is hidden too.
+  unchanged code that a change depends on. Outside string literals, the
+  whitespace comparison treats any run of spaces as one space (leading
+  indentation still counts in Python, YAML, and Makefiles, and adding or
+  removing a space between tokens always counts). Inside literals, as the
+  grammar finds them, whitespace and blank lines count exactly. A file with
+  no grammar, such as an INI file, is compared by collapsed whitespace only.
 - Scope bundling: the context arm has comments AND repo-wide tools
   (grep, history, other files), so blind-vs-context differences measure
   "does more information of any kind help", not purely comment bias. The

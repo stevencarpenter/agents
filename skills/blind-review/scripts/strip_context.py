@@ -248,6 +248,14 @@ def _captures(query: Query, node: Node, name: str) -> list[Node]:
     return QueryCursor(query).captures(node).get(name, [])
 
 
+def _docstrings(lang: str, root: Node) -> list[Node]:
+    """Return the docstring nodes; a string that interpolates runs code, so it is not one."""
+    docs = _queries(lang)[1]
+    if docs is None:
+        return []
+    return [n for n in _captures(docs, root, "doc") if not any("interpolation" in c.type for c in n.children)]
+
+
 def _kept(lang: str, node: Node, data: bytes, py_blocks: list[range]) -> bool:
     """Return True when a comment node carries code, so it must stay."""
     text = data[node.start_byte : node.end_byte].rstrip()
@@ -361,7 +369,7 @@ def _collect(
         if lang == "dockerfile" and data[data.rfind(b"\n", 0, node.start_byte) + 1 : node.start_byte].strip():
             continue
         spans.append((base + node.start_byte, base + node.end_byte, False))
-    for node in _captures(docs, root, "doc") if docs is not None else ():
+    for node in _docstrings(lang, root):
         text = data[node.start_byte : node.end_byte]
         quote = _DOC_QUOTE.match(text)
         if quote and len(text) >= quote.end() + len(quote.group(1)) and text.endswith(quote.group(1)):
@@ -406,18 +414,21 @@ def _first_error(node: Node) -> Node:
     return node
 
 
+def _char_index(source: str) -> Callable[[int], int]:
+    """Map tree-sitter's UTF-8 byte offsets in ``source`` to str indices."""
+    if source.isascii():
+        return lambda offset: offset
+    widths = (1 if o < 0x80 else 2 if o < 0x800 else 3 if o < 0x10000 else 4 for o in map(ord, source))
+    starts = list(itertools.accumulate(widths, initial=0))
+    return lambda offset: bisect.bisect_left(starts, offset)
+
+
 def _blank(source: str, spans: list[tuple[int, int, bool]]) -> str:
     """Blank byte spans of ``source`` to spaces, keeping line breaks."""
     out = list(source)
-    if source.isascii():
-        to_char = None
-    else:
-        # Byte offset of each character, so tree-sitter byte spans map to str indices.
-        widths = (1 if o < 0x80 else 2 if o < 0x800 else 3 if o < 0x10000 else 4 for o in map(ord, source))
-        to_char = list(itertools.accumulate(widths, initial=0))
+    to_char = _char_index(source)
     for start, end, is_doc in spans:
-        if to_char is not None:
-            start, end = bisect.bisect_left(to_char, start), bisect.bisect_left(to_char, end)
+        start, end = to_char(start), to_char(end)
         for k in range(start, end):
             ch = source[k]
             # A backslash before a newline continues a single-quoted string.
@@ -445,9 +456,12 @@ def strip_vue(source: str) -> str:
     """
     data = source.encode("utf-8")
     root = Parser(_language_object("html")).parse(data).root_node
+    # Braces in a tag, a comment, or a script or style body are not an interpolation.
     code = [
-        (body.start_byte, body.end_byte)
-        for body in _captures(_query("html", "[(script_element) (style_element)] (raw_text) @b"), root, "b")
+        (node.start_byte, node.end_byte)
+        for node in _captures(
+            _query("html", "[(start_tag) (end_tag) (self_closing_tag) (comment) (raw_text)] @x"), root, "x"
+        )
     ]
     masked = bytearray(data)
     interpolations = []
@@ -905,23 +919,99 @@ INDENT_SENSITIVE_SUFFIXES = {".py", ".pyi", ".pyw", ".yaml", ".yml", ".hs", ".fs
 INDENT_SENSITIVE_STEMS = {"Makefile", "makefile", "GNUmakefile"}
 # A line holding only a blanked docstring or one of its quote delimiters.
 _BLANK_STRING = re.compile(r"""[rRbBuU]{0,2}(\"\"\"|'''|"|')(?:\s*\1)?""")
+# Node kinds whose text is data, so whitespace inside them counts.
+_LITERAL_KIND = re.compile(
+    r"string|heredoc|regex|sigil|str_lit|char_literal|rune_literal|character_literal|quote_scalar|block_scalar"
+)
+_WHITESPACE = re.compile(r"\s+")
 
 
-def _code_lines(text: str, indent_sensitive: bool) -> list[tuple[int, str, str]]:
+def _layout(rel: str, text: str) -> tuple[set[int], list[tuple[int, int]]]:
+    """Return (docstring rows, literal spans as str indices) of a stripped text.
+
+    The stripped text still parses, because only comment and docstring
+    interiors were blanked. Without a grammar, or when it does not parse,
+    both are empty and every line is compared by its collapsed whitespace.
+    """
+    found = _dispatch(rel, text)
+    strip = found[1] if found else None
+    if not isinstance(strip, functools.partial) or strip.func is not _tree_sitter:
+        return set(), []
+    lang = strip.args[0]
+    root = Parser(_language_object(lang)).parse(text.encode("utf-8")).root_node
+    if root.has_error:
+        return set(), []
+    docs = _docstrings(lang, root)
+    rows = {row for n in docs for row in range(n.start_point.row, n.end_point.row + 1)}
+    doc_spans = [(n.start_byte, n.end_byte) for n in docs]
+    to_char = _char_index(text)
+    literals: list[tuple[int, int]] = []
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        # A docstring's blanked interior is not data, so it is compared like code.
+        if (node.start_byte, node.end_byte) in doc_spans:
+            continue
+        holds_doc = any(node.start_byte <= s and e <= node.end_byte for s, e in doc_spans)
+        if node.is_named and not holds_doc and _LITERAL_KIND.search(node.type):
+            literals.append((to_char(node.start_byte), to_char(node.end_byte)))
+        else:
+            stack.extend(node.children)
+    return rows, sorted(literals)
+
+
+def _compare_key(line: str, parts: list[tuple[int, int]]) -> str:
+    """Collapse whitespace runs outside the literal ``parts`` of ``line``, keep it inside."""
+    pieces, pos = [], 0
+    for start, end in [*parts, (len(line), len(line))]:
+        pieces += [_WHITESPACE.sub(" ", line[pos:start]), line[start:end]]
+        pos = end
+    key = "".join(pieces)
+    if not parts or parts[0][0] > 0:
+        key = key.lstrip()
+    if not parts or parts[-1][1] < len(line):
+        key = key.rstrip()
+    return key
+
+
+def _code_lines(
+    text: str,
+    indent_sensitive: bool,
+    doc_rows: set[int] | None = None,
+    literals: list[tuple[int, int]] | None = None,
+) -> list[tuple[int, str, str]]:
     """Return (line_number, compare_key, display) for each line that holds code.
 
     Blank lines (including comment-only lines, which the stripper blanked) and
-    lines holding only a blanked docstring or its quotes are dropped. The key collapses each run of
-    whitespace to one space (deleting it would equate ``rm -rf /tmp`` and
-    ``rm -rf / tmp``) and keeps raw leading indentation when it is syntax.
+    docstring rows holding only blanked quotes are dropped. Outside literals
+    the key collapses each run of whitespace to one space (deleting it would
+    equate ``rm -rf /tmp`` and ``rm -rf / tmp``); inside ``literals``,
+    whitespace and blank lines are data and count. Raw leading indentation is
+    kept when it is syntax.
     """
+    doc_rows = doc_rows or set()
+    literals = literals or []
     rows = []
+    offset = first = 0
     for number, line in enumerate(text.split("\n"), 1):
+        start, end = offset, offset + len(line)
+        offset = end + 1
+        while first < len(literals) and literals[first][1] <= start:
+            first += 1
+        parts = []
+        for s, e in literals[first:]:
+            if s >= end:
+                break
+            parts.append((max(s, start) - start, min(e, end) - start))
         body = line.strip()
-        if not body or _BLANK_STRING.fullmatch(body):
+        if not body:
+            if parts:
+                rows.append((number, "", ""))  # a blank line inside a multi-line string
             continue
-        key = " ".join(body.split())
-        if indent_sensitive:
+        if number - 1 in doc_rows and _BLANK_STRING.fullmatch(body):
+            continue
+        key = _compare_key(line, parts)
+        if indent_sensitive and not (parts and parts[0][0] == 0):
             key = line[: len(line) - len(line.lstrip())] + key
         rows.append((number, key, line.rstrip()))
     return rows
@@ -980,8 +1070,8 @@ def mechanical_hunks(rel: str, base: str, head: str) -> str:
     sensitive = (
         path.suffix.lower() in INDENT_SENSITIVE_SUFFIXES or path.name in INDENT_SENSITIVE_STEMS
     )
-    old = _code_lines(base, sensitive)
-    new = _code_lines(head, sensitive)
+    old = _code_lines(base, sensitive, *_layout(rel, base))
+    new = _code_lines(head, sensitive, *_layout(rel, head))
     groups = []
     for i1, i2, j1, j2 in _changed_ranges([k for _, k, _ in old], [k for _, k, _ in new]):
         rows = [f"-{n}|{d}" for n, _, d in old[i1:i2]]
