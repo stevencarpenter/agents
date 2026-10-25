@@ -581,7 +581,8 @@ def strip_properties(source: str) -> str:
     even when it starts with `#`, as ``java.util.Properties.load`` reads it.
     """
     out, continued = [], False
-    for line in _physical_lines(source):
+    # Properties.load ends a line at `\r\n`, `\n`, or a bare `\r`.
+    for line in re.findall(r"[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$", source):
         body = line.rstrip("\r\n")
         if not continued and body.lstrip(" \t\f")[:1] in ("#", "!"):
             out.append(" " * len(body) + line[len(body) :])
