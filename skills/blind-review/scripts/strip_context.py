@@ -284,10 +284,20 @@ def _not_digit_separator(source: str, i: int, out: list[str]) -> bool:
 
 
 def _yaml_value_start(source: str, i: int, out: list[str]) -> bool:
-    """A YAML quote opens a scalar only where a value starts, not in ``don't``."""
+    """A YAML quote opens a scalar only where a value starts, not in ``don't``.
+
+    Anchors (``&a``) and tags (``!!str``) may sit between the indicator and the quote.
+    """
     j = i - 1
-    while j >= 0 and source[j] in " \t":
-        j -= 1
+    while True:
+        while j >= 0 and source[j] in " \t":
+            j -= 1
+        k = j
+        while k >= 0 and source[k] not in " \t\n[{":
+            k -= 1
+        if k == j or source[k + 1] not in "&!":
+            break
+        j = k
     return j < 0 or source[j] in "\n:-[{,?"
 
 
@@ -1440,6 +1450,9 @@ def _base_and_head(
 def cmd_diff(args: argparse.Namespace) -> int:
     repo = Path(args.repo).resolve()
     out = Path(args.out).resolve()
+    # A tree from an earlier run can hold files this change no longer touches.
+    for generated in ("base", "head"):
+        shutil.rmtree(out / generated, ignore_errors=True)
     changed = _changed_files(repo, args.base)
     manifest: list[dict[str, str]] = []
     diff_chunks: list[str] = []

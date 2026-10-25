@@ -299,6 +299,15 @@ class HashStripTest(PositionContractTest):
         self.assertIn("body", out)
         self.assertNotIn("gone", out)
 
+    def test_yaml_quote_after_anchor_or_tag_opens_a_scalar(self) -> None:
+        """An anchor or tag may sit between the value indicator and the quote."""
+        for value in ('k: &a "x # deny"', "k: !!str 'x # deny'", '- &a !t "x # deny"', '[&a "x # deny"]'):
+            out = self.assert_masked("a.yaml", value + "\ny: 1 # gone\n")
+            self.assertIn("# deny", out, value)
+            self.assertNotIn("gone", out, value)
+        out = self.assert_masked("a.yaml", "k: &a don't # gone\n")
+        self.assertNotIn("gone", out)
+
 
 class SqlAndXmlStripTest(PositionContractTest):
     """The remaining supported families."""
@@ -873,6 +882,28 @@ class DiffOutputTest(unittest.TestCase):
             strip_context.main(["diff", "--repo", str(repo), "--out", str(out)])
             manifest = json.loads((out / "manifest.json").read_text())
             self.assertTrue(manifest["files"][0]["action"].startswith("copied-verbatim"))
+
+    def test_rerun_removes_stale_source_trees(self) -> None:
+        """A rerun after the change is reverted must leave no head/ file to review."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, out = Path(tmp) / "repo", Path(tmp) / "out"
+            repo.mkdir()
+            for args in (
+                ("init", "-q", "-b", "main"),
+                ("config", "user.email", "t@example.com"),
+                ("config", "user.name", "t"),
+            ):
+                subprocess.run(["git", "-C", str(repo), *args], check=True)
+            (repo / "a.py").write_text("x = 1\n")
+            subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(repo), "commit", "-qm", "base"], check=True)
+            (repo / "a.py").write_text("x = 2\n")
+            strip_context.main(["diff", "--repo", str(repo), "--out", str(out)])
+            self.assertTrue((out / "head" / "a.py").exists())
+            (repo / "a.py").write_text("x = 1\n")
+            strip_context.main(["diff", "--repo", str(repo), "--out", str(out)])
+            self.assertFalse((out / "head").exists())
+            self.assertFalse((out / "base").exists())
 
 
 
