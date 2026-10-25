@@ -1168,11 +1168,22 @@ class MechanicalModeTest(unittest.TestCase):
         )
         self.assertIn("+3|z()", (out / "units" / "f01.py.diff").read_text())
 
-    def test_sass_reindent_is_a_code_change(self) -> None:
-        """Sass nests selectors by indentation, so a re-indent must surface."""
-        base = ".parent\n  color: red\n.child\n  color: blue\n"
-        head = ".parent\n  color: red\n  .child\n    color: blue\n"
-        self.assertIn("+3|  .child", strip_context.mechanical_hunks("a.sass", base, head))
+    def test_shebang_python_reindent_is_a_code_change(self) -> None:
+        """Indentation is syntax by language, so a suffixless Python script counts too."""
+        base = "#!/usr/bin/env python3\nif x:\n    a()\ndone()\n"
+        head = "#!/usr/bin/env python3\nif x:\n    a()\n    done()\n"
+        self.assertIn("+4|    done()", strip_context.mechanical_hunks("bin/tool", base, head))
+
+    def test_go_directives(self) -> None:
+        """Embed paths keep their slashes; a string is never an output directive."""
+        src = (
+            "package a\n//go:embed html/index.html\nvar f string\n"
+            'func ExampleF() {\n\tfmt.Println("// Output:") // gone\n}\n'
+        )
+        out, action = strip_context.strip_source("a.go", src)
+        self.assertEqual(action, "stripped")
+        self.assertIn("//go:embed html/index.html", out)
+        self.assertNotIn("gone", out)
 
     def test_symlink_is_read_as_its_target_path(self) -> None:
         """A changed symlink must not leak the content of the file it points at."""

@@ -194,7 +194,11 @@ _REFERENCE = re.compile(
     rb"///[ \t]*<(?:reference|amd-module|amd-dependency)(?:[ \t]+[\w-]+[ \t]*=[ \t]*(?:\"[^\"\n]*\"|'[^'\n]*'))*[ \t]*/>"
 )
 KEEP = {
-    "go": re.compile(rb"//(?:go:\w+|line|export|extern)(?:[ \t]+[^\s/]+)*|// \+build(?:[ \t]+[^\s/]+)+"),
+    # An argument may hold `/` (`//go:embed html/index.html`) or be quoted, but not `//`.
+    "go": re.compile(
+        rb'//(?:go:\w+|line|export|extern)(?:[ \t]+(?:"[^"\n]*"|`[^`\n]*`|(?:[^\s/"`]|/(?!/))+))*'
+        rb"|// \+build(?:[ \t]+[^\s/]+)+"
+    ),
     "javascript": _REFERENCE,
     "typescript": _REFERENCE,
     "tsx": _REFERENCE,
@@ -297,7 +301,10 @@ def _go_output(node: Node, data: bytes) -> bool:
     if name is None or not data[name.start_byte : name.end_byte].startswith(b"Example"):
         return False
     # The expected output is the `// Output:` comment and every comment after it.
-    return _GO_OUTPUT.search(data, func.start_byte, node.end_byte) is not None
+    return any(
+        c.start_byte <= node.start_byte and _GO_OUTPUT.match(data, c.start_byte)
+        for c in _captures(_query("go", "(comment) @c"), func, "c")
+    )
 
 
 def _in_text_element(node: Node, data: bytes) -> bool:
@@ -935,8 +942,7 @@ def cmd_diff(args: argparse.Namespace) -> int:
 
 
 # Leading whitespace is syntax here, so a re-indent is a code change.
-INDENT_SENSITIVE_SUFFIXES = {".py", ".pyi", ".pyw", ".yaml", ".yml", ".hs", ".fs", ".fsi", ".fsx", ".mk", ".sass"}
-INDENT_SENSITIVE_STEMS = {"Makefile", "makefile", "GNUmakefile"}
+INDENT_SENSITIVE_LANGUAGES = {"python", "yaml", "haskell", "fsharp", "fsharp_signature", "make"}
 # A line holding only a blanked docstring or one of its quote delimiters.
 _BLANK_STRING = re.compile(r"""[rRbBuU]{0,2}(\"\"\"|'''|"|')(?:\s*\1)?""")
 # Node kinds whose text is data, so whitespace inside them counts.
@@ -946,6 +952,15 @@ _LITERAL_KIND = re.compile(
 _WHITESPACE = re.compile(r"\s+")
 
 
+def _grammar_name(rel: str, text: str) -> str | None:
+    """Return the grammar a path (or its shebang) strips with, or None."""
+    found = _dispatch(rel, text)
+    strip = found[1] if found else None
+    if isinstance(strip, functools.partial) and strip.func is _tree_sitter:
+        return strip.args[0]
+    return None
+
+
 def _layout(rel: str, text: str) -> tuple[set[int], list[tuple[int, int]]]:
     """Return (docstring rows, literal spans as str indices) of a stripped text.
 
@@ -953,11 +968,9 @@ def _layout(rel: str, text: str) -> tuple[set[int], list[tuple[int, int]]]:
     interiors were blanked. Without a grammar, or when it does not parse,
     both are empty and every line is compared by its collapsed whitespace.
     """
-    found = _dispatch(rel, text)
-    strip = found[1] if found else None
-    if not isinstance(strip, functools.partial) or strip.func is not _tree_sitter:
+    lang = _grammar_name(rel, text)
+    if lang is None:
         return set(), []
-    lang = strip.args[0]
     root = Parser(_language_object(lang)).parse(text.encode("utf-8")).root_node
     if root.has_error:
         return set(), []
@@ -1086,10 +1099,7 @@ def mechanical_hunks(rel: str, base: str, head: str) -> str:
         ``-N|line`` and ``+N|line`` rows with original line numbers, groups
         separated by ``@@``; empty when no code line changed.
     """
-    path = Path(rel)
-    sensitive = (
-        path.suffix.lower() in INDENT_SENSITIVE_SUFFIXES or path.name in INDENT_SENSITIVE_STEMS
-    )
+    sensitive = _grammar_name(rel, head or base) in INDENT_SENSITIVE_LANGUAGES
     old = _code_lines(base, sensitive, *_layout(rel, base))
     new = _code_lines(head, sensitive, *_layout(rel, head))
     groups = []
