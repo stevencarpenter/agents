@@ -235,6 +235,7 @@ _SCRIPT_LANGS = {"js": "javascript", "javascript": "javascript", "jsx": "javascr
                  "typescript": "typescript", "tsx": "tsx"}
 _STYLE_LANGS = {"": "css", "css": "css", "postcss": "css", "scss": "scss", "less": "scss"}
 _MAKE_COMMENT = re.compile(rb"(?<!\\)#[^\r\n]*")
+_DOC_CONTENT = {"string_content", "quoted_content", "content"}
 _DOC_QUOTE = re.compile(rb'[^"\'`]*("""|\'\'\'|"|\'|`)')
 
 
@@ -412,10 +413,16 @@ def _collect(
     if layout is not None:
         _record_layout(root, base, doc_nodes, layout)
     for node in doc_nodes:
+        # The grammar's content children lie between the delimiters, whatever they are (`~S|...|`).
+        content = [c for c in node.children if c.type in _DOC_CONTENT]
         text = data[node.start_byte : node.end_byte]
         quote = _DOC_QUOTE.match(text)
-        if quote and len(text) >= quote.end() + len(quote.group(1)) and text.endswith(quote.group(1)):
+        if content:
+            spans.append((base + content[0].start_byte, base + content[-1].end_byte, True))
+        elif quote and len(text) >= quote.end() + len(quote.group(1)) and text.endswith(quote.group(1)):
             spans.append((base + node.start_byte + quote.end(), base + node.end_byte - len(quote.group(1)), True))
+        elif len(text) > 2:
+            raise SyntaxError(f"{lang} docstring delimiters not recognized at line {node.start_point.row + 1}")
     if lang in ("c", "cpp"):
         # The grammar keeps a macro body as raw text, so comments in it need their own parse.
         for arg in _captures(_query(lang, "(preproc_arg) @arg"), root, "arg"):
@@ -521,6 +528,18 @@ def strip_vue(source: str) -> str:
     return _blank(source, _vue_spans(source.encode("utf-8")))
 
 
+def _subtract(spans: list[tuple[int, int]], holes: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Return ``spans`` with every ``holes`` range cut out."""
+    for hole_start, hole_end in holes:
+        spans = [
+            piece
+            for start, end in spans
+            for piece in ((start, min(end, hole_start)), (max(start, hole_end), end))
+            if piece[0] < piece[1]
+        ]
+    return spans
+
+
 def _vue_spans(data: bytes, layout: Layout | None = None) -> list[tuple[int, int, bool]]:
     """Return the blank spans of a Vue component; see ``strip_vue``."""
     parser = Parser(_language_object("html"))
@@ -538,7 +557,12 @@ def _vue_spans(data: bytes, layout: Layout | None = None) -> list[tuple[int, int
     else:
         raise SyntaxError("vue interpolations and tags do not settle")
     spans: list[tuple[int, int, bool]] = []
-    _collect("html", bytes(masked), 0, spans, layout=layout)
+    markup: Layout = ([], [])
+    _collect("html", bytes(masked), 0, spans, layout=markup)
+    if layout is not None:
+        # A text node spans the masked interpolations; their JS literals are recorded below.
+        layout[0].extend(_subtract(markup[0], interpolations))
+        layout[1].extend(markup[1])
     for start, end in interpolations:
         _collect("javascript", data[start + 2 : end - 2], start + 2, spans, fragment=True, layout=layout)
     return spans
@@ -989,7 +1013,7 @@ _BLANK_STRING = re.compile(r"""[rRbBuU]{0,2}(\"\"\"|'''|"|')(?:\s*\1)?""")
 # Node kinds whose text is data, so whitespace inside them counts.
 _LITERAL_KIND = re.compile(
     r"string|heredoc|regex|sigil|str_lit|char_literal|rune_literal|character_literal|quote_scalar|block_scalar"
-    r"|attribute_value"
+    r"|attribute_value|^text$|^CharData$"  # markup text: `<pre>` and CSS can make its whitespace render
 )
 _WHITESPACE = re.compile(r"\s+")
 

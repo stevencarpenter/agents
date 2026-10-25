@@ -861,6 +861,13 @@ class ReviewCaseTest(PositionContractTest):
         out = self.assert_masked("a.rb", "# frozen_string_literal: true\nx = 1\n# frozen_string_literal: true\n")
         self.assertEqual(out.count("frozen"), 1, "a magic comment after code is commentary")
 
+    def test_sigil_docstrings_lose_their_text(self) -> None:
+        """A doc sigil with any delimiter is documentation."""
+        out = self.assert_masked("a.ex", "@doc ~S|Always safe|\n@doc ~s(gone2)\ndef f, do: 1\n")
+        self.assertIn("~S|", out)
+        self.assertNotIn("Always safe", out)
+        self.assertNotIn("gone2", out)
+
     def test_fragment_that_does_not_parse_still_loses_comments(self) -> None:
         """A template expression need not be a program; its comments must not leak."""
         out = self.assert_masked("a.svelte", "{#each items as item /* gone */}{item}{/each}\n")
@@ -1135,6 +1142,8 @@ class MechanicalModeTest(unittest.TestCase):
             ("a.svelte", '<p>{"a  b"}</p>\n', '<p>{"a b"}</p>\n'),
             ("a.html", '<p title="a  b">x</p>\n', '<p title="a b">x</p>\n'),
             ("setup.cfg", "[x]\nvalue = a  b\n", "[x]\nvalue = a b\n"),
+            ("a.html", "<pre>deny  all</pre>\n", "<pre>deny all</pre>\n"),
+            ("a.xml", "<a>deny  all</a>\n", "<a>deny all</a>\n"),
         ]
         for rel, base, head in cases:
             with self.subTest(base=base):
