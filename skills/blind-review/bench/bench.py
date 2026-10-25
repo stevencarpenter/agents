@@ -1,7 +1,51 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = []
+# dependencies = [
+#     "tree-sitter==0.26.0",
+#     "tree-sitter-python==0.25.0",
+#     "tree-sitter-c==0.24.2",
+#     "tree-sitter-cpp==0.23.4",
+#     "tree-sitter-c-sharp==0.23.5",
+#     "tree-sitter-java==0.23.5",
+#     "tree-sitter-kotlin==1.1.0",
+#     "tree-sitter-scala==0.26.2",
+#     "tree-sitter-swift==0.7.4",
+#     "tree-sitter-dart==0.1.0",
+#     "tree-sitter-groovy==0.1.2",
+#     "tree-sitter-go==0.25.0",
+#     "tree-sitter-rust==0.24.2",
+#     "tree-sitter-zig==1.1.2",
+#     "tree-sitter-javascript==0.25.0",
+#     "tree-sitter-typescript==0.23.2",
+#     "tree-sitter-css==0.25.0",
+#     "tree-sitter-scss==1.0.0",
+#     "tree-sitter-json==0.24.8",
+#     "tree-sitter-php==0.25.1",
+#     "tree-sitter-bash==0.25.1",
+#     "tree-sitter-make==1.1.1",
+#     "tree-sitter-dockerfile==0.2.0",
+#     "tree-sitter-toml==0.7.0",
+#     "tree-sitter-yaml==0.7.2",
+#     "tree-sitter-hcl==1.2.0",
+#     "tree-sitter-nix==0.1.0",
+#     "tree-sitter-cmake==0.7.2.post1",
+#     "tree-sitter-powershell==0.26.4",
+#     "tree-sitter-ruby==0.23.1",
+#     "tree-sitter-perl==2.0.0",
+#     "tree-sitter-julia==0.23.1",
+#     "tree-sitter-elixir==0.3.5",
+#     "tree-sitter-haskell==0.24.1",
+#     "tree-sitter-ocaml==0.26.0",
+#     "tree-sitter-fsharp==0.3.12",
+#     "tree-sitter-commonlisp==0.4.1",
+#     "tree-sitter-lua==0.5.0",
+#     "tree-sitter-sql==0.3.11",
+#     "tree-sitter-graphql==0.1.0",
+#     "tree-sitter-html==0.23.2",
+#     "tree-sitter-svelte==1.0.2",
+#     "tree-sitter-xml==0.7.0",
+# ]
 # ///
 """bench.py: score mechanical blind review against cases with known defects.
 

@@ -186,22 +186,28 @@ any files the stripper could not process. In sidecar mode: one line
 
 - Identifier names still bias the blind pass (`sanitize_input` suggests
   its purpose).
-- Stripping is lexical, not a parse: one rule table per language
-  (`LANGUAGES_BY_SUFFIX`, `LANGUAGES_BY_NAME`, and `LANGUAGES_BY_GLOB` in
-  `strip_context.py`) covers raw strings, text blocks, heredocs, nested
-  and block comments, interpolation, and docstrings. Comments that change
-  behavior stay: shebangs, `//go:build`, PEP 723 metadata, Ruby magic
-  comments, TypeScript `/// <reference>`, Haskell pragmas, and Dockerfile
-  parser directives. Every strip is checked afterward against a
+- Stripping is a parse: each language in `LANGUAGES_BY_SUFFIX`,
+  `LANGUAGES_BY_NAME`, and `LANGUAGES_BY_GLOB` (`strip_context.py`) uses
+  a tree-sitter grammar pinned in the script header, and its comment nodes
+  and docstring nodes are blanked. Embedded `<script>` and `<style>`
+  bodies, Svelte and Vue template expressions, C macro bodies, and Make
+  recipes are parsed with their own grammar. Line-oriented config formats
+  (INI, `.properties`, `.gitignore`, `requirements.txt`, `.env`, `go.mod`)
+  have no grammar and use their full-line comment rule. Comments that
+  change behavior stay: shebangs, `//go:build`, cgo preambles, Go
+  `// Output:`, PEP 723 metadata, Ruby magic comments, TypeScript
+  `/// <reference>`, `// swift-tools-version:`, MySQL `/*! */` and `/*+ */`,
+  and Dockerfile parser directives. A file the grammar cannot parse is
+  `copied-verbatim (parse error)`. Pinned grammars reject some valid code:
+  dialect SQL (Postgres `DO` blocks, T-SQL `[ids]`), Swift regex literals,
+  Groovy slashy strings, and JSON5. Every strip is also checked against a
   space-mask contract (same length, same line count, only blanking) and,
-  for Python, against `compile()`; anything that fails degrades to
-  `copied-verbatim (strip validation failed: …)` in `manifest.json`. The
-  check catches deletions and rewrites. It cannot catch blanked string
-  data or a comment that leaks through, so skim `manifest.json` on exotic
-  code. Known gaps: MySQL `#` comments and backslash escapes, C `#if 0`
-  blocks (kept as code), and text in JSX elements that contains ` // `.
-- Only known languages are stripped. Anything else (for example Visual
-  Basic, MATLAB, Fortran, or assembly) is flagged
+  for Python, against `compile()`. Known silent gaps: strings inside F#
+  comments, HTML `<!-->`, `doc` inside Rust `cfg_attr`, and comments in Vue
+  directive attributes.
+- Only languages with a pinned grammar are stripped. Anything else (for
+  example R, Erlang, Clojure, Emacs Lisp, fish, Justfiles, Sass, Solidity,
+  Visual Basic, MATLAB, or assembly) is flagged
   `copied-verbatim (unknown language)`, which means its comments reach
   the blind arm: check the manifest before trusting a run whose diff is
   mostly unsupported files.

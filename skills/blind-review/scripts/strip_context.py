@@ -1,14 +1,60 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = []
+# dependencies = [
+#     "tree-sitter==0.26.0",
+#     "tree-sitter-python==0.25.0",
+#     "tree-sitter-c==0.24.2",
+#     "tree-sitter-cpp==0.23.4",
+#     "tree-sitter-c-sharp==0.23.5",
+#     "tree-sitter-java==0.23.5",
+#     "tree-sitter-kotlin==1.1.0",
+#     "tree-sitter-scala==0.26.2",
+#     "tree-sitter-swift==0.7.4",
+#     "tree-sitter-dart==0.1.0",
+#     "tree-sitter-groovy==0.1.2",
+#     "tree-sitter-go==0.25.0",
+#     "tree-sitter-rust==0.24.2",
+#     "tree-sitter-zig==1.1.2",
+#     "tree-sitter-javascript==0.25.0",
+#     "tree-sitter-typescript==0.23.2",
+#     "tree-sitter-css==0.25.0",
+#     "tree-sitter-scss==1.0.0",
+#     "tree-sitter-json==0.24.8",
+#     "tree-sitter-php==0.25.1",
+#     "tree-sitter-bash==0.25.1",
+#     "tree-sitter-make==1.1.1",
+#     "tree-sitter-dockerfile==0.2.0",
+#     "tree-sitter-toml==0.7.0",
+#     "tree-sitter-yaml==0.7.2",
+#     "tree-sitter-hcl==1.2.0",
+#     "tree-sitter-nix==0.1.0",
+#     "tree-sitter-cmake==0.7.2.post1",
+#     "tree-sitter-powershell==0.26.4",
+#     "tree-sitter-ruby==0.23.1",
+#     "tree-sitter-perl==2.0.0",
+#     "tree-sitter-julia==0.23.1",
+#     "tree-sitter-elixir==0.3.5",
+#     "tree-sitter-haskell==0.24.1",
+#     "tree-sitter-ocaml==0.26.0",
+#     "tree-sitter-fsharp==0.3.12",
+#     "tree-sitter-commonlisp==0.4.1",
+#     "tree-sitter-lua==0.5.0",
+#     "tree-sitter-sql==0.3.11",
+#     "tree-sitter-graphql==0.1.0",
+#     "tree-sitter-html==0.23.2",
+#     "tree-sitter-svelte==1.0.2",
+#     "tree-sitter-xml==0.7.0",
+# ]
 # ///
 """strip_context.py: PoC comment/docstring/doc stripper for blind code review.
 
 Produces a scratch workspace whose files have identical line and column
 numbers to the originals, with all comments, docstrings, and documentation
 removed. Comment characters are replaced with spaces (never deleted) so
-findings in the stripped copy cite real source locations directly.
+findings in the stripped copy cite real source locations directly. Comments
+and docstrings are found with tree-sitter grammars, so string, regex, and
+heredoc data is never mistaken for a comment.
 
 Subcommands:
   diff  --repo DIR --base REF --out DIR   strip base+head of files changed
@@ -26,1213 +72,479 @@ unparseable files are copied verbatim and flagged in manifest.json, except in
 mechanical mode, which omits them because their comments cannot be removed.
 """
 
-from __future__ import annotations
-
 import argparse
-import ast
+import bisect
 import difflib
 import fnmatch
 import functools
-import io
+import importlib
+import itertools
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
-import tokenize
-from collections.abc import Callable, Sequence
+import warnings
+from collections.abc import Callable
 from pathlib import Path
-from typing import NamedTuple
+
+from tree_sitter import Language, Node, Parser, Query, QueryCursor
 
 DOC_SUFFIXES = {".md", ".rst", ".txt", ".adoc", ".mdx"}
-BACKSLASH = re.compile(r"\\[\s\S]")
-EOL = re.compile(r"(?=\n)|\Z")
-Closer = re.Pattern[str] | Callable[[re.Match[str]], re.Pattern[str]]
-Guard = Callable[[str, int, list[str]], bool]
 
+# Language name -> (module, function) of its grammar wheel, pinned in the header.
+GRAMMARS = {
+    "bash": ("tree_sitter_bash", "language"),
+    "c": ("tree_sitter_c", "language"),
+    "c_sharp": ("tree_sitter_c_sharp", "language"),
+    "cmake": ("tree_sitter_cmake", "language"),
+    "commonlisp": ("tree_sitter_commonlisp", "language"),
+    "cpp": ("tree_sitter_cpp", "language"),
+    "css": ("tree_sitter_css", "language"),
+    "dart": ("tree_sitter_dart", "language"),
+    "dockerfile": ("tree_sitter_dockerfile", "language"),
+    "elixir": ("tree_sitter_elixir", "language"),
+    "fsharp": ("tree_sitter_fsharp", "language"),
+    "fsharp_signature": ("tree_sitter_fsharp", "language_signature"),
+    "go": ("tree_sitter_go", "language"),
+    "graphql": ("tree_sitter_graphql", "language"),
+    "groovy": ("tree_sitter_groovy", "language"),
+    "haskell": ("tree_sitter_haskell", "language"),
+    "hcl": ("tree_sitter_hcl", "language"),
+    "html": ("tree_sitter_html", "language"),
+    "java": ("tree_sitter_java", "language"),
+    "javascript": ("tree_sitter_javascript", "language"),
+    "json": ("tree_sitter_json", "language"),
+    "julia": ("tree_sitter_julia", "language"),
+    "kotlin": ("tree_sitter_kotlin", "language"),
+    "lua": ("tree_sitter_lua", "language"),
+    "make": ("tree_sitter_make", "language"),
+    "nix": ("tree_sitter_nix", "language"),
+    "ocaml": ("tree_sitter_ocaml", "language_ocaml"),
+    "ocaml_interface": ("tree_sitter_ocaml", "language_ocaml_interface"),
+    "perl": ("tree_sitter_perl", "language"),
+    "php": ("tree_sitter_php", "language_php"),
+    "powershell": ("tree_sitter_powershell", "language"),
+    "python": ("tree_sitter_python", "language"),
+    "ruby": ("tree_sitter_ruby", "language"),
+    "rust": ("tree_sitter_rust", "language"),
+    "scala": ("tree_sitter_scala", "language"),
+    "scss": ("tree_sitter_scss", "language"),
+    "sql": ("tree_sitter_sql", "language"),
+    "svelte": ("tree_sitter_svelte", "language"),
+    "swift": ("tree_sitter_swift", "language"),
+    "toml": ("tree_sitter_toml", "language"),
+    "tsx": ("tree_sitter_typescript", "language_tsx"),
+    "typescript": ("tree_sitter_typescript", "language_typescript"),
+    "xml": ("tree_sitter_xml", "language_xml"),
+    "yaml": ("tree_sitter_yaml", "language"),
+    "zig": ("tree_sitter_zig", "language"),
+}
 
-class Rule(NamedTuple):
-    """One lexical construct: where it opens, where it closes, and what it is.
-
-    ``kind`` decides what happens to the text: "comment" is blanked, "doc"
-    keeps its delimiters and blanks its contents, "string" and "keep" (code
-    that looks like a comment, such as ``//go:build``) are left alone,
-    "regex" is a JS-style regex literal, and "heredoc" keeps a body that
-    starts on the next line.
-    """
-
-    kind: str
-    open: re.Pattern[str]
-    close: Closer = EOL
-    skip: re.Pattern[str] | None = None  # escape sequences inside a string
-    nested: re.Pattern[str] | None = None  # opener that nests a comment, or a string's bracket
-    multiline: bool = True  # False: a newline ends an unterminated string
-    interp: tuple[tuple[str, str], ...] = ()  # (opener, closer) of code inside the string
-    guard: Guard | None = None
-
-
-def _rx(pattern: str) -> re.Pattern[str]:
-    return re.compile(pattern, re.MULTILINE)
-
-
-def _comment(open_: str, close: str | Closer | None = None, nested: bool = False) -> Rule:
-    end = EOL if close is None else _rx(close) if isinstance(close, str) else close
-    return Rule("comment", _rx(open_), end, nested=_rx(open_) if nested else None)
-
-
-def _string(
-    open_: str,
-    close: str | Closer | None = None,
-    skip: re.Pattern[str] | str | None = BACKSLASH,
-    multiline: bool = True,
-    interp: tuple[tuple[str, str], ...] = (),
-    guard: Guard | None = None,
-    kind: str = "string",
-    nested: bool = False,
-) -> Rule:
-    end = _rx(open_) if close is None else _rx(close) if isinstance(close, str) else close
-    esc = _rx(skip) if isinstance(skip, str) else skip
-    pairs = _rx("[" + re.escape("".join(_PAIRS)) + "]") if nested else None
-    return Rule(kind, _rx(open_), end, esc, pairs, multiline, interp, guard)
-
-
-def _keep(pattern: str) -> Rule:
-    return Rule("keep", _rx(pattern))
-
-
-_PAIRS = {"(": ")", "[": "]", "{": "}", "<": ">"}
-
-
-def _delimited(group: int) -> Closer:
-    """Close a literal with the delimiter it opened with, or its bracket pair."""
-
-    def close(m: re.Match[str]) -> re.Pattern[str]:
-        delim = m.group(group)
-        return re.compile(re.escape(delim if len(delim) > 1 else _PAIRS.get(delim, delim)))
-
-    return close
-
-
-def _long_bracket(m: re.Match[str]) -> re.Pattern[str]:
-    """Close Lua and CMake ``[==[`` with ``]==]``."""
-    return re.compile(r"\]" + m.group(1) + r"\]")
-
-
-def _heredoc(open_: str, name: int, indent: int | None = None, tail: str = r"[ \t]*$") -> Rule:
-    """Build a heredoc rule whose body ends at a line holding the delimiter.
-
-    Args:
-        open_: Opener regex.
-        name: Group holding the delimiter word.
-        indent: Group that, when non-empty, allows an indented closer; None
-            always allows one.
-        tail: What may follow the delimiter on its line.
-    """
-
-    def close(m: re.Match[str]) -> re.Pattern[str]:
-        lead = r"[ \t]*" if indent is None or m.group(indent) else ""
-        return re.compile(rf"^{lead}{re.escape(m.group(name))}{tail}", re.MULTILINE)
-
-    return Rule("heredoc", _rx(open_), close)
-
-
-# No `<`: in JSX, `</a>` is a closing tag, not a regex after `<`.
-_REGEX_PRECEDERS = set("(,=:[!&|?{};+-*%~^>")
-_REGEX_KEYWORDS = frozenset(
-    {
-        "return",
-        "typeof",
-        "instanceof",
-        "in",
-        "of",
-        "new",
-        "delete",
-        "void",
-        "throw",
-        "case",
-        "do",
-        "else",
-        "yield",
-        "await",
-        "and",
-        "or",
-        "not",
-        "if",
-        "elsif",
-        "unless",
-        "when",
-        "while",
-        "until",
-        "split",
-        "grep",
-    }
+# Node kinds that are comments in at least one grammar. Each grammar's query
+# uses only the kinds it defines.
+COMMENT_KINDS = (
+    "comment",
+    "line_comment",
+    "block_comment",
+    "multiline_comment",
+    "html_comment",
+    "js_comment",
+    "xml_comment",
+    "bracket_comment",
+    "documentation_comment",
+    "haddock",
+    "pod",
+    "xml_doc",
+    "Comment",
+    "marginalia",  # SQL `/* */`
 )
 
+# Strings that are documentation: their contents are blanked, their quotes kept.
+DOC_QUERIES = {
+    "python": """
+        (expression_statement . (string) @doc .)
+        (expression_statement . (concatenated_string (string) @doc) .)
+    """,
+    "elixir": """
+        (unary_operator (call (identifier) @_name (arguments . [(string) (sigil)] @doc .))
+         (#any-of? @_name "moduledoc" "doc" "typedoc"))
+    """,
+    "julia": """
+        (_ (string_literal) @doc . [(function_definition) (macro_definition) (struct_definition)
+            (module_definition) (abstract_definition) (primitive_definition) (const_statement)
+            (assignment)])
+    """,
+    "graphql": "(description (string_value) @doc)",
+    # A string that is the whole body is the return value, not a docstring.
+    "commonlisp": "(defun (defun_header) . (str_lit) @doc . (_))",
+    "rust": """
+        (attribute_item (attribute (identifier) @_name (string_literal) @doc) (#eq? @_name "doc"))
+        (inner_attribute_item (attribute (identifier) @_name (string_literal) @doc)
+         (#eq? @_name "doc"))
+    """,
+}
 
-def _regex_allowed(source: str, i: int, out: list[str]) -> bool:
-    """Report whether a ``/`` at ``i`` may open a regex literal.
+# Comments that are code: build constraints, compiler and tool directives.
+KEEP = {
+    "go": re.compile(rb"//(?:go:|line |export |extern )|// \+build|//\s*(?:Unordered )?[Oo]utput:"),
+    "javascript": re.compile(rb"///\s*<(?:reference|amd-module|amd-dependency)\b"),
+    "typescript": re.compile(rb"///\s*<(?:reference|amd-module|amd-dependency)\b"),
+    "tsx": re.compile(rb"///\s*<(?:reference|amd-module|amd-dependency)\b"),
+    "ruby": re.compile(
+        rb"#[ \t]*(?:frozen_string_literal|encoding|coding|warn_indent|warn_past_scope"
+        rb"|shareable_constant_value)[ \t]*:"
+    ),
+    "powershell": re.compile(rb"(?i)#requires\b"),
+    "swift": re.compile(rb"// swift-tools-version:"),
+    "sql": re.compile(rb"/\*[!+]"),  # MySQL executable comments and optimizer hints
+    "dockerfile": re.compile(rb"#[ \t]*(?i:syntax|escape|check)[ \t]*="),
+}
+_PY_CODING = re.compile(rb"#.*?coding[:=][ \t]*[-\w.]+")
+# PEP 723 inline script metadata: dependencies, so code, not commentary.
+_PY_SCRIPT_BLOCK = re.compile(rb"^# /// [a-zA-Z0-9-]+\r?\n(?:#(?:| [^\r\n]*)\r?\n)+# ///\r?$", re.MULTILINE)
+# HTML parses these bodies as text, so `<!-- -->` inside them is data.
+_HTML_TEXT_ELEMENTS = {b"textarea", b"title", b"xmp", b"iframe", b"noembed", b"noframes", b"plaintext"}
+_JS_TYPES = {
+    "", "module", "text/javascript", "application/javascript", "text/ecmascript",
+    "application/ecmascript", "application/x-javascript", "text/jscript", "text/babel", "text/jsx",
+}
+_SCRIPT_LANGS = {"js": "javascript", "javascript": "javascript", "jsx": "javascript", "ts": "typescript",
+                 "typescript": "typescript", "tsx": "tsx"}
+_STYLE_LANGS = {"": "css", "css": "css", "postcss": "css", "scss": "scss", "less": "scss"}
+_MAKE_COMMENT = re.compile(rb"(?<!\\)#[^\r\n]*")
+_DOC_QUOTE = re.compile(rb'[^"\'`]*("""|\'\'\'|"|\'|`)')
 
-    A regex may follow an operator, a delimiter, a keyword, or the start of
-    input, but not a value. ``out`` already has comments blanked, so a
-    comment cannot influence the decision.
-    """
-    j = i - 1
-    while j >= 0 and out[j] in " \t\r\n":
-        j -= 1
-    if j < 0 or out[j] in _REGEX_PRECEDERS:
+
+@functools.cache
+def _language_object(lang: str) -> Language:
+    module, function = GRAMMARS[lang]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)  # older wheels return an int pointer
+        return Language(getattr(importlib.import_module(module), function)())
+
+
+@functools.cache
+def _queries(lang: str) -> tuple[Query, Query | None]:
+    language = _language_object(lang)
+    kinds = [k for k in COMMENT_KINDS if language.id_for_node_kind(k, True) is not None]
+    comments = Query(language, "[" + " ".join(f"({k})" for k in kinds) + "] @comment")
+    docs = DOC_QUERIES.get(lang)
+    return comments, Query(language, docs) if docs else None
+
+
+def _captures(query: Query, node: Node, name: str) -> list[Node]:
+    return QueryCursor(query).captures(node).get(name, [])
+
+
+def _kept(lang: str, node: Node, data: bytes, py_blocks: list[range]) -> bool:
+    """Return True when a comment node carries code, so it must stay."""
+    text = data[node.start_byte : node.end_byte]
+    if node.start_byte == 0 and text.startswith(b"#!"):
         return True
-    if out[j] == ")":
-        # `if (ok) /re/` starts a statement; `(a + b) / c` divides.
-        literals = getattr(out, "literals", {})
-        depth = 0
-        while j >= 0:
-            if j in literals:  # a paren inside a string or regex is not syntax
-                j = literals[j] - 1
-                continue
-            depth += {")": 1, "(": -1}.get(out[j], 0)
-            if depth == 0:
-                break
-            j -= 1
-        j -= 1
-        while j >= 0 and out[j] in " \t\r\n":
-            j -= 1
-        word = _word_before(out, j)
-        return word in ("if", "while", "for", "with") and out[j - len(word) : j - len(word) + 1] != ["."]
-    if out[j].isalnum() or out[j] in "_$":
-        return _word_before(out, j) in _REGEX_KEYWORDS
+    keep = KEEP.get(lang)
+    if keep is not None and keep.match(text):
+        if lang != "dockerfile":
+            return True
+        # A parser directive counts only before the first instruction.
+        prev = node.prev_sibling
+        while prev is not None and prev.type == "comment":
+            prev = prev.prev_sibling
+        return prev is None
+    if lang == "python":
+        return (node.start_point.row < 2 and _PY_CODING.match(text) is not None) or any(
+            node.start_byte in block for block in py_blocks
+        )
+    if lang == "go":
+        # A cgo preamble is C code in the comments just before `import "C"`.
+        nxt = node.next_named_sibling
+        while nxt is not None and nxt.type == "comment":
+            nxt = nxt.next_named_sibling
+        return nxt is not None and nxt.type == "import_declaration" and b'"C"' in data[nxt.start_byte : nxt.end_byte]
     return False
 
 
-def _word_before(out: list[str], j: int) -> str:
-    """Return the identifier that ends at ``out[j]``."""
-    k = j
-    while k >= 0 and (out[k].isalnum() or out[k] in "_$"):
-        k -= 1
-    return "".join(out[k + 1 : j + 1])
+def _in_text_element(node: Node, data: bytes) -> bool:
+    parent = node.parent
+    while parent is not None:
+        tag = parent.child(0)
+        if parent.type == "element" and tag is not None and tag.type == "start_tag":
+            name = tag.child_by_field_name("name") or (tag.child(1) if tag.child_count > 1 else None)
+            if name is not None and data[name.start_byte : name.end_byte].lower() in _HTML_TEXT_ELEMENTS:
+                return True
+        parent = parent.parent
+    return False
 
 
-def _ruby_regex_allowed(source: str, i: int, out: list[str]) -> bool:
-    """Ruby ends a statement at a newline, so a line-leading ``/`` opens a regex."""
-    j = i - 1
-    while j >= 0 and out[j] in " \t":
-        j -= 1
-    return j < 0 or out[j] in "\r\n" or _regex_allowed(source, i, out)
+def _attributes(start_tag: Node, data: bytes) -> dict[str, str]:
+    attrs: dict[str, str] = {}
+    for attr in start_tag.named_children:
+        if attr.type != "attribute" or not attr.named_children:
+            continue
+        name = attr.named_children[0]
+        value = attr.named_children[-1] if len(attr.named_children) > 1 else None
+        raw = data[value.start_byte : value.end_byte].decode() if value is not None else ""
+        attrs[data[name.start_byte : name.end_byte].decode().lower()] = raw.strip("\"'").strip().lower()
+    return attrs
 
 
-def _ruby_command_argument(source: str, i: int, out: list[str]) -> bool:
-    """``puts %q{x}`` or ``puts /x/``: an identifier, a space, and no space or ``=`` after."""
-    j = i - 1
-    while j >= 0 and out[j] in " \t":
-        j -= 1
-    return (j < i - 1 and j >= 0 and (out[j].isalnum() or out[j] == "_")
-            and source[i + 1 : i + 2] not in ("", " ", "\t", "\n", "="))
+def _embedded_language(element: Node, data: bytes) -> str | None:
+    """Pick the grammar of a <script> or <style> body, or None when it is data."""
+    start = element.child(0)
+    attrs = _attributes(start, data) if start is not None else {}
+    if element.type == "style_element":
+        return _STYLE_LANGS.get(attrs.get("lang", ""))
+    if "lang" in attrs:
+        return _SCRIPT_LANGS.get(attrs["lang"])
+    kind = attrs.get("type", "").split(";")[0].strip()
+    if kind in _JS_TYPES:
+        return "javascript"
+    if kind in ("importmap", "speculationrules") or kind.endswith(("/json", "+json")):
+        return "json"
+    return None  # a template or other data block
 
 
-def _ruby_percent_allowed(source: str, i: int, out: list[str]) -> bool:
-    """Also accept a command argument: ``puts %q{x}``, but not ``x %= 2``."""
-    return _ruby_regex_allowed(source, i, out) or _ruby_command_argument(source, i, out)
+def _collect(
+    lang: str,
+    data: bytes,
+    base: int,
+    spans: list[tuple[int, int, bool]],
+    strict: bool,
+    tolerant: bool = False,
+) -> None:
+    """Append (start, end, is_doc) byte spans to blank in ``data``, offset by ``base``.
 
+    A fragment that does not parse is skipped, unless ``tolerant``: a macro
+    body is not a program, but the lexer still finds its comments.
 
-def _ruby_slash_allowed(source: str, i: int, out: list[str]) -> bool:
-    """Also accept ``puts /x/`` when the regex closes on its line, so ``a /b`` cannot swallow lines."""
-    return _ruby_regex_allowed(source, i, out) or (
-        _ruby_command_argument(source, i, out) and _scan_regex(source, i) > 0
-    )
-
-
-def _scan_regex(source: str, start: int) -> int:
-    """Measure a regex literal beginning at ``start``.
-
-    Args:
-        source: Full source text.
-        start: Index of the opening ``/``.
-
-    Returns:
-        The literal's length in characters including flags, or 0 when the text
-        does not terminate as a regex on this line.
+    Raises:
+        SyntaxError: When ``strict`` and the grammar cannot parse ``data``.
     """
-    i, n = start + 1, len(source)
-    in_class = False
-    while i < n:
-        ch = source[i]
-        if ch == "\\":
-            i += 2
+    root = Parser(_language_object(lang)).parse(data).root_node
+    if root.has_error and not tolerant:
+        if strict:
+            raise SyntaxError(f"{lang} parse error at line {_first_error(root).start_point.row + 1}")
+        return
+    comments, docs = _queries(lang)
+    py_blocks = [range(m.start(), m.end()) for m in _PY_SCRIPT_BLOCK.finditer(data)] if lang == "python" else []
+    markup = lang in ("html", "svelte")
+    for node in _captures(comments, root, "comment"):
+        if _kept(lang, node, data, py_blocks) or (markup and _in_text_element(node, data)):
             continue
-        if ch == "\n":
-            return 0
-        if in_class:
-            if ch == "]":
-                in_class = False
-        elif ch == "[":
-            in_class = True
-        elif ch == "/":
-            i += 1
-            while i < n and (source[i].isalpha() or source[i] == "_"):
-                i += 1
-            return i - start
-        i += 1
-    return 0
-
-
-def _not_digit_separator(source: str, i: int, out: list[str]) -> bool:
-    """Reject the ``'`` in C++14 ``1'000'000``; accept ``u8'a'``."""
-    j = i
-    while j > 0 and (source[j - 1].isalnum() or source[j - 1] in "_'."):
-        j -= 1
-    return not source[j:i][:1].isdigit()
-
-
-def _yaml_value_start(source: str, i: int, out: list[str]) -> bool:
-    """A YAML quote opens a scalar only where a value starts, not in ``don't``.
-
-    Anchors (``&a``) and tags (``!!str``) may sit between the indicator and the quote.
-    A quote touching one, as in ``&a"x``, is part of its name.
-    """
-    j = i - 1
-    while True:
-        end = j
-        while j >= 0 and source[j] in " \t":
-            j -= 1
-        k = j
-        while k >= 0 and source[k] not in " \t\n[{":
-            k -= 1
-        if j == end or k == j or source[k + 1] not in "&!":
-            break
-        j = k
-    return j < 0 or source[j] in "\n:-[{,?"
-
-
-_JULIA_DEF = re.compile(
-    r"\s*(?:@\w+\s+)*(?:function|macro|struct|mutable\s+struct|abstract\s+type"
-    r"|primitive\s+type|module|baremodule|const|[A-Za-z_]\w*(?:\{[^}\n]*\})?\([^)\n]*\)\s*=)"
-)
-_JULIA_STRING = re.compile(r'"""[\s\S]*?"""|"(?:[^"\\]|\\[\s\S])*"')
-
-
-def _julia_doc(source: str, i: int, out: list[str]) -> bool:
-    """A Julia docstring starts a line and is followed by a definition."""
-    if source[source.rfind("\n", 0, i) + 1 : i].strip():
-        return False
-    m = _JULIA_STRING.match(source, i)
-    return m is not None and _JULIA_DEF.match(source, m.end()) is not None
-
-
-def _graphql_description(source: str, i: int, out: list[str]) -> bool:
-    """A GraphQL string is a description unless it is a value."""
-    j = i - 1
-    while j >= 0 and source[j] in " \t\r\n":
-        j -= 1
-    return j < 0 or source[j] not in ':=[,"'
-
-
-def _blank(source: str, out: list[str], start: int, end: int, keep_continuation: bool = False) -> None:
-    """Blank ``source[start:end]`` in ``out``, keeping line breaks."""
-    for k in range(start, end):
-        ch = source[k]
-        if ch in "\r\n" or (keep_continuation and ch == "\\" and source[k + 1 : k + 2] in "\r\n"):
+        # Docker reads `#` as a comment only at the start of a line; elsewhere it is an argument.
+        if lang == "dockerfile" and data[data.rfind(b"\n", 0, node.start_byte) + 1 : node.start_byte].strip():
             continue
-        out[k] = " "
+        spans.append((base + node.start_byte, base + node.end_byte, False))
+    for node in _captures(docs, root, "doc") if docs is not None else ():
+        text = data[node.start_byte : node.end_byte]
+        quote = _DOC_QUOTE.match(text)
+        if quote and len(text) >= quote.end() + len(quote.group(1)) and text.endswith(quote.group(1)):
+            spans.append((base + node.start_byte + quote.end(), base + node.end_byte - len(quote.group(1)), True))
+    if lang in ("c", "cpp"):
+        # The grammar keeps a macro body as raw text, so comments in it need their own parse.
+        for arg in _captures(_query(lang, "(preproc_arg) @arg"), root, "arg"):
+            arg_text = data[arg.start_byte : arg.end_byte]
+            _collect(lang, arg_text, base + arg.start_byte, spans, strict=False, tolerant=True)
+    if lang == "make":
+        # Outside recipes and define bodies, make ends a line at any unescaped `#`.
+        protected = [(n.start_byte, n.end_byte) for n in _captures(_query(lang, "[(recipe_line) (raw_text)] @p"), root, "p")]
+        for m in _MAKE_COMMENT.finditer(data):
+            if not any(start <= m.start() < end for start, end in protected):
+                spans.append((base + m.start(), base + m.end(), False))
+        # make hands a recipe line to the shell, so its `#` comments are shell comments.
+        for line in _captures(_query(lang, "(recipe_line) @line"), root, "line"):
+            text = data[line.start_byte : line.end_byte]
+            skip = len(text) - len(text.lstrip(b"@+- \t"))
+            _collect("bash", text[skip:], base + line.start_byte + skip, spans, strict=False)
+    if markup:
+        for element in _captures(_query(lang, "[(script_element) (style_element)] @el"), root, "el"):
+            body = next((c for c in element.children if c.type == "raw_text"), None)
+            inner = _embedded_language(element, data)
+            if body is not None and inner is not None:
+                _collect(inner, data[body.start_byte : body.end_byte], base + body.start_byte, spans, strict)
+    if lang == "svelte":
+        # Template expressions are JS; a fragment such as `items as item` is not a program.
+        for expr in _captures(_query(lang, "(svelte_raw_text) @js"), root, "js"):
+            _collect("javascript", data[expr.start_byte : expr.end_byte], base + expr.start_byte, spans, strict=False)
 
 
-def _closer(rule: Rule, m: re.Match[str]) -> re.Pattern[str]:
-    return rule.close if isinstance(rule.close, re.Pattern) else rule.close(m)
+@functools.cache
+def _query(lang: str, pattern: str) -> Query:
+    return Query(_language_object(lang), pattern)
 
 
-def _comment_end(source: str, rule: Rule, m: re.Match[str]) -> int:
-    close = _closer(rule, m)
-    if rule.nested is None:
-        c = close.search(source, m.end())
-        return c.end() if c else len(source)
-    depth, j = 1, m.end()
-    while depth:
-        c = close.search(source, j)
-        if c is None:
-            return len(source)
-        o = rule.nested.search(source, j, c.start())
-        if o is not None:
-            depth, j = depth + 1, o.end()
-        else:
-            depth, j = depth - 1, c.end()
-    return j
+def _first_error(node: Node) -> Node:
+    for child in node.children:
+        if child.has_error:
+            return _first_error(child)
+    return node
 
 
-def _string_end(
-    source: str, out: list[str], rule: Rule, m: re.Match[str], rules: Sequence[Rule]
-) -> tuple[int, int | None]:
-    """Return (end of the literal, start of its closer or None if unterminated)."""
-    close = _closer(rule, m)
-    j, n = m.end(), len(source)
-    # `%q{a{b}}` balances its brackets, so an inner `}` does not close it.
-    bracket = m.group(0)[-1] if rule.nested and rule.nested.fullmatch(m.group(0)[-1]) else ""
-    depth = 0
-    while j < n:
-        # Interpolation first: Swift's `\(` would otherwise read as an escape.
-        opener = next(((op, cl) for op, cl in rule.interp if source.startswith(op, j)), None)
-        if opener is not None:
-            j = _scan_code(source, out, j + len(opener[0]), rules, close=opener[1])
-            continue
-        if rule.skip is not None:
-            s = rule.skip.match(source, j)
-            if s and s.end() > j:
-                j = s.end()
-                continue
-        if bracket and source[j] == bracket:
-            depth, j = depth + 1, j + 1
-            continue
-        c = close.match(source, j)
-        if c and depth:
-            depth, j = depth - 1, c.end()
-            continue
-        if c:
-            return c.end(), j
-        if not rule.multiline and source[j] == "\n":
-            return j, None
-        j += 1
-    return n, None
-
-
-def _scan_code(source: str, out: list[str], i: int, rules: Sequence[Rule], close: str = "") -> int:
-    """Blank comments in ``out`` from ``i``; return where scanning stopped.
-
-    With ``close`` set (``}`` or ``)``), the scan is inside an interpolation
-    such as ``${...}`` or ``$(...)`` and returns just after its closer.
-    """
-    n = len(source)
-    nest = {"}": "{", ")": "("}.get(close, "")
-    found: list[re.Match[str] | None | bool] = [False] * len(rules)
-    pending: list[re.Pattern[str]] = []
-    depth = 0
-    while i < n:
-        start, choice = n, None
-        for k, rule in enumerate(rules):
-            m = found[k]
-            if m is False or (isinstance(m, re.Match) and m.start() < i):
-                m = found[k] = rule.open.search(source, i)
-            if isinstance(m, re.Match) and m.start() < start:
-                start = m.start()
-        for k, rule in enumerate(rules):
-            m = found[k]
-            if not isinstance(m, re.Match) or m.start() != start:
-                continue
-            if rule.guard is None or rule.guard(source, start, out):
-                choice = (rule, m)
-                break
-        gap_end = start if choice else min(start + 1, n)
-        if close or pending:
-            resumed = None
-            for k in range(i, gap_end):
-                ch = source[k]
-                if close and ch == nest:
-                    depth += 1
-                elif close and ch == close:
-                    if depth == 0:
-                        return k + 1
-                    depth -= 1
-                if pending and ch == "\n":
-                    resumed = k + 1
-                    for closer in pending:
-                        c = closer.search(source, resumed)
-                        resumed = c.end() if c else n
-                    pending.clear()
-                    _literal(out, k + 1, resumed)
-                    break
-            if resumed is not None:
-                i = resumed
-                continue
-        if choice is None:
-            i = gap_end
-            continue
-        rule, m = choice
-        if rule.kind == "keep":
-            i = m.end()
-        elif rule.kind == "heredoc":
-            # An opener with no closing line is a shift operator or a typo.
-            if _closer(rule, m).search(source, m.end()):
-                pending.append(_closer(rule, m))
-                i = m.end()
-            else:
-                i = start + 1
-        elif rule.kind == "regex":
-            i = start + (_scan_regex(source, start) or 1)
-            _literal(out, start, i)
-        elif rule.kind == "body":
-            # Code quoted as a literal, such as a PL/pgSQL `AS $$ ... $$` body.
-            c = _closer(rule, m).search(source, m.end())
-            end = c.start() if c else n
-            _scan_code(source[:end], out, m.end(), rules)
-            i = c.end() if c else n
-        elif rule.kind == "comment":
-            i = _comment_end(source, rule, m)
-            _blank(source, out, start, i)
-        else:
-            i, body_end = _string_end(source, out, rule, m, rules)
-            _literal(out, start, i)
-            # An unterminated doc may be a misread; blanking to EOF would delete code.
-            if rule.kind == "doc" and body_end is not None:
-                _blank(source, out, m.end(), body_end, keep_continuation=True)
-        if i <= start:
-            i = start + 1
-    return n
-
-
-class _Output(list[str]):
-    """Scan output that also maps each literal's last index to its first."""
-
-    literals: dict[int, int]
-
-
-def _literal(out: list[str], start: int, end: int) -> None:
-    """Record ``source[start:end]`` as a literal, so guards can skip over it."""
-    if end > start and isinstance(out, _Output):
-        out.literals[end - 1] = start
-
-
-def _scan(source: str, rules: Sequence[Rule]) -> str:
-    """Strip comments and doc literals from ``source`` under ``rules``."""
-    out = _Output(source)
-    out.literals = {}
-    _scan_code(source, out, 0, rules)
-    return "".join(out)
-
-
-# Shared rule groups. Order matters only between rules that open at the same
-# position: the earlier rule wins, so `"""` precedes `"` and `///` directives
-# precede `//`.
-SHEBANG = _keep(r"\A#!.*")
-BLOCK = _comment(r"/\*", r"\*/")
-NESTED_BLOCK = _comment(r"/\*", r"\*/", nested=True)
-LINE = _comment("//")
-URL_SAFE_LINE = _comment(r"(?<![A-Za-z]:)//")  # `https://x` in JSX text or CSS url()
-DQ = _string('"', multiline=False)
-SQ = _string("'", multiline=False)
-REGEX = Rule("regex", _rx(r"/(?![/*])"), guard=_regex_allowed)
-CODE_ESCAPE = _keep(r"\\[\s\S]")
-# A `'` followed by a name and no closing `'` is a lifetime, symbol, or type
-# variable (`'static`, `'sym`, `'a list`), not a char literal.
-CHAR = _string(r"(?<![\w'])'(?![A-Za-z_](?!'))", "'", multiline=False)
-SHELL_HASH = _comment(r"(?<![^\s;&|()])#")
-WORD_HASH = _comment(r"(?<!\S)#")
-LINE_HASH = _comment(r"^[ \t]*#")
-SH_HEREDOC = _heredoc(r"(?<!<)<<(-?)[ \t]*([\"']?)\\?([A-Za-z_]\w*)\2", name=3, indent=1)
-CHAR_LITERAL = _keep(r"(?<![\w?!])\?\\?[^\s]")  # Ruby, Elixir, Elisp `?#`
-DOLLAR_BRACE = (("${", "}"),)
-HASH_BRACE = (("#{", "}"),)
-SHELL_SUBST = (("$(", ")"), ("${", "}"))
-
-C = [
-    BLOCK,
-    LINE,
-    _string(
-        r'(?<!\w)(?:u8|[uUL])?R"([^()\\\s]{0,16})\(',
-        lambda m: re.compile(r"\)" + re.escape(m.group(1)) + '"'),
-        skip=None,
-    ),
-    DQ,
-    _string("'", multiline=False, guard=_not_digit_separator),
-]
-CSHARP = [
-    BLOCK,
-    LINE,
-    _string(r'\$*("{3,})', lambda m: re.compile(m.group(1)), skip=None),
-    _string(r'(?:\$@|@\$|@)"', '"', skip='""'),
-    DQ,
-    SQ,
-]
-JAVA = [BLOCK, LINE, _string('"""'), DQ, SQ]
-KOTLIN = [
-    NESTED_BLOCK,
-    LINE,
-    _string('"""', skip=None, interp=DOLLAR_BRACE),
-    _string('"', multiline=False, interp=DOLLAR_BRACE),
-    SQ,
-]
-SCALA = [
-    NESTED_BLOCK,
-    LINE,
-    # Only a prefixed literal such as `s"..."` interpolates; `$$` is an escaped `$`.
-    _string(r'[A-Za-z_]\w*"""', '"""', skip=r"\$\$", interp=DOLLAR_BRACE),
-    _string(r'[A-Za-z_]\w*"', '"', skip=r'\$[$"]|\\[\s\S]', multiline=False, interp=DOLLAR_BRACE),
-    _string('"""', skip=None),
-    _string('"', multiline=False),
-    CHAR,
-]
-SWIFT_INTERP = (("\\(", ")"),)
-SWIFT = [
-    NESTED_BLOCK,
-    LINE,
-    _string(r'(#+)("""|")', lambda m: re.compile(re.escape(m.group(2) + m.group(1))), skip=None),
-    _string('"""', interp=SWIFT_INTERP),
-    _string('"', multiline=False, interp=SWIFT_INTERP),
-]
-DART = [
-    NESTED_BLOCK,
-    LINE,
-    _string(r"(?<![\w$])r'''", "'''", skip=None),
-    _string(r'(?<![\w$])r"""', '"""', skip=None),
-    _string("'''", interp=DOLLAR_BRACE),
-    _string('"""', interp=DOLLAR_BRACE),
-    _string(r"(?<![\w$])r'", "'", skip=None, multiline=False),
-    _string(r'(?<![\w$])r"', '"', skip=None, multiline=False),
-    _string("'", multiline=False, interp=DOLLAR_BRACE),
-    _string('"', multiline=False, interp=DOLLAR_BRACE),
-]
-GROOVY = [
-    SHEBANG,
-    BLOCK,
-    LINE,
-    _string(r"\$/", r"/\$", skip=r"\$[$/]"),
-    REGEX,
-    _string("'''"),
-    _string('"""', interp=DOLLAR_BRACE),
-    SQ,
-    _string('"', multiline=False, interp=DOLLAR_BRACE),
-]
-GO = [
-    _keep(r"^//(?:go:|line |export |extern )[^\n]*"),
-    _keep(r"^// \+build[^\n]*"),
-    BLOCK,
-    LINE,
-    _string("`", skip=None),
-    DQ,
-    SQ,
-]
-RUST = [
-    _string(r'#!?\[doc\s*=\s*"', '"', kind="doc"),
-    NESTED_BLOCK,
-    LINE,
-    _string(r'(?<!\w)b?r(#*)"', lambda m: re.compile('"' + m.group(1)), skip=None),
-    _string('"'),
-    _string(r"'(?![A-Za-z_](?!'))", "'", multiline=False),
-]
-JS = [
-    SHEBANG,
-    _keep(r"^[ \t]*///[ \t]*<(?:reference|amd-module|amd-dependency)\b[^\n]*"),
-    BLOCK,
-    URL_SAFE_LINE,
-    REGEX,
-    _string("`", interp=DOLLAR_BRACE),
-    DQ,
-    SQ,
-]
-CSS = [BLOCK, DQ, SQ]
-SCSS = [BLOCK, URL_SAFE_LINE, DQ, SQ]
-JSONC = [BLOCK, LINE, DQ, SQ]  # JSON5 allows single-quoted strings
-ZIG = [_keep(r"\\\\[^\n]*"), LINE, DQ, SQ]
-PHP = [
-    _string(r"\A(?!<\?)", r"<\?(?:php\b|=)?", skip=None),  # HTML before the first tag
-    _string(r"\?>", r"<\?(?:php\b|=)?", skip=None),  # HTML between tags is output
-    _keep(r"#\["),  # PHP 8 attribute
-    BLOCK,
-    _comment(r"//|#", r"(?=\n|\?>)|\Z"),
-    _heredoc(r"<<<[ \t]*([\"']?)([A-Za-z_]\w*)\1", name=2, tail=r"\b"),
-    _string('"', interp=(("{$", "}"), ("${", "}"))),
-    _string("'", skip=r"\\[\\']"),
-]
-SHELL = [
-    SHEBANG,
-    CODE_ESCAPE,
-    SH_HEREDOC,
-    SHELL_HASH,
-    _string(r"\$'", "'"),
-    _string("'", skip=None),
-    _string('"', interp=SHELL_SUBST),
-    _string("`"),
-]
-FISH = [SHEBANG, CODE_ESCAPE, SHELL_HASH, _string("'", skip=r"\\['\\]"), _string('"')]
-MAKE = [
-    CODE_ESCAPE,
-    _comment(r"(?<![^\s;&|()@+-])#"),  # `@`, `-`, `+` prefix a recipe line
-    _string("'", skip=None, multiline=False),
-    _string('"', multiline=False),
-]
-JUST = [
-    SHEBANG,
-    _keep(r"^[ \t]+#!.*"),  # a shebang recipe line selects the interpreter
-    CODE_ESCAPE,
-    SH_HEREDOC,
-    SHELL_HASH,
-    _string('"""'),
-    _string("'''", skip=None),
-    _string("```", skip=None),
-    _string("'", skip=None),
-    _string('"', interp=SHELL_SUBST),
-    _string("`"),
-]
-DOCKER = [
-    _keep(r"\A(?:[ \t]*#[ \t]*(?:syntax|escape|check)[ \t]*=[^\n]*\n)+"),  # parser directives
-    SH_HEREDOC,
-    LINE_HASH,
-]
-LINE_HASH_ONLY = [LINE_HASH]
-INI = [_comment(r"^[ \t]*[#;]")]
-PROPERTIES = [_comment(r"^[ \t]*[#!]")]
-CONF = [WORD_HASH, _string("'", skip=None, multiline=False), _string('"', multiline=False)]
-REQUIREMENTS = [WORD_HASH]
-TOML = [
-    _comment("#"),
-    _string('"""'),
-    _string("'''", skip=None),
-    _string('"', multiline=False),
-    _string("'", skip=None, multiline=False),
-]
-YAML = [
-    WORD_HASH,
-    _string("'", skip="''", guard=_yaml_value_start),
-    _string('"', guard=_yaml_value_start),
-]
-RUBY = [
-    SHEBANG,
-    _keep(
-        r"^#[ \t]*(?:frozen_string_literal|encoding|coding|warn_indent|warn_past_scope"
-        r"|shareable_constant_value)[ \t]*:[^\n]*"
-    ),
-    _keep(r"^__END__\n[\s\S]*"),  # data section
-    _comment(r"^=begin\b", r"^=end\b[^\n]*|\Z"),
-    CHAR_LITERAL,
-    _heredoc(r"<<([~-]?)([\"'`]?)([A-Z_][A-Za-z0-9_]*)\2", name=3, indent=1),
-    # Ruby regex literals may span lines (`/x`) and interpolate.
-    _string(r"/(?![/*])", r"/[a-z]*", interp=HASH_BRACE, guard=_ruby_slash_allowed),
-    # %q, %w, %i, and %s do not interpolate; %Q, %W, %I, %r, %x, and bare % do.
-    _string(r"%[qwis]([^\w\s])", _delimited(1), guard=_ruby_percent_allowed, nested=True),
-    _string(r"%[QWIrx]?([^\w\s])", _delimited(1), interp=HASH_BRACE, guard=_ruby_percent_allowed, nested=True),
-    _comment("#"),
-    _string('"', interp=HASH_BRACE),
-    _string("'", skip=r"\\[\\']"),
-    _string("`", interp=HASH_BRACE),
-]
-PERL = [
-    SHEBANG,
-    _keep(r"^__(?:END|DATA)__\b[\s\S]*"),
-    _comment(r"^=[a-zA-Z]\w*", r"^=cut\b[^\n]*|\Z"),  # POD
-    _heredoc(r"<<(~?)([\"']?)([A-Za-z_]\w*)\2", name=3, indent=1),
-    _string(r"(?<![\w$@%])(?:qq|qw|qx|qr|q|m)\s*([^\w\s=,;)])", _delimited(1), nested=True),
-    _string(
-        r"(?<![\w$@%])(?:s|tr|y)\s*([^\w\s=,;)(\[{<])",
-        lambda m: re.compile(
-            f"{re.escape(m.group(1))}(?:[^{re.escape(m.group(1))}\\\\]|\\\\.)*{re.escape(m.group(1))}"
-        ),
-    ),
-    REGEX,
-    _comment(r"(?<!\$)#"),
-    _string('"'),
-    _string("'", skip=r"\\[\\']"),
-    _string("`"),
-]
-R = [
-    _comment("#"),
-    _string(
-        r"(?<![\w.])[rR]([\"'])(-*)([\[({])",
-        lambda m: re.compile(re.escape(_PAIRS[m.group(3)] + m.group(2) + m.group(1))),
-        skip=None,
-    ),
-    _string('"'),
-    _string("'"),
-    _string("`"),
-]
-JULIA = [
-    _comment("#=", "=#", nested=True),
-    _string('"""', kind="doc", guard=_julia_doc),
-    _string('"', kind="doc", guard=_julia_doc),
-    _comment("#"),
-    _string('"""'),
-    _string('"'),
-    _string(r"(?<![\w')\]}.])'", "'", multiline=False),  # `x'` is a transpose
-    _string("`"),
-]
-ELIXIR = [
-    CHAR_LITERAL,
-    _string(r'@(?:moduledoc|doc|typedoc)\s+(?:~[sS])?"""', '"""', kind="doc"),
-    _string(r'@(?:moduledoc|doc|typedoc)\s+(?:~[sS])?"', '"', kind="doc"),
-    _string(r"~[a-z](\"\"\"|'''|[/|\"'(\[{<])", _delimited(1), interp=HASH_BRACE),
-    _string(r"~[A-Z][A-Z0-9]*(\"\"\"|'''|[/|\"'(\[{<])", _delimited(1)),  # `~S` does not interpolate
-    _comment("#"),
-    _string('"""', interp=HASH_BRACE),
-    _string("'''", interp=HASH_BRACE),
-    _string('"', interp=HASH_BRACE),
-    _string("'", interp=HASH_BRACE),
-]
-HASKELL = [
-    _keep(r"\{-#[\s\S]*?#-\}"),  # pragmas change compilation
-    _comment(r"\{-", r"-\}", nested=True),
-    _comment(r"--+(?![!#$%&*+./<=>?@\\^|~:])"),  # `-->` is an operator
-    _string('"'),
-    CHAR,
-]
-OCAML = [
-    _comment(r"\(\*(?!\))", r"\*\)", nested=True),  # `( * )` is an operator
-    _string(r"\{([a-z_]*)\|", lambda m: re.compile(re.escape("|" + m.group(1) + "}")), skip=None),
-    _string('"'),
-    CHAR,
-]
-FSHARP = [
-    _comment(r"\(\*(?!\))", r"\*\)", nested=True),
-    LINE,
-    _string('"""', skip=None),
-    _string('@"', '"', skip='""'),
-    _string('"'),
-    CHAR,
-]
-ERLANG = [_keep(r"\$\\?[\s\S]"), _comment("%"), _string('"'), _string("'")]
-CLOJURE = [
-    CODE_ESCAPE,  # char literals such as \; and \"
-    _string(
-        r'\((?:defn-?|defmacro|defmulti|defprotocol|ns)\s+(?:\^\S+\s+)*[^\s()\[\]{}";]+\s+"',
-        '"',
-        kind="doc",
-    ),
-    _comment(";"),
-    _string('"'),
-]
-LISP = [
-    CODE_ESCAPE,
-    CHAR_LITERAL,
-    _string(
-        r'\((?:defun|defmacro|cl-defun|cl-defmacro|defsubst|defgeneric)\s+\S+\s+\([^()]*\)\s+"',
-        '"',
-        kind="doc",
-    ),
-    _comment(r"#\|", r"\|#", nested=True),
-    _comment(";"),
-    _string('"'),
-]
-POWERSHELL = [
-    _keep(r"^(?i:#requires)\b[^\n]*"),
-    _comment("<#", "#>"),  # comment-based help
-    _keep(r"`[\s\S]"),
-    _string(r'@"[ \t]*$', r'^"@', skip=None),
-    _string(r"@'[ \t]*$", r"^'@", skip=None),
-    _comment(r"(?<![^\s;|&({])#"),
-    _string('"', skip=r'`[\s\S]|""'),
-    _string("'", skip="''"),
-]
-LUA = [
-    SHEBANG,
-    _comment(r"--\[(=*)\[", _long_bracket),
-    _comment("--"),
-    _string(r"\[(=*)\[", _long_bracket, skip=None),
-    DQ,
-    SQ,
-]
-# PostgreSQL identifiers may hold `$`, so `a$b$` is not a quote.
-DOLLAR_QUOTE = r"(?<![\w$])\$(?:[A-Za-z_]\w*)?\$"
-_ROUTINE_BODY_PRECEDER = re.compile(r"(?<!\w)(?:AS|DO(?:\s+LANGUAGE\s+\w+)?)\s*\Z", re.IGNORECASE)
-
-
-def _same_text(m: re.Match[str]) -> re.Pattern[str]:
-    """Close a ``$tag$`` quote with the same tag."""
-    return re.compile(re.escape(m.group(0)))
-
-
-def _dollar_quote_closed(source: str, i: int, out: list[str]) -> bool:
-    """Open a dollar quote only if its tag recurs; an unterminated one would hide the rest."""
-    tag = re.compile(DOLLAR_QUOTE).match(source, i)
-    return tag is not None and source.find(tag.group(0), tag.end()) >= 0
-
-
-def _sql_routine_body(source: str, i: int, out: list[str]) -> bool:
-    """A dollar quote after ``AS`` or ``DO`` holds a routine body, not data."""
-    preceder = _ROUTINE_BODY_PRECEDER.search("".join(out[max(0, i - 200) : i]))
-    return preceder is not None and _dollar_quote_closed(source, i, out)
-
-
-SQL = [
-    _comment(r"/\*", r"\*/", nested=True),
-    _comment("--"),
-    _string(r"(?<!\w)[eE]'", "'", skip=r"\\[\s\S]|''"),
-    _string("'", skip="''"),
-    # `AS $$` and `DO $$` quote a routine body, which is code; any other
-    # dollar-quoted text is string data.
-    Rule("body", _rx(DOLLAR_QUOTE), _same_text, guard=_sql_routine_body),
-    _string(DOLLAR_QUOTE, _same_text, skip=None, guard=_dollar_quote_closed),
-    _string('"', skip='""'),
-    _string("`", skip="``"),
-]
-HCL = [
-    _comment("#"),
-    BLOCK,
-    LINE,
-    _heredoc(r"<<(-?)([A-Za-z_]\w*)", name=2),
-    _string('"', interp=(("${", "}"), ("%{", "}")), multiline=False),
-]
-NIX = [
-    WORD_HASH,
-    BLOCK,
-    # `''` ends an indented string unless followed by `'`, `$`, or `\`.
-    _string("''", r"''(?![$'\\])", skip=r"''[$']|''\\[\s\S]", interp=DOLLAR_BRACE),
-    _string('"', interp=DOLLAR_BRACE),
-]
-GRAPHQL = [
-    _comment("#"),
-    _string('"""', skip=r'\\"""', kind="doc", guard=_graphql_description),
-    _string('"', multiline=False, kind="doc", guard=_graphql_description),
-    _string('"""', skip=r'\\"""'),
-    DQ,
-]
-CMAKE = [
-    CODE_ESCAPE,  # `\"` in an unquoted argument is not a quote
-    _comment(r"#\[(=*)\[", _long_bracket),
-    _comment("#"),
-    _string(r"\[(=*)\[", _long_bracket, skip=None),
-    _string('"'),
-]
-
-_TAG_NAME = re.compile(r"<([A-Za-z][\w:.-]*)")
-_SCRIPT_TYPES = {
-    "module",
-    "text/javascript",
-    "application/javascript",
-    "text/babel",
-    "text/typescript",
-    "application/json",
-    "application/ld+json",
-    "importmap",
-}
-
-
-def _embedded_rules(name: str, tag: str) -> Sequence[Rule] | None:
-    """Pick the rules for a ``<script>`` or ``<style>`` body, or None to keep it."""
-    lang_m = re.search(r"""\blang\s*=\s*["']?([\w-]+)""", tag, re.IGNORECASE)
-    lang = lang_m.group(1).lower() if lang_m else ""
-    if name == "style":
-        if lang in ("scss", "less", "sass"):
-            return SCSS
-        return CSS if lang in ("", "css", "postcss") else None
-    type_m = re.search(r"""\btype\s*=\s*["']?([^"'\s>]+)""", tag, re.IGNORECASE)
-    kind = type_m.group(1).lower() if type_m else ""
-    if lang in ("", "js", "javascript", "jsx", "ts", "typescript", "tsx") and (
-        not kind or kind in _SCRIPT_TYPES
-    ):
-        return JS
-    return None
-
-
-# HTML parses these bodies as text, so `<!-- -->` inside them is data. XML
-# (SVG, XHTML) does not, so there a comment in `<title>` is a comment.
-_HTML_TEXT_ELEMENTS = frozenset({"textarea", "title", "xmp", "iframe", "noembed", "noframes"})
-
-
-_SVELTE_BLOCK_END = re.compile(r"\{/\w+\s*\}")
-
-
-def _markup(source: str, raw_text: bool, html: bool = False, expr: str = "") -> str:
-    """Strip ``<!-- -->`` comments, keeping quoted attributes and CDATA.
-
-    With ``raw_text`` (HTML, Vue, Svelte, SVG), ``<script>`` and ``<style>``
-    bodies are code: an HTML comment marker in them is not a comment, and
-    their own comments are stripped with the JS or CSS rules. With ``html``,
-    the bodies of ``_HTML_TEXT_ELEMENTS`` and ``<plaintext>`` are kept. With
-    ``expr`` (``{{`` for Vue, ``{`` for Svelte), template expressions in text
-    are JS, so their strings are kept and their comments stripped.
-    """
+def _blank(source: str, spans: list[tuple[int, int, bool]]) -> str:
+    """Blank byte spans of ``source`` to spaces, keeping line breaks."""
     out = list(source)
-    i, n = 0, len(source)
-    while i < n:
-        if expr == "{{" and source.startswith(expr, i):
-            # Vue ends an interpolation at the first `}}`, even inside a JS string.
-            close = source.find("}}", i + 2)
-            if close < 0:
-                i += 1
+    if source.isascii():
+        to_char = None
+    else:
+        # Byte offset of each character, so tree-sitter byte spans map to str indices.
+        widths = (1 if o < 0x80 else 2 if o < 0x800 else 3 if o < 0x10000 else 4 for o in map(ord, source))
+        to_char = list(itertools.accumulate(widths, initial=0))
+    for start, end, is_doc in spans:
+        if to_char is not None:
+            start, end = bisect.bisect_left(to_char, start), bisect.bisect_left(to_char, end)
+        for k in range(start, end):
+            ch = source[k]
+            # A backslash before a newline continues a single-quoted string.
+            if ch in "\r\n" or (is_doc and ch == "\\" and source[k + 1 : k + 2] in ("\r", "\n")):
                 continue
-            _scan_code(source[:close], out, i + 2, JS)
-            i = close + 2
-        elif expr == "{" and source.startswith(expr, i):
-            block_end = _SVELTE_BLOCK_END.match(source, i)
-            if block_end:
-                i = block_end.end()
-                continue
-            j = i + 2 if source[i + 1 : i + 2] in ("#", ":", "@") else i + 1  # `{#if x}`, `{@html x}`
-            end = _scan_code(source, out, j, JS, close="}")
-            if end < n:
-                i = end
-            else:
-                # Unclosed, so this `{` is text: undo the scan, which only wrote at or after j.
-                out[j:] = source[j:]
-                i += 1
-        elif source.startswith("<!--", i):
-            end = source.find("-->", i + 4)
-            end = n if end < 0 else end + 3
-            _blank(source, out, i, end)
-            i = end
-        elif source.startswith("<![CDATA[", i):
-            end = source.find("]]>", i + 9)
-            i = n if end < 0 else end + 3
-        elif source[i] == "<" and i + 1 < n and (source[i + 1].isalpha() or source[i + 1] in "/?!"):
-            # The validator cannot tell blanked attribute text from a stripped
-            # comment, so quoted attribute values must be skipped whole.
-            j, quote = i + 1, ""
-            while j < n and (quote or source[j] != ">"):
-                if quote:
-                    quote = "" if source[j] == quote else quote
-                elif source[j] in "\"'":
-                    quote = source[j]
-                elif expr == "{" and source[j] == "{":
-                    # A Svelte attribute `{a > 1}` is JS, so its `>` does not end the tag.
-                    end = _scan_code(source, out, j + 1, JS, close="}")
-                    if end < n:
-                        j = end
-                        continue
-                    out[j + 1 :] = source[j + 1 :]  # unclosed: undo the scan
-                j += 1
-            tag = source[i : j + 1]
-            i = j + 1
-            name_m = _TAG_NAME.match(tag)
-            name = name_m.group(1).lower() if name_m else ""
-            if raw_text and name in ("script", "style") and not tag.endswith("/>"):
-                close = re.compile(rf"</{name}\s*>", re.IGNORECASE).search(source, i)
-                end = close.start() if close else n
-                rules = _embedded_rules(name, tag)
-                if rules is not None:
-                    out[i:end] = _scan(source[i:end], rules)
-                i = end
-            elif html and name == "plaintext" and not tag.startswith("</"):
-                i = n
-            elif html and name in _HTML_TEXT_ELEMENTS and not tag.endswith("/>"):
-                close = re.compile(rf"</{name}\s*>", re.IGNORECASE).search(source, i)
-                i = close.start() if close else n
-        else:
-            i += 1
+            out[k] = " "
     return "".join(out)
 
 
-def strip_xml(source: str) -> str:
-    """Strip XML comments."""
-    return _markup(source, raw_text=False)
+def _tree_sitter(lang: str, source: str) -> str:
+    spans: list[tuple[int, int, bool]] = []
+    _collect(lang, source.encode("utf-8"), 0, spans, strict=True)
+    return _blank(source, spans)
 
 
-def strip_html(source: str) -> str:
-    """Strip HTML comments and the comments in embedded scripts and styles."""
-    return _markup(source, raw_text=True, html=True)
+_VUE_INTERPOLATION = re.compile(rb"\{\{([\s\S]*?)\}\}")
 
 
 def strip_vue(source: str) -> str:
-    """Strip a Vue single-file component: HTML plus ``{{ }}`` JS expressions."""
-    return _markup(source, raw_text=True, html=True, expr="{{")
+    """Strip a Vue single-file component as HTML, plus comments in ``{{ }}`` JS.
 
-
-def strip_svelte(source: str) -> str:
-    """Strip a Svelte component: HTML plus ``{ }`` JS expressions."""
-    # The added newline is never a closer, so a scan that reaches the end found none.
-    return _markup(source + "\n", raw_text=True, html=True, expr="{")[:-1]
-
-
-def strip_xml_document(source: str) -> str:
-    """Strip SVG and XHTML: scripts and styles as in HTML, other elements as XML."""
-    return _markup(source, raw_text=True)
-
-
-_PY_CODING = re.compile(r"^[ \t\f]*#.*?coding[:=][ \t]*[-\w.]+")
-# PEP 723 inline script metadata: dependencies, so code, not commentary.
-_PY_SCRIPT_BLOCK = re.compile(r"^# /// [a-zA-Z0-9-]+$\s(?:^#(?:| .*)$\s)+^# ///$", re.MULTILINE)
-
-
-def strip_python(source: str) -> str:
-    """Strip comments and docstrings from Python source, preserving positions.
-
-    Comments become spaces, except a shebang, a PEP 263 coding line, and PEP
-    723 script metadata. A string expression statement (a docstring or a
-    bare string constant) keeps its prefix and quotes and loses its content,
-    so the result is a space mask that still parses. Raises on tokenize or
-    parse errors; the caller copies verbatim.
+    Vue reads an interpolation up to the first ``}}`` before it looks for tags,
+    so ``{{ "<!-- x -->" }}`` holds a string, not a comment. Interpolations are
+    masked before the HTML parse and parsed as JS afterwards.
     """
-    lines = source.splitlines(keepends=True)
-    kept_rows: set[int] = set()
-    if lines and lines[0].startswith("#!"):
-        kept_rows.add(1)
-    kept_rows.update(row for row in (1, 2) if row <= len(lines) and _PY_CODING.match(lines[row - 1]))
-    for m in _PY_SCRIPT_BLOCK.finditer(source):
-        first = source.count("\n", 0, m.start()) + 1
-        kept_rows.update(range(first, first + m.group().count("\n") + 1))
-
-    def blank_span(srow: int, scol: int, erow: int, ecol: int) -> None:
-        for row in range(srow, erow + 1):
-            line = lines[row - 1]
-            chars = list(line)
-            start = scol if row == srow else 0
-            end = ecol if row == erow else len(line)
-            # A backslash before a newline continues a single-quoted string.
-            _blank(line, chars, start, min(end, len(line)), keep_continuation=True)
-            lines[row - 1] = "".join(chars)
-
-    def char_col(row: int, byte_col: int) -> int:
-        # ast columns are UTF-8 byte offsets; tokenize and slicing use characters.
-        return len(lines[row - 1].encode("utf-8")[:byte_col].decode("utf-8"))
-
-    # A string expression statement's syntactic position, not the previous
-    # token, tells it apart from a dict value or annotation, and covers
-    # `def f(): """doc"""; return 1`.
-    docs = [
-        (
-            (node.lineno, char_col(node.lineno, node.col_offset)),
-            (node.end_lineno, char_col(node.end_lineno, node.end_col_offset)),
-        )
-        for node in ast.walk(ast.parse(source))
-        if isinstance(node, ast.Expr)
-        and isinstance(node.value, ast.Constant)
-        and isinstance(node.value.value, (str, bytes))
-        and node.end_lineno is not None
-        and node.end_col_offset is not None
+    data = source.encode("utf-8")
+    root = Parser(_language_object("html")).parse(data).root_node
+    code = [
+        (body.start_byte, body.end_byte)
+        for body in _captures(_query("html", "[(script_element) (style_element)] (raw_text) @b"), root, "b")
     ]
-    for tok in tokenize.generate_tokens(io.StringIO(source).readline):
-        if tok.type == tokenize.COMMENT and tok.start[0] not in kept_rows:
-            blank_span(*tok.start, *tok.end)
-        elif tok.type == tokenize.STRING and any(s <= tok.start and tok.end <= e for s, e in docs):
-            text = tok.string
-            prefix = len(text) - len(text.lstrip("rRbBuU"))
-            quote = 3 if text[prefix : prefix + 3] in ('"""', "'''") else 1
-            (srow, scol), (erow, ecol) = tok.start, tok.end
-            blank_span(srow, scol + prefix + quote, erow, ecol - quote)
-    return "".join(lines)
+    masked = bytearray(data)
+    interpolations = []
+    for m in _VUE_INTERPOLATION.finditer(data):
+        if not any(start <= m.start() < end for start, end in code):
+            interpolations.append(m)
+            masked[m.start() : m.end()] = bytes(b if b in b"\r\n" else 32 for b in m.group())
+    spans: list[tuple[int, int, bool]] = []
+    _collect("html", bytes(masked), 0, spans, strict=True)
+    for m in interpolations:
+        _collect("javascript", m.group(1), m.start(1), spans, strict=False)
+    return _blank(source, spans)
 
 
-_YAML_NODE_START = re.compile(r" *(?:- +)*")
-_YAML_BLOCK_HEADER = re.compile(r"(?:^|[:-]\s)\s*(?:[!&]\S*\s+)*[|>]([1-9+-]{0,2})$")
+def _lines(pattern: str) -> Callable[[str], str]:
+    """Strip a line-oriented config format whose comments a regex finds exactly."""
+    compiled = re.compile(pattern, re.MULTILINE)
+    return lambda source: compiled.sub(lambda m: " " * len(m.group()), source)
 
 
-def strip_yaml(source: str) -> str:
-    """Strip YAML #-comments but keep block scalar bodies, which are data.
-
-    In ``key: |`` followed by ``  # deny``, the ``#`` line is string content.
-    Bodies are masked before the scan, so a quote inside one cannot shift
-    quote state for the lines after it, and are restored afterwards.
-    """
-    lines = source.splitlines(keepends=True)
-    body: set[int] = set()
-    i = 0
-    while i < len(lines):
-        header = _scan(lines[i], YAML).rstrip()
-        i += 1
-        block = _YAML_BLOCK_HEADER.search(header)
-        if lines[i - 1].lstrip().startswith("#") or not block:
-            continue
-        # The owning node starts after any `- ` indicators: at the key, or at the last `-`.
-        node = _YAML_NODE_START.match(header)
-        lead = node.end() if node else 0
-        dash = header.rfind("-", 0, lead) if header[lead : lead + 1] in "|>!&" else -1
-        parent = dash if dash >= 0 else lead
-        start = i
-        while i < len(lines) and not lines[i].strip():
-            i += 1
-        if i == len(lines):
-            break
-        # `|2` fixes the body indentation, so a more indented first line does not set it.
-        explicit = next((int(c) for c in block.group(1) if c.isdigit()), 0)
-        indent = parent + explicit if explicit else len(lines[i]) - len(lines[i].lstrip(" "))
-        if indent <= parent:
-            i = start
-            continue
-        while i < len(lines) and (not lines[i].strip() or lines[i].startswith(" " * indent)):
-            i += 1
-        body.update(range(start, i))
-    masked = "".join(
-        "".join(c if c in "\r\n" else " " for c in line) if n in body else line
-        for n, line in enumerate(lines)
-    )
-    stripped = _scan(masked, YAML).splitlines(keepends=True)
-    return "".join(lines[n] if n in body else line for n, line in enumerate(stripped))
-
-
-def _rules(rules: Sequence[Rule]) -> Callable[[str], str]:
-    return functools.partial(_scan, rules=rules)
+def _grammar(lang: str) -> Callable[[str], str]:
+    return functools.partial(_tree_sitter, lang)
 
 
 def _suffixes(spec: str, strip: Callable[[str], str]) -> dict[str, Callable[[str], str]]:
     return dict.fromkeys(spec.split(), strip)
 
 
+HASH_LINES = _lines(r"^[ \t]*#[^\r\n]*")
+INI_LINES = _lines(r"^[ \t]*[#;][^\r\n]*")
+# pip: a `#` at line start or after whitespace starts a comment; `url#egg=` is data.
+REQUIREMENTS_LINES = _lines(r"(?:^|(?<=[ \t]))#[^\r\n]*")
+
 LANGUAGES_BY_SUFFIX: dict[str, Callable[[str], str]] = {
-    **_suffixes(".py .pyi .pyw", strip_python),
-    **_suffixes(
-        ".c .h .cc .cpp .cxx .c++ .hpp .hh .hxx .h++ .ino .m .mm .cu .cuh .glsl .vert .frag"
-        " .hlsl .metal .proto .sol",
-        _rules(C),
-    ),
-    **_suffixes(".cs", _rules(CSHARP)),
-    **_suffixes(".java", _rules(JAVA)),
-    **_suffixes(".kt .kts", _rules(KOTLIN)),
-    **_suffixes(".scala .sc", _rules(SCALA)),
-    **_suffixes(".swift", _rules(SWIFT)),
-    **_suffixes(".dart", _rules(DART)),
-    **_suffixes(".groovy .gradle", _rules(GROOVY)),
-    **_suffixes(".go", _rules(GO)),
-    **_suffixes(".rs", _rules(RUST)),
-    **_suffixes(".js .jsx .mjs .cjs .ts .tsx .mts .cts", _rules(JS)),
-    **_suffixes(".css", _rules(CSS)),
-    **_suffixes(".scss .sass .less", _rules(SCSS)),
-    **_suffixes(".json .jsonc .json5", _rules(JSONC)),
-    **_suffixes(".zig", _rules(ZIG)),
-    **_suffixes(".php", _rules(PHP)),
-    **_suffixes(".sh .bash .zsh .ksh", _rules(SHELL)),
-    **_suffixes(".fish", _rules(FISH)),
-    **_suffixes(".mk", _rules(MAKE)),
-    **_suffixes(".dockerfile", _rules(DOCKER)),
-    **_suffixes(".toml", _rules(TOML)),
-    **_suffixes(".yaml .yml", strip_yaml),
-    **_suffixes(".ini .cfg", _rules(INI)),
-    **_suffixes(".properties", _rules(PROPERTIES)),
-    **_suffixes(".conf", _rules(CONF)),
-    **_suffixes(".rb .rake .gemspec .ru", _rules(RUBY)),
-    **_suffixes(".pl .pm", _rules(PERL)),
-    **_suffixes(".r", _rules(R)),
-    **_suffixes(".jl", _rules(JULIA)),
-    **_suffixes(".ex .exs", _rules(ELIXIR)),
-    **_suffixes(".hs", _rules(HASKELL)),
-    **_suffixes(".ml .mli", _rules(OCAML)),
-    **_suffixes(".fs .fsi .fsx", _rules(FSHARP)),
-    **_suffixes(".erl .hrl", _rules(ERLANG)),
-    **_suffixes(".clj .cljs .cljc .edn", _rules(CLOJURE)),
-    **_suffixes(".el .lisp", _rules(LISP)),
-    **_suffixes(".ps1 .psm1 .psd1", _rules(POWERSHELL)),
-    **_suffixes(".lua", _rules(LUA)),
-    **_suffixes(".sql", _rules(SQL)),
-    **_suffixes(".tf .tfvars .hcl", _rules(HCL)),
-    **_suffixes(".nix", _rules(NIX)),
-    **_suffixes(".graphql .gql", _rules(GRAPHQL)),
-    **_suffixes(".cmake", _rules(CMAKE)),
-    **_suffixes(".html .htm", strip_html),
+    **_suffixes(".py .pyi .pyw", _grammar("python")),
+    **_suffixes(".c .h .glsl .vert .frag .hlsl", _grammar("c")),
+    **_suffixes(".cc .cpp .cxx .c++ .hpp .hh .hxx .h++ .ino .cu .cuh .metal", _grammar("cpp")),
+    **_suffixes(".cs", _grammar("c_sharp")),
+    **_suffixes(".java", _grammar("java")),
+    **_suffixes(".kt .kts", _grammar("kotlin")),
+    **_suffixes(".scala .sc", _grammar("scala")),
+    **_suffixes(".swift", _grammar("swift")),
+    **_suffixes(".dart", _grammar("dart")),
+    **_suffixes(".groovy .gradle", _grammar("groovy")),
+    **_suffixes(".go", _grammar("go")),
+    **_suffixes(".rs", _grammar("rust")),
+    **_suffixes(".zig", _grammar("zig")),
+    **_suffixes(".js .jsx .mjs .cjs", _grammar("javascript")),
+    **_suffixes(".ts .mts .cts", _grammar("typescript")),
+    **_suffixes(".tsx", _grammar("tsx")),
+    **_suffixes(".css", _grammar("css")),
+    **_suffixes(".scss .less", _grammar("scss")),
+    **_suffixes(".json .jsonc .json5", _grammar("json")),
+    **_suffixes(".php", _grammar("php")),
+    **_suffixes(".sh .bash .zsh .ksh", _grammar("bash")),
+    **_suffixes(".mk", _grammar("make")),
+    **_suffixes(".dockerfile", _grammar("dockerfile")),
+    **_suffixes(".toml", _grammar("toml")),
+    **_suffixes(".yaml .yml", _grammar("yaml")),
+    **_suffixes(".ini .cfg", INI_LINES),
+    **_suffixes(".properties", _lines(r"^[ \t]*[#!][^\r\n]*")),
+    **_suffixes(".conf", HASH_LINES),
+    **_suffixes(".rb .rake .gemspec .ru", _grammar("ruby")),
+    **_suffixes(".pl .pm .t", _grammar("perl")),
+    **_suffixes(".jl", _grammar("julia")),
+    **_suffixes(".ex .exs", _grammar("elixir")),
+    **_suffixes(".hs", _grammar("haskell")),
+    **_suffixes(".ml", _grammar("ocaml")),
+    **_suffixes(".mli", _grammar("ocaml_interface")),
+    **_suffixes(".fs .fsx", _grammar("fsharp")),
+    **_suffixes(".fsi", _grammar("fsharp_signature")),
+    **_suffixes(".lisp .lsp .cl", _grammar("commonlisp")),
+    **_suffixes(".ps1 .psm1 .psd1", _grammar("powershell")),
+    **_suffixes(".lua", _grammar("lua")),
+    **_suffixes(".sql", _grammar("sql")),
+    **_suffixes(".tf .tfvars .hcl", _grammar("hcl")),
+    **_suffixes(".nix", _grammar("nix")),
+    **_suffixes(".graphql .gql", _grammar("graphql")),
+    **_suffixes(".cmake", _grammar("cmake")),
+    **_suffixes(".html .htm", _grammar("html")),
     **_suffixes(".vue", strip_vue),
-    **_suffixes(".svelte", strip_svelte),
-    **_suffixes(".xhtml .svg", strip_xml_document),
+    **_suffixes(".svelte", _grammar("svelte")),
     **_suffixes(
-        ".xml .plist .xsd .xsl .xslt .csproj .fsproj .vbproj .props .targets .xaml"
-        " .storyboard .xib",
-        strip_xml,
+        ".xml .xhtml .svg .plist .xsd .xsl .xslt .csproj .fsproj .vbproj .props .targets .xaml"
+        " .storyboard .xib .config .resx .nuspec",
+        _grammar("xml"),
     ),
 }
 # Files with no suffix, or whose suffix would mislead (CMakeLists.txt is not
 # documentation). A dotfiles repo is mostly these.
 LANGUAGES_BY_NAME: dict[str, Callable[[str], str]] = {
-    **_suffixes("Dockerfile Containerfile", _rules(DOCKER)),
-    **_suffixes("Makefile makefile GNUmakefile", _rules(MAKE)),
-    **_suffixes("Justfile justfile .justfile", _rules(JUST)),
+    **_suffixes("Dockerfile Containerfile", _grammar("dockerfile")),
+    **_suffixes("Makefile makefile GNUmakefile", _grammar("make")),
     **_suffixes(
         "Brewfile Gemfile Rakefile Podfile Vagrantfile Guardfile Fastfile Appfile Dangerfile",
-        _rules(RUBY),
+        _grammar("ruby"),
     ),
-    **_suffixes("CMakeLists.txt", _rules(CMAKE)),
+    **_suffixes("CMakeLists.txt", _grammar("cmake")),
     **_suffixes(
-        ".envrc .env .bashrc .bash_profile .bash_aliases .bash_logout .profile .zshrc"
-        " .zshenv .zprofile .zlogin .zlogout",
-        _rules(SHELL),
+        ".envrc .bashrc .bash_profile .bash_aliases .bash_logout .profile .zshrc .zshenv .zprofile"
+        " .zlogin .zlogout",
+        _grammar("bash"),
     ),
+    **_suffixes(".env", HASH_LINES),
     **_suffixes(
         ".gitignore .gitattributes .dockerignore .npmignore .prettierignore .eslintignore"
         " .helmignore CODEOWNERS",
-        _rules(LINE_HASH_ONLY),
+        _lines(r"^#[^\r\n]*"),
     ),
     **_suffixes(
         ".editorconfig .gitconfig .gitmodules .npmrc .flake8 .pylintrc .coveragerc",
-        _rules(INI),
+        INI_LINES,
     ),
-    **_suffixes("go.mod go.work", _rules(GO)),
-    **_suffixes("Pipfile", _rules(TOML)),
+    **_suffixes("go.mod go.work", _lines(r"^[ \t]*//[^\r\n]*")),
+    **_suffixes("Pipfile", _grammar("toml")),
 }
 LANGUAGES_BY_GLOB: list[tuple[str, Callable[[str], str]]] = [
-    ("requirements*.txt", _rules(REQUIREMENTS)),
-    ("constraints*.txt", _rules(REQUIREMENTS)),
-    ("Dockerfile.*", _rules(DOCKER)),
-    ("Containerfile.*", _rules(DOCKER)),
-    (".env.*", _rules(SHELL)),
+    ("requirements*.txt", REQUIREMENTS_LINES),
+    ("constraints*.txt", REQUIREMENTS_LINES),
+    ("Dockerfile.*", _grammar("dockerfile")),
+    ("Containerfile.*", _grammar("dockerfile")),
+    (".env.*", HASH_LINES),
 ]
 
 
@@ -1296,7 +608,7 @@ def strip_source(path_name: str, source: str) -> tuple[str, str]:
         return source, "copied-verbatim (unknown language)"
     try:
         stripped = strip(source)
-    except (tokenize.TokenError, IndentationError, SyntaxError):
+    except SyntaxError:
         return source, "copied-verbatim (parse error)"
     reason = validate_strip(path_name, source, stripped)
     if reason is not None:
