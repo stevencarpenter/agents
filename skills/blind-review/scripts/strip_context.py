@@ -896,18 +896,31 @@ def _embedded_rules(name: str, tag: str) -> Sequence[Rule] | None:
 _HTML_TEXT_ELEMENTS = frozenset({"textarea", "title", "xmp", "iframe", "noembed", "noframes"})
 
 
-def _markup(source: str, raw_text: bool, html: bool = False) -> str:
+def _markup(source: str, raw_text: bool, html: bool = False, expr: str = "") -> str:
     """Strip ``<!-- -->`` comments, keeping quoted attributes and CDATA.
 
     With ``raw_text`` (HTML, Vue, Svelte, SVG), ``<script>`` and ``<style>``
     bodies are code: an HTML comment marker in them is not a comment, and
     their own comments are stripped with the JS or CSS rules. With ``html``,
-    the bodies of ``_HTML_TEXT_ELEMENTS`` and ``<plaintext>`` are kept.
+    the bodies of ``_HTML_TEXT_ELEMENTS`` and ``<plaintext>`` are kept. With
+    ``expr`` (``{{`` for Vue, ``{`` for Svelte), template expressions in text
+    are JS, so their strings are kept and their comments stripped.
     """
     out = list(source)
     i, n = 0, len(source)
     while i < n:
-        if source.startswith("<!--", i):
+        if expr and source.startswith(expr, i):
+            j = i + len(expr)
+            if expr == "{" and source.startswith("/", j):  # `{/if}` closes a Svelte block
+                close = source.find("}", j)
+                i = n if close < 0 else close + 1
+                continue
+            if expr == "{" and source[j : j + 1] in ("#", ":", "@"):  # `{#if x}`, `{@html x}`
+                j += 1
+            i = _scan_code(source, out, j, JS, close="}")
+            if expr == "{{" and source.startswith("}", i):
+                i += 1
+        elif source.startswith("<!--", i):
             end = source.find("-->", i + 4)
             end = n if end < 0 else end + 3
             _blank(source, out, i, end)
@@ -954,6 +967,16 @@ def strip_xml(source: str) -> str:
 def strip_html(source: str) -> str:
     """Strip HTML comments and the comments in embedded scripts and styles."""
     return _markup(source, raw_text=True, html=True)
+
+
+def strip_vue(source: str) -> str:
+    """Strip a Vue single-file component: HTML plus ``{{ }}`` JS expressions."""
+    return _markup(source, raw_text=True, html=True, expr="{{")
+
+
+def strip_svelte(source: str) -> str:
+    """Strip a Svelte component: HTML plus ``{ }`` JS expressions."""
+    return _markup(source, raw_text=True, html=True, expr="{")
 
 
 def strip_xml_document(source: str) -> str:
@@ -1129,7 +1152,9 @@ LANGUAGES_BY_SUFFIX: dict[str, Callable[[str], str]] = {
     **_suffixes(".nix", _rules(NIX)),
     **_suffixes(".graphql .gql", _rules(GRAPHQL)),
     **_suffixes(".cmake", _rules(CMAKE)),
-    **_suffixes(".html .htm .vue .svelte", strip_html),
+    **_suffixes(".html .htm", strip_html),
+    **_suffixes(".vue", strip_vue),
+    **_suffixes(".svelte", strip_svelte),
     **_suffixes(".xhtml .svg", strip_xml_document),
     **_suffixes(
         ".xml .plist .xsd .xsl .xslt .csproj .fsproj .vbproj .props .targets .xaml"
@@ -1449,7 +1474,7 @@ def cmd_diff(args: argparse.Namespace) -> int:
 
 
 # Leading whitespace is syntax here, so a re-indent is a code change.
-INDENT_SENSITIVE_SUFFIXES = {".py", ".pyi", ".pyw", ".yaml", ".yml", ".hs", ".fs", ".fsx", ".mk"}
+INDENT_SENSITIVE_SUFFIXES = {".py", ".pyi", ".pyw", ".yaml", ".yml", ".hs", ".fs", ".fsi", ".fsx", ".mk", ".sass"}
 INDENT_SENSITIVE_STEMS = {"Makefile", "makefile", "GNUmakefile"}
 # A line holding only a blanked docstring or one of its quote delimiters.
 _BLANK_STRING = re.compile(r"""[rRbBuU]{0,2}(\"\"\"|'''|"|')(?:\s*\1)?""")

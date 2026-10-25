@@ -669,6 +669,19 @@ STYLE_CASES: list[tuple[str, str, list[str], list[str]]] = [
         ["gone"],
     ),
     ("a.html", '<script type="text/template"><p>// keep</p></script>\n', ["// keep"], []),
+    (
+        "a.vue",
+        '<p>{{ "<!-- keep -->" }}</p><p>{{ {a: "}}"}.a /* gone */ }}</p><!-- gone2 -->\n',
+        ['"<!-- keep -->"', '{a: "}}"}.a'],
+        ["gone"],
+    ),
+    (
+        "a.svelte",
+        ('<p>{"<!-- keep -->"}</p>{#if a === "<!-- keep2 -->"}x{/if}\n'
+        "{@html `<!-- keep3 ${b}-->`}<!-- gone -->{f(/* gone2 */)}\n"),
+        ['"<!-- keep -->"', '"<!-- keep2 -->"', "`<!-- keep3 ${b}-->`"],
+        ["gone"],
+    ),
     # Interpolation that nests quotes, found in real code.
     (
         "a.sh",
@@ -687,8 +700,8 @@ STYLE_CASES: list[tuple[str, str, list[str], list[str]]] = [
     ("a.rb", "c = '\\1'\n/(#{f})(.*)/m\n", ["/(#{f})(.*)/m"], []),
     (
         "a.rb",
-        "puts %q{# keep}\ns = %q{#{1 # keep2}}\nx %= 2 # gone\nt = %Q{#{a} b} # gone2\n"
-        "puts /# keep3/.source\nx = a /b # gone3\n",
+        ("puts %q{# keep}\ns = %q{#{1 # keep2}}\nx %= 2 # gone\nt = %Q{#{a} b} # gone2\n"
+        "puts /# keep3/.source\nx = a /b # gone3\n"),
         ["puts %q{# keep}", "%q{#{1 # keep2}}", "x %= 2", "%Q{#{a} b}", "/# keep3/.source", "a /b"],
         ["gone"],
     ),
@@ -933,6 +946,12 @@ class MechanicalModeTest(unittest.TestCase):
             {"a.py": "if x:\n    y()\n    z()\n"}, {"a.py": "if x:\n    y()\nz()\n"}
         )
         self.assertIn("+3|z()", (out / "units" / "f01.py.diff").read_text())
+
+    def test_sass_reindent_is_a_code_change(self) -> None:
+        """Sass nests selectors by indentation, so a re-indent must surface."""
+        base = ".parent\n  color: red\n.child\n  color: blue\n"
+        head = ".parent\n  color: red\n  .child\n    color: blue\n"
+        self.assertIn("+3|  .child", strip_context.mechanical_hunks("a.sass", base, head))
 
     def test_symlink_is_read_as_its_target_path(self) -> None:
         """A changed symlink must not leak the content of the file it points at."""
