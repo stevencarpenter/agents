@@ -671,15 +671,17 @@ STYLE_CASES: list[tuple[str, str, list[str], list[str]]] = [
     ("a.html", '<script type="text/template"><p>// keep</p></script>\n', ["// keep"], []),
     (
         "a.vue",
-        '<p>{{ "<!-- keep -->" }}</p><p>{{ {a: "}}"}.a /* gone */ }}</p><!-- gone2 -->\n',
-        ['"<!-- keep -->"', '{a: "}}"}.a'],
+        ('<p>{{ "<!-- keep -->" }}</p><p>{{ a /* gone */ }}</p><!-- gone2 -->\n'
+        "{{ x <!-- gone3 -->\n"),
+        ['"<!-- keep -->"', "{{ a "],
         ["gone"],
     ),
     (
         "a.svelte",
         ('<p>{"<!-- keep -->"}</p>{#if a === "<!-- keep2 -->"}x{/if}\n'
-        "{@html `<!-- keep3 ${b}-->`}<!-- gone -->{f(/* gone2 */)}\n"),
-        ['"<!-- keep -->"', '"<!-- keep2 -->"', "`<!-- keep3 ${b}-->`"],
+        "{@html `<!-- keep3 ${b}-->`}<!-- gone -->{f(/* gone2 */)}\n"
+        '{/x/.test(s) ? "<!-- keep4 -->" : ""}\n{a <!-- gone3 -->\n'),
+        ['"<!-- keep -->"', '"<!-- keep2 -->"', "`<!-- keep3 ${b}-->`", '"<!-- keep4 -->"'],
         ["gone"],
     ),
     # Interpolation that nests quotes, found in real code.

@@ -896,6 +896,9 @@ def _embedded_rules(name: str, tag: str) -> Sequence[Rule] | None:
 _HTML_TEXT_ELEMENTS = frozenset({"textarea", "title", "xmp", "iframe", "noembed", "noframes"})
 
 
+_SVELTE_BLOCK_END = re.compile(r"\{/\w+\s*\}")
+
+
 def _markup(source: str, raw_text: bool, html: bool = False, expr: str = "") -> str:
     """Strip ``<!-- -->`` comments, keeping quoted attributes and CDATA.
 
@@ -909,16 +912,26 @@ def _markup(source: str, raw_text: bool, html: bool = False, expr: str = "") -> 
     out = list(source)
     i, n = 0, len(source)
     while i < n:
-        if expr and source.startswith(expr, i):
-            j = i + len(expr)
-            if expr == "{" and source.startswith("/", j):  # `{/if}` closes a Svelte block
-                close = source.find("}", j)
-                i = n if close < 0 else close + 1
+        if expr == "{{" and source.startswith(expr, i):
+            # Vue ends an interpolation at the first `}}`, even inside a JS string.
+            close = source.find("}}", i + 2)
+            if close < 0:
+                i += 1
                 continue
-            if expr == "{" and source[j : j + 1] in ("#", ":", "@"):  # `{#if x}`, `{@html x}`
-                j += 1
-            i = _scan_code(source, out, j, JS, close="}")
-            if expr == "{{" and source.startswith("}", i):
+            _scan_code(source[:close], out, i + 2, JS)
+            i = close + 2
+        elif expr == "{" and source.startswith(expr, i):
+            block_end = _SVELTE_BLOCK_END.match(source, i)
+            if block_end:
+                i = block_end.end()
+                continue
+            j = i + 2 if source[i + 1 : i + 2] in ("#", ":", "@") else i + 1  # `{#if x}`, `{@html x}`
+            end = _scan_code(source, out, j, JS, close="}")
+            if end < n:
+                i = end
+            else:
+                # Unclosed, so this `{` is text: undo the scan, which only wrote at or after j.
+                out[j:] = source[j:]
                 i += 1
         elif source.startswith("<!--", i):
             end = source.find("-->", i + 4)
@@ -976,7 +989,8 @@ def strip_vue(source: str) -> str:
 
 def strip_svelte(source: str) -> str:
     """Strip a Svelte component: HTML plus ``{ }`` JS expressions."""
-    return _markup(source, raw_text=True, html=True, expr="{")
+    # The added newline is never a closer, so a scan that reaches the end found none.
+    return _markup(source + "\n", raw_text=True, html=True, expr="{")[:-1]
 
 
 def strip_xml_document(source: str) -> str:
