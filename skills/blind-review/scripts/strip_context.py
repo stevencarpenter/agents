@@ -194,10 +194,17 @@ _REFERENCE = re.compile(
     rb"///[ \t]*<(?:reference|amd-module|amd-dependency)(?:[ \t]+[\w-]+[ \t]*=[ \t]*(?:\"[^\"\n]*\"|'[^'\n]*'))*[ \t]*/>"
 )
 KEEP = {
-    # An argument may hold `/` (`//go:embed html/index.html`) or be quoted, but not `//`.
+    # Only directives the go tool defines, each with the arguments it takes. An
+    # embed path may hold `/` (`html/index.html`) or be quoted, but not `//`.
     "go": re.compile(
-        rb'//(?:go:\w+|line|export|extern)(?:[ \t]+(?:"[^"\n]*"|`[^`\n]*`|(?:[^\s/"`]|/(?!/))+))*'
-        rb"|// \+build(?:[ \t]+[^\s/]+)+"
+        rb"//go:build[ \t]+[\w!&|().\t ]+"
+        rb'|//go:embed(?:[ \t]+(?:"[^"\n]*"|`[^`\n]*`|(?:[^\s/"`]|/(?!/))+))+'
+        rb"|//go:generate[ \t][^\n]*"  # a command go generate runs
+        rb"|//go:linkname[ \t]+\S+(?:[ \t]+\S+)?"
+        rb"|//go:wasmimport[ \t]+\S+[ \t]+\S+|//go:wasmexport[ \t]+\S+"
+        rb"|//go:(?:noinline|nosplit|noescape|norace|nocheckptr|uintptrescapes|nowritebarrierrec"
+        rb"|nowritebarrier|systemstack|notinheap)"
+        rb"|//line[ \t]+\S+|//export[ \t]+\w+|//extern[ \t]+\S+|// \+build(?:[ \t]+[\w!,.]+)+"
     ),
     "javascript": _REFERENCE,
     "typescript": _REFERENCE,

@@ -1184,6 +1184,12 @@ class MechanicalModeTest(unittest.TestCase):
         self.assertEqual(action, "stripped")
         self.assertIn("//go:embed html/index.html", out)
         self.assertNotIn("gone", out)
+        src = "package a\n//go:build linux && !cgo\n//go:noinline\n//go:custom gone\n//go:noinline gone too\nfunc f() {}\n"
+        out, action = strip_context.strip_source("a.go", src)
+        self.assertEqual(action, "stripped")
+        self.assertIn("//go:build linux && !cgo", out)
+        self.assertIn("//go:noinline\n", out)
+        self.assertNotIn("gone", out)
 
     def test_symlink_is_read_as_its_target_path(self) -> None:
         """A changed symlink must not leak the content of the file it points at."""
