@@ -1145,6 +1145,13 @@ class MechanicalModeTest(unittest.TestCase):
         )
         self.assertIn("allow", (out / "units" / "f01.vue.diff").read_text())
 
+    def test_vue_strings_cannot_forge_a_comment_over_template_text(self) -> None:
+        """Quotes inside interpolations must not make a fake tag, then a fake comment."""
+        src = "<template><p>{{ '<a b=\"' }} {{ '<!--' }} hidden {{ '-->' }} {{ '\">' }}</p></template>\n"
+        out, action = strip_context.strip_source("a.vue", src)
+        self.assertEqual(action, "stripped")
+        self.assertIn("hidden", out)
+
     def test_noise_only_change_writes_no_unit(self) -> None:
         """A change that touches only comments and spacing has nothing to review."""
         out = self.run_mechanical(

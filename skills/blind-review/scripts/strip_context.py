@@ -444,35 +444,55 @@ def _tree_sitter(lang: str, source: str) -> str:
     return _blank(source, spans)
 
 
-_VUE_INTERPOLATION = re.compile(rb"\{\{([\s\S]*?)\}\}")
+# A tag, a comment, or a script or style body: braces there are not an interpolation.
+_VUE_NOT_TEXT = "[(start_tag) (end_tag) (self_closing_tag) (comment) (raw_text)] @x"
+
+
+def _vue_interpolations(data: bytes, not_text: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Return the ``{{ ... }}`` spans that start in template text, scanning left to right."""
+    found, pos = [], 0
+    while (start := data.find(b"{{", pos)) >= 0:
+        if any(s <= start < e for s, e in not_text):
+            pos = start + 2
+            continue
+        end = data.find(b"}}", start + 2)
+        if end < 0:
+            break
+        found.append((start, end + 2))
+        pos = end + 2
+    return found
 
 
 def strip_vue(source: str) -> str:
     """Strip a Vue single-file component as HTML, plus comments in ``{{ }}`` JS.
 
     Vue reads an interpolation up to the first ``}}`` before it looks for tags,
-    so ``{{ "<!-- x -->" }}`` holds a string, not a comment. Interpolations are
-    masked before the HTML parse and parsed as JS afterwards.
+    so ``{{ "<!-- x -->" }}`` holds a string, not a comment. Which braces are
+    interpolations depends on where the tags are, and the tags depend on which
+    braces are masked, so mask and reparse until the two agree.
+
+    Raises:
+        SyntaxError: When they never agree; a guess could blank template text.
     """
     data = source.encode("utf-8")
-    root = Parser(_language_object("html")).parse(data).root_node
-    # Braces in a tag, a comment, or a script or style body are not an interpolation.
-    code = [
-        (node.start_byte, node.end_byte)
-        for node in _captures(
-            _query("html", "[(start_tag) (end_tag) (self_closing_tag) (comment) (raw_text)] @x"), root, "x"
-        )
-    ]
-    masked = bytearray(data)
-    interpolations = []
-    for m in _VUE_INTERPOLATION.finditer(data):
-        if not any(start <= m.start() < end for start, end in code):
-            interpolations.append(m)
-            masked[m.start() : m.end()] = bytes(b if b in b"\r\n" else 32 for b in m.group())
+    parser = Parser(_language_object("html"))
+    root = parser.parse(data).root_node
+    for _ in range(8):
+        not_text = [(n.start_byte, n.end_byte) for n in _captures(_query("html", _VUE_NOT_TEXT), root, "x")]
+        interpolations = _vue_interpolations(data, not_text)
+        masked = bytearray(data)
+        for start, end in interpolations:
+            masked[start:end] = bytes(b if b in b"\r\n" else 32 for b in data[start:end])
+        root = parser.parse(bytes(masked)).root_node
+        settled = [(n.start_byte, n.end_byte) for n in _captures(_query("html", _VUE_NOT_TEXT), root, "x")]
+        if _vue_interpolations(data, settled) == interpolations:
+            break
+    else:
+        raise SyntaxError("vue interpolations and tags do not settle")
     spans: list[tuple[int, int, bool]] = []
     _collect("html", bytes(masked), 0, spans)
-    for m in interpolations:
-        _collect("javascript", m.group(1), m.start(1), spans, fragment=True)
+    for start, end in interpolations:
+        _collect("javascript", data[start + 2 : end - 2], start + 2, spans, fragment=True)
     return _blank(source, spans)
 
 
