@@ -1149,6 +1149,8 @@ class MechanicalModeTest(unittest.TestCase):
             ("a.properties", "# c\rkey=a\n", "# c\rkey=b\n"),
             ("a.properties", "message=hello\n", "message=hello \n"),
             (".env", 'MESSAGE="hello\n# deny\n"\n', 'MESSAGE="hello\n# allow\n"\n'),
+            ("setup.cfg", "[x]\nmessage = hello\n\n  world\n", "[x]\nmessage = hello\n  world\n"),
+            ("a.html", '<script type="text/plain">deny  all</script>\n', '<script type="text/plain">deny all</script>\n'),
         ]
         for rel, base, head in cases:
             with self.subTest(base=base):

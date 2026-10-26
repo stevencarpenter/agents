@@ -446,6 +446,8 @@ def _collect(
             inner = _embedded_language(element, data)
             if body is not None and inner is not None:
                 _collect(inner, data[body.start_byte : body.end_byte], base + body.start_byte, spans, layout=layout)
+            elif body is not None and layout is not None:
+                layout[0].append((base + body.start_byte, base + body.end_byte))  # a data block
     if lang == "svelte":
         # Template expressions are JS, though a fragment such as `items as item` is not a program.
         for expr in _captures(_query(lang, "(svelte_raw_text) @js"), root, "js"):
@@ -1117,11 +1119,12 @@ def _code_lines(
     ends_continued = [False] + [_CONTINUED.search(line) is not None for line in lines[:-1]]
     if layout is None:
         # These formats comment only whole lines, so trailing spaces are value data,
-        # except where a trailing comment was blanked (requirements files).
+        # except where a trailing comment was blanked (requirements files). An empty
+        # line can be data too (an INI multi-line value); a blanked comment is spaces.
         return [
             (n, *(2 * [line.rstrip() if inline_comments else line.rstrip("\r")]))
             for n, line in enumerate(lines, 1)
-            if line.strip() or ends_continued[n - 1]
+            if line.strip() or ends_continued[n - 1] or (not line.rstrip("\r") and n < len(lines))
         ]
     doc_rows, literals = layout
     rows = []
