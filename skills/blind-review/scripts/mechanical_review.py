@@ -242,6 +242,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"no units in {out / 'units'}", file=sys.stderr)
         return 1
     for sub in ("payloads", "results"):
+        # Writing through a symlink here could overwrite files outside --out.
+        if (out / sub).is_symlink():
+            raise SystemExit(f"{out / sub} is a symlink; refusing to write through it")
         (out / sub).mkdir(exist_ok=True)
     repo_name = Path(json.loads((out / "manifest.json").read_text())["repo"]).name
     sandbox(repo_name)  # fail before any review starts
