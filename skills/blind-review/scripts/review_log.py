@@ -35,17 +35,25 @@
 The benchmark (``bench/bench.py``) scores the reviewer on planted defects.
 This ledger measures usefulness on real changes: what happened to each
 finding, and which defects reviews missed. It is an append-only JSONL file of
-events at ``~/.local/share/blind-review/findings.jsonl``, local because it
-holds private repo paths and code lines. The latest status event for a
-finding wins.
+agent-eval v1 records (``review_run``, ``finding``, ``verdict``, ``escape``)
+at ``~/.local/share/blind-review/findings.jsonl``, local because it holds
+private repo paths and code lines. After every write, when ``hippo`` is on
+PATH, the whole ledger goes to ``hippo ingest agent-eval``; hippo skips the
+ids it already holds. A ledger in the older event format is moved aside to
+``findings.legacy.jsonl`` once, unchanged.
+
+A finding's status is its effective verdict: the latest human verdict, else
+the latest automatic one, else open.
 
 Subcommands:
-  log --out DIR            record every finding of a mechanical run as open
-  mark ID STATUS [--note]  STATUS: accepted (the code changed because of it),
+  log --out DIR            record the run (from run.json) and every finding of
+                           a mechanical out dir
+  mark ID STATUS [--note TEXT] [--commit REV]
+                           STATUS: accepted (the code changed because of it),
                            false-positive, not-useful, duplicate
   reconcile                mark open "+" findings likely-addressed when the
-                           flagged line is no longer in the file near its line
-  escape --repo R --path P --line N --note TEXT
+                           flagged raw line is no longer anywhere in the file
+  escape --repo R --path P --line N --note TEXT [--commit REV]
                            record a defect found later that no review reported
   summary                  usefulness rates overall, by category, and by model
 """
@@ -54,158 +62,292 @@ from __future__ import annotations
 
 import argparse
 import collections
-import datetime
 import hashlib
 import json
 import os
+import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import agent_eval
 import strip_context
 
 LEDGER = Path(
     os.environ.get("BLIND_REVIEW_LEDGER", Path.home() / ".local/share/blind-review/findings.jsonl")
 )
 STATUSES = ("accepted", "false-positive", "not-useful", "duplicate")
+USAGE_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens")
 
 
-def now() -> str:
-    """Return the current UTC time as an ISO 8601 string."""
-    return datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")
+def record(kind: str, record_id: str, **fields: object) -> dict:
+    """Build a v1 record; fields set to None are optional and left out."""
+    head = {"schema_version": agent_eval.SCHEMA_VERSION, "type": kind, "id": record_id}
+    return head | {k: v for k, v in fields.items() if v is not None}
 
 
-def append(events: list[dict]) -> None:
-    """Append events to the ledger, creating it if needed."""
-    LEDGER.parent.mkdir(parents=True, exist_ok=True)
-    torn = LEDGER.exists() and LEDGER.stat().st_size and not LEDGER.read_bytes().endswith(b"\n")
-    with LEDGER.open("a", encoding="utf-8") as fh:
-        if torn and events:
-            fh.write("\n")  # an interrupted write must not swallow the next event
-        for event in events:
-            fh.write(json.dumps(event, ensure_ascii=False) + "\n")
+def retire_legacy_ledger() -> None:
+    """Move a ledger that holds only pre-v1 events aside once, keeping every row.
+
+    The old events carry no commit SHAs or run times, so they cannot become
+    valid v1 records; they stay readable in ``<stem>.legacy.jsonl``. A ledger
+    that already holds v1 records stays in place; ``load`` skips any pre-v1
+    line in it.
+    """
+    records = agent_eval.read(LEDGER)
+    if not records or any("schema_version" in r for r in records):
+        return
+    legacy = LEDGER.with_name(f"{LEDGER.stem}.legacy{LEDGER.suffix}")
+    if legacy.exists():
+        raise SystemExit(f"{LEDGER} holds pre-v1 events and {legacy} exists; merge them by hand")
+    LEDGER.rename(legacy)
+    print(f"moved the pre-v1 ledger to {legacy}", file=sys.stderr)
 
 
-def load() -> tuple[dict[str, dict], list[dict]]:
-    """Return (findings by ID with their latest status, escape events)."""
+def load() -> tuple[dict[str, dict], dict[str, dict], list[dict]]:
+    """Return (runs by id, findings by id with their effective status, escapes)."""
+    retire_legacy_ledger()
+    runs: dict[str, dict] = {}
     findings: dict[str, dict] = {}
     escapes: list[dict] = []
-    if not LEDGER.exists():
-        return findings, escapes
-    # One event per `\n`: json.dumps(ensure_ascii=False) leaves U+2028 unescaped.
-    for number, line in enumerate(LEDGER.read_text(encoding="utf-8").split("\n"), 1):
-        if not line:
+    verdicts: dict[str, list[dict]] = collections.defaultdict(list)
+    records = agent_eval.read(LEDGER)
+    if skipped := sum("schema_version" not in r for r in records):
+        print(f"warning: {LEDGER} holds {skipped} pre-v1 line(s); skipped", file=sys.stderr)
+    for r in records:
+        if "schema_version" not in r:
             continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            print(f"warning: {LEDGER}:{number} is not JSON; skipped", file=sys.stderr)
-            continue
-        if event["type"] == "finding":
-            findings[event["id"]] = {**event, "status": "open"}
-        elif event["type"] == "status" and event["id"] in findings:
-            findings[event["id"]]["status"] = event["status"]
-        elif event["type"] == "escape":
-            escapes.append(event)
-    return findings, escapes
+        match r.get("type"):
+            case "review_run":
+                runs[r["id"]] = r
+            case "finding":
+                findings[r["id"]] = {**r, "status": "open"}
+            case "verdict":
+                verdicts[r["finding_id"]].append(r)
+            case "escape":
+                escapes.append(r)
+    for fid, group in verdicts.items():
+        if fid in findings:
+            # A human judgment outranks the line-change heuristic.
+            latest = max(group, key=lambda v: (not v["auto"], v["decided_at"], v["id"]))
+            findings[fid]["status"] = latest["verdict"]
+    return runs, findings, escapes
+
+
+def write(records: list[dict]) -> None:
+    """Append records to the ledger, then hand the whole ledger to hippo."""
+    agent_eval.append(LEDGER, records)
+    agent_eval.ingest(LEDGER)
+
+
+def read_source(repo: str, path: str, side: str, base_sha: str) -> list[str]:
+    """Return the lines of the file a finding cites.
+
+    Side ``+`` is the working tree (the reviewed tree includes uncommitted
+    changes); side ``-`` is the file at ``base_sha``. Lines split at ``\\n``
+    only, as the stripper does.
+    """
+    if side == "+":
+        data = (Path(repo) / path).read_bytes()
+    else:
+        data = subprocess.run(
+            ["git", "-C", repo, "show", f"{base_sha}:./{path}"],
+            capture_output=True, check=True, timeout=agent_eval.GIT_TIMEOUT_SECONDS,
+        ).stdout
+    return data.decode("utf-8").split("\n")
+
+
+def strip_lines(path: str, lines: list[str]) -> list[str]:
+    """Return ``lines`` as ``strip_context`` strips them for unit rows."""
+    stripped, action = strip_context.strip_source(path, "\n".join(lines))
+    if action != "stripped":
+        raise ValueError(action)
+    return stripped.split("\n")
+
+
+def source_line(repo: str, path: str, side: str, line: int, base_sha: str, row: str | None,
+                cache: dict[tuple[str, str], tuple[list[str], list[str]]]) -> str | None:
+    """Return the raw source line a finding cites, or None with one warning.
+
+    The line must still equal the reviewed unit ``row`` once the whole current
+    file is stripped the way the unit was and both are right-trimmed: a line
+    edited between the review and ``log`` gives no line text rather than the
+    wrong one, while a comment added or removed does not. A blank row (a
+    comment-only or empty line) never matches. ``cache`` holds the raw and
+    stripped lines per ``(path, side)`` for one ``log`` run.
+    """
+    where = f"{path}:{side}{line}"
+    try:
+        if (path, side) not in cache:
+            raw_rows = read_source(repo, path, side, base_sha)
+            cache[(path, side)] = (raw_rows, strip_lines(path, raw_rows))
+        raw_rows, stripped_rows = cache[(path, side)]
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        print(f"warning: {where}: source not readable ({type(exc).__name__}); line_text omitted",
+              file=sys.stderr)
+        return None
+    if (row is None or not row.strip() or not 0 < line <= len(raw_rows)
+            or len(stripped_rows) != len(raw_rows) or stripped_rows[line - 1].rstrip() != row.rstrip()):
+        print(f"warning: {where}: source line differs from the reviewed unit; line_text omitted",
+              file=sys.stderr)
+        return None
+    return raw_rows[line - 1]
 
 
 def cmd_log(args: argparse.Namespace) -> int:
-    """Record each finding in a mechanical out dir as an open finding."""
+    """Record the run in a mechanical out dir and each of its findings."""
     out = Path(args.out).resolve()
     manifest = json.loads((out / "manifest.json").read_text())
-    paths = {f["unit"]: f["path"] for f in manifest["files"] if "unit" in f}
-    run_id = out.name
-    events = []
+    try:
+        meta = json.loads((out / "run.json").read_text())
+    except FileNotFoundError:
+        print(f"no run.json in {out}: run mechanical_review.py first", file=sys.stderr)
+        return 1
+    units = {f["unit"]: f for f in manifest["files"] if "unit" in f}
+    repo = manifest["repo"]
     failed = 0
     # An interrupted review leaves units with no result; that is not a clean file.
-    for unit_name in sorted(set(paths) - {r.stem for r in (out / "results").glob("*.json")}):
+    for unit_name in sorted(set(units) - {r.stem for r in (out / "results").glob("*.json")}):
         print(f"FAILED {unit_name}: no result (review not run or interrupted)", file=sys.stderr)
         failed += 1
-    for result_file in sorted((out / "results").glob("*.json")):
-        result = json.loads(result_file.read_text())
+    results = [json.loads(p.read_text()) for p in sorted((out / "results").glob("*.json"))]
+    stripped: dict[tuple[str, str], tuple[list[str], list[str]]] = {}
+    for result in results:
         if not result.get("ok", True):
             # A failed review is not a clean one; it must not read as 0 findings.
             print(f"FAILED {result['unit']}: {result.get('error')}", file=sys.stderr)
             failed += 1
+    input_sha256 = hashlib.sha256(
+        "\n".join(sorted(r["input_sha256"] for r in results if "input_sha256" in r)).encode()
+    ).hexdigest()
+    # Every part comes from the out dir, never from now(), so a rerun gives the same id.
+    run_id = agent_eval.short_hash(
+        f"{repo}|{meta['base_sha']}|{meta['head_sha']}|{input_sha256}|{meta['started_at']}"
+    )
+    # run.json fixes the session at review time; an older run.json has no key.
+    session_id = meta["session_id"] if "session_id" in meta else os.environ.get("CLAUDE_CODE_SESSION_ID")
+    session_id = session_id or None
+    records = [record(
+        "review_run", run_id,
+        agent="blind-review",
+        mode=manifest.get("mode", "mechanical"),
+        requested_model=meta["requested_model"],
+        model_id=",".join(sorted({m for r in results for m in r.get("model_id", "").split(",") if m})),
+        effort=meta["effort"],
+        cli_version=",".join(sorted({r["cli_version"] for r in results if r.get("cli_version")})),
+        repo=repo,
+        base=meta["base"],
+        base_sha=meta["base_sha"],
+        head_sha=meta["head_sha"],
+        input_sha256=input_sha256,
+        units_total=len(units),
+        units_failed=failed,
+        **{k: meta[k] for k in USAGE_FIELDS},
+        session_id=session_id,
+        harness="claude-code" if session_id else None,
+        started_at=meta["started_at"],
+        finished_at=meta["finished_at"],
+    )]
+    for result in results:
+        if not result.get("ok", True):
             continue
+        entry = units[result["unit"]]
         unit = (out / "units" / f"{result['unit']}.diff").read_text()
-        rows = unit.split("\n")  # splitlines would also split at a form feed inside a value
-        # Key on the repo and the reviewed text, not the out dir name, so two
-        # repos or a later change reviewed into a reused out dir stay distinct.
         unit_hash = hashlib.sha256(unit.encode()).hexdigest()
+        unit_rows = {r.partition("|")[0]: r.partition("|")[2] for r in unit.split("\n") if "|" in r}
         for f in result["findings"]:
-            prefix = f"{f['side']}{f['line']}|"
-            line_text = next((r[len(prefix):] for r in rows if r.startswith(prefix)), None)
-            key = (f"{manifest['repo']}|{paths[result['unit']]}|{unit_hash}"
-                   f"|{f['side']}{f['line']}|{f['claim']}")
-            events.append({
-                "type": "finding",
-                "id": hashlib.sha256(key.encode()).hexdigest()[:10],
-                "logged_at": now(),
-                "run_id": run_id,
-                "repo": manifest["repo"],
-                "base": manifest["base"],
-                "path": paths[result["unit"]],
-                "side": f["side"],
-                "line": f["line"],
-                "line_text": line_text,
-                "severity": f["severity"],
-                "confidence": f["confidence"],
-                "category": f.get("category", "unknown"),
-                "claim": f["claim"],
-                "model_id": result.get("model_id", ""),
-            })
-    known = load()[0]
-    new = list({e["id"]: e for e in events if e["id"] not in known}.values())
-    append(new)
-    for e in new:
-        print(f"{e['id']}  {e['severity']:<6} {e['path']}:{e['side']}{e['line']}  {e['claim'][:70]}")
-    print(f"logged {len(new)} finding(s) -> {LEDGER}")
+            # Within one run each unit is reviewed once, so this names one reviewer output.
+            fid = agent_eval.short_hash(
+                f"{run_id}|{entry['path']}|{unit_hash}|{f['side']}{f['line']}|{f['claim']}"
+            )
+            base_path = entry.get("base_path", entry["path"])
+            line_text = source_line(repo, entry["path"] if f["side"] == "+" else base_path,
+                                    f["side"], f["line"], meta["base_sha"],
+                                    unit_rows.get(f"{f['side']}{f['line']}"), stripped)
+            records.append(record(
+                "finding", fid,
+                run_id=run_id,
+                repo=repo,
+                path=entry["path"],
+                side=f["side"],
+                line=f["line"],
+                line_text=line_text,
+                severity=f["severity"],
+                confidence=f["confidence"],
+                category=f.get("category", "unknown"),
+                claim=f["claim"],
+                logged_at=meta["finished_at"],
+            ))
+    runs, known, _ = load()
+    seen = runs.keys() | known.keys()
+    new = [r for r in {r["id"]: r for r in records}.values() if r["id"] not in seen]
+    for r in new:
+        if r["type"] == "finding":
+            print(f"{r['id']}  {r['severity']:<6} {r['path']}:{r['side']}{r['line']}  {r['claim'][:70]}")
+    if new:
+        write(new)
+    print(f"logged {sum(r['type'] == 'finding' for r in new)} finding(s) -> {LEDGER}")
     return 1 if failed else 0
+
+
+def resolve_commit(repo: str, rev: str | None) -> str | None:
+    """Resolve an optional user-typed revision to a full SHA, or exit with an error."""
+    if rev is None:
+        return None
+    try:
+        return agent_eval.rev_parse(repo, rev)
+    except ValueError as exc:
+        raise SystemExit(f"error: {exc}") from exc
 
 
 def cmd_mark(args: argparse.Namespace) -> int:
     """Record a human verdict for one finding."""
-    findings = load()[0]
+    findings = load()[1]
     if args.id not in findings:
         print(f"unknown finding {args.id}", file=sys.stderr)
         return 1
-    append([{"type": "status", "id": args.id, "status": args.status, "note": args.note,
-             "at": now(), "auto": False}])
+    commit = resolve_commit(findings[args.id]["repo"], args.commit)
+    write([record("verdict", str(uuid.uuid4()), finding_id=args.id, verdict=args.status,
+                  commit=commit, note=args.note or None, auto=False,
+                  decided_at=agent_eval.now_ms())])
     return 0
 
 
 def cmd_reconcile(_: argparse.Namespace) -> int:
-    """Mark open added-line findings whose line has since changed as likely-addressed."""
-    findings = load()[0]
-    events = []
-    for f in findings.values():
-        if f["status"] != "open" or f["side"] != "+" or f["line_text"] is None:
+    """Mark open added-line findings whose raw line is gone as likely-addressed."""
+    records = []
+    hashes: dict[Path, set[str] | None] = {}
+    for f in load()[1].values():
+        if f["status"] != "open" or f["side"] != "+" or f.get("line_text") is None:
             continue
         path = Path(f["repo"]) / f["path"]
-        try:
-            source = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue  # repo moved or file deleted: not evidence either way
-        # line_text is the stripped unit row, so compare stripped text too: an
-        # unchanged trailing comment is not a fix.
-        stripped, action = strip_context.strip_source(f["path"], source)
-        if action != "stripped":
+        if path not in hashes:
+            try:
+                source = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                source = None  # repo moved or file deleted: not evidence either way
+            hashes[path] = None if source is None else {agent_eval.line_hash(r) for r in source.split("\n")}
+        if hashes[path] is None:
             continue
-        # Edits above the line move it, so look for it anywhere in the file.
-        if f["line_text"].strip() not in {line.strip() for line in stripped.split("\n")}:
-            events.append({"type": "status", "id": f["id"], "status": "likely-addressed",
-                           "note": "flagged line changed", "at": now(), "auto": True})
-    append(events)
-    print(f"marked {len(events)} finding(s) likely-addressed")
+        # Raw to raw, as hippo compares: edits above the line move it, so look anywhere.
+        if agent_eval.line_hash(f["line_text"]) not in hashes[path]:
+            records.append(record("verdict", str(uuid.uuid4()), finding_id=f["id"],
+                                  verdict="likely-addressed", note="flagged line changed",
+                                  auto=True, decided_at=agent_eval.now_ms()))
+    if records:
+        write(records)
+    print(f"marked {len(records)} finding(s) likely-addressed")
     return 0
 
 
 def cmd_escape(args: argparse.Namespace) -> int:
     """Record a defect that reached review and that no finding reported."""
-    append([{"type": "escape", "at": now(), "repo": args.repo, "path": args.path,
-             "line": args.line, "note": args.note}])
+    retire_legacy_ledger()
+    repo = str(Path(args.repo).resolve())
+    fix_commit = resolve_commit(repo, args.commit)
+    write([record("escape", str(uuid.uuid4()), repo=repo, path=args.path, line=args.line,
+                  fix_commit=fix_commit, note=args.note, recorded_at=agent_eval.now_ms())])
     return 0
 
 
@@ -223,8 +365,8 @@ def rates(group: list[dict]) -> str:
 
 def cmd_summary(_: argparse.Namespace) -> int:
     """Print usefulness rates overall, by category, by severity, and by model."""
-    findings, escapes = load()
-    rows = list(findings.values())
+    runs, findings, escapes = load()
+    rows = [{**f, "model_id": runs.get(f["run_id"], {}).get("model_id")} for f in findings.values()]
     print(f"overall: {rates(rows)}")
     for field in ("category", "severity", "model_id"):
         groups = collections.defaultdict(list)
@@ -248,6 +390,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("id")
     p.add_argument("status", choices=STATUSES)
     p.add_argument("--note", default="")
+    p.add_argument("--commit", help="commit that addressed the finding; resolved to a full SHA")
     p.set_defaults(func=cmd_mark)
     sub.add_parser("reconcile").set_defaults(func=cmd_reconcile)
     p = sub.add_parser("escape")
@@ -255,6 +398,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--path", required=True)
     p.add_argument("--line", type=int, required=True)
     p.add_argument("--note", required=True)
+    p.add_argument("--commit", help="commit that fixed the defect; resolved to a full SHA")
     p.set_defaults(func=cmd_escape)
     sub.add_parser("summary").set_defaults(func=cmd_summary)
     args = parser.parse_args(argv)

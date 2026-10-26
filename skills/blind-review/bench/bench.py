@@ -46,8 +46,11 @@ Every case runs ``--reps`` times. Scores:
   finding_jaccard  mean pairwise overlap of (unit, side, line) sets across reps
   input_identical  every rep sent byte-identical input for every unit
 
-``run --record`` appends the scores, the repo commit, the CLI version, and the
-resolved model ID to ``results.jsonl``; ``summary`` prints that history.
+``run --record`` appends an agent-eval v1 ``bench_run`` record (the scores, the
+repo commit, the CLI version, and the resolved model ID) to ``results.jsonl``,
+then hands the file to ``hippo ingest agent-eval`` when ``hippo`` is on PATH.
+The record ``id`` is the first 16 hex characters of the SHA-256 of the
+record's canonical JSON without ``id``. ``summary`` prints that history.
 
 Usage: bench.py run [--model sonnet] [--effort high] [--reps 3] [--jobs 4]
                     [--case ID]... [--record]
@@ -72,8 +75,19 @@ HERE = Path(__file__).resolve().parent
 SCRIPTS = HERE.parent / "scripts"
 RESULTS = HERE / "results.jsonl"
 sys.path.insert(0, str(SCRIPTS))
+import agent_eval
 import mechanical_review
 import strip_context
+
+BENCH = "blind-review-mechanical"
+
+
+def bench_run_id(record: dict) -> str:
+    """Return the record id: a hash of the canonical record JSON without ``id``."""
+    body = {k: v for k, v in record.items() if k != "id"}
+    return agent_eval.short_hash(
+        json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    )
 
 
 def load_cases(ids: list[str] | None = None) -> list[dict]:
@@ -242,7 +256,10 @@ def run(args: argparse.Namespace) -> int:
         "input_identical": input_ok,
     }
     record = {
-        "recorded_at": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
+        "schema_version": agent_eval.SCHEMA_VERSION,
+        "type": "bench_run",
+        "bench": BENCH,
+        "recorded_at": agent_eval.now_ms(),
         "repo_commit": _commit(),
         "cli_version": mechanical_review.cli_version(),
         "model": args.model,
@@ -258,6 +275,7 @@ def run(args: argparse.Namespace) -> int:
         "scores": scores,
         "per_case": per_case,
     }
+    record = {"id": bench_run_id(record)} | record
     print(json.dumps({k: record[k] for k in record if k != "per_case"}, indent=2))
     for row in per_case:
         print(f"  {row['case']}: hits {row['trap_hits']} of {row['reps']}, extra {row['extra']}")
@@ -267,9 +285,9 @@ def run(args: argparse.Namespace) -> int:
     if args.record and failed:
         print(f"not recorded: {len(failed)} review(s) failed", file=sys.stderr)
     elif args.record:
-        with RESULTS.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record) + "\n")
+        agent_eval.append(RESULTS, [record])
         print(f"recorded -> {RESULTS}")
+        agent_eval.ingest(RESULTS)
     return 1 if failed else 0
 
 
@@ -292,12 +310,14 @@ def summary(_: argparse.Namespace) -> int:
     cols = ("recall", "context_required_recall", "safe_false_alarm", "extra_findings_per_run",
             "trap_stability", "finding_jaccard", "input_identical")
     print("recorded_at | commit | cases | model | effort | reps | " + " | ".join(cols))
-    for line in filter(None, RESULTS.read_text(encoding="utf-8").split("\n")):
-        r = json.loads(line)
+    for r in agent_eval.read(RESULTS):
+        if r.get("type") != "bench_run":
+            continue
         model = ",".join(r["model_ids"]) or r["model"]
         values = " | ".join(str(r["scores"][c]) for c in cols)
+        at = datetime.datetime.fromtimestamp(r["recorded_at"] / 1000, datetime.UTC)
         print(
-            f"{r['recorded_at']} | {r['repo_commit']} | {r.get('cases_sha256', '?')} | {model} | "
+            f"{at.isoformat(timespec='seconds')} | {r['repo_commit']} | {r.get('cases_sha256', '?')} | {model} | "
             f"{r['effort']} | {r['reps']} | {values}"
         )
     return 0

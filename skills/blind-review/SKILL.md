@@ -83,7 +83,14 @@ nothing itself. The script gives each unit to a separate headless
 skills, a fixed system prompt, one fixed empty working directory) and records
 the exact payload in `payloads/` so the isolation can be audited. Map the
 returned `fNN` labels back to paths with `manifest.json` yourself; never give
-the manifest to the agent. After a Claude Code upgrade, run
+the manifest to the agent. The script refuses to run when the base ref or
+`HEAD` of the reviewed repo does not resolve to a commit. After the last unit
+it writes `run.json` to the out dir: `started_at` and `finished_at` (epoch
+ms), `requested_model`, `effort`, `base`, `base_sha`, `head_sha` (full SHAs
+from `git rev-parse` at review start), `session_id`
+(`CLAUDE_CODE_SESSION_ID`, or null outside Claude Code), and the reviewer
+token usage summed over all units (`input_tokens`, `output_tokens`, `cache_read_tokens`,
+`cache_creation_tokens`). After a Claude Code upgrade, run
 `<this-skill-dir>/scripts/audit_request.py --out <out-dir>`: it captures the
 full request the CLI sends (no model call), fails on any repo-name leak, and
 lists every field that differs between two identical runs.
@@ -165,16 +172,52 @@ Two records, for two questions:
   false alarms, and how stable is it across reps? After any change to the
   brief, schema, stripper, model, or effort, run
   `<this-skill-dir>/bench/bench.py run --record` and commit the new line in
-  `bench/results.jsonl`. `bench.py summary` prints the history.
+  `bench/results.jsonl`. Each line is a `bench_run` record whose `id` is the
+  first 16 hex characters of the SHA-256 of the record's canonical JSON
+  (sorted keys, no spaces) without `id`. `bench.py summary` prints the
+  history.
 - **Effectiveness (real use):** did findings on real changes help ship
   better code? Run `<this-skill-dir>/scripts/review_log.py log --out
-  <out-dir>` after each real run. When the user fixes or dismisses a
-  finding, record it with `review_log.py mark <id>
-  accepted|false-positive|not-useful|duplicate`. When a defect surfaces
-  later in reviewed code, record it with `review_log.py escape`. Run
-  `review_log.py reconcile` (flagged lines that changed since the review
-  become `likely-addressed`) and then `review_log.py summary`. The ledger
-  stays local because it holds private paths and code lines.
+  <out-dir>` after each real run: it reads `run.json` and writes one
+  `review_run` record and one `finding` record per finding. Rerunning `log`
+  on the same out dir writes nothing new. When the user fixes or dismisses
+  a finding, record it with `review_log.py mark <id>
+  accepted|false-positive|not-useful|duplicate [--note TEXT] [--commit REV]`.
+  When a defect surfaces later in reviewed code, record it with
+  `review_log.py escape --repo R --path P --line N --note TEXT [--commit REV]`.
+  `--commit` takes any revision, such as a short SHA, and is stored as the
+  full SHA; a revision that does not resolve is an error. Run
+  `review_log.py reconcile` (an open `+` finding whose raw source line,
+  compared by `line_hash`, no longer appears anywhere in the file gets an
+  automatic `likely-addressed` verdict) and then `review_log.py summary`.
+  A finding's status is its latest human verdict, else its latest
+  automatic verdict, else open. The ledger at
+  `~/.local/share/blind-review/findings.jsonl` (override with
+  `BLIND_REVIEW_LEDGER`) stays local because it holds private paths and
+  code lines. A ledger that holds only pre-v1 events is moved aside once to
+  `findings.legacy.jsonl`, unchanged. A stray pre-v1 line in a v1 ledger
+  stays in the file, is skipped, and produces one warning.
+- **Hippo:** both files hold agent-eval v1 records (one JSON object per line
+  with `schema_version: 1`, `type`, and a stable `id`), the input format of
+  `hippo ingest agent-eval`. After every write, when `hippo` is on `PATH`,
+  the script runs `hippo ingest agent-eval <file>` on the whole file; hippo
+  skips ids it already holds. The local file is written first. When hippo
+  is missing or the ingest fails, the script prints one warning line and
+  still succeeds, and the next write sends the records again. Hippo redacts
+  `claim`, `line_text`, and `note` at ingest; the producers send raw text.
+  `line_text` is the raw source line (working tree for `+`, `base_sha` for
+  `-`). When that line no longer matches the reviewed unit row column for
+  column (comments blanked), or the file cannot be read, `log` leaves out
+  `line_text` and prints one warning per finding; hippo then stores no
+  `line_hash`, and `reconcile` and commit linkage skip that finding. Run
+  `log` right after the review so the working tree is still the reviewed
+  tree. A finding's `logged_at` is the review finish time from `run.json`,
+  not the time `log` ran, so every rerun of `log` writes identical records
+  and hippo never sees a conflicting duplicate. The run id is the first 16 hex characters of
+  `sha256(repo|base_sha|head_sha|input_sha256|started_at)`, and the finding
+  id of `sha256(run_id|path|unit_hash|<side><line>|claim)`. Under Claude Code
+  the run records the review's `CLAUDE_CODE_SESSION_ID` (from `run.json`) as
+  `session_id` with harness `claude-code`.
 
 ### 7. Report
 
