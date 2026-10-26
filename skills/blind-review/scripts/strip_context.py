@@ -578,19 +578,39 @@ def _vue_spans(data: bytes, layout: Layout | None = None) -> list[tuple[int, int
 def _lines(pattern: str) -> Callable[[str], str]:
     """Strip a line-oriented config format whose comments a regex finds exactly."""
     compiled = re.compile(pattern, re.MULTILINE)
-    return lambda source: compiled.sub(lambda m: " " * len(m.group()), source)
+
+    def strip(source: str) -> str:
+        _no_bare_cr(source)
+        return compiled.sub(lambda m: " " * len(m.group()), source)
+
+    return strip
 
 
-def _whole_line_comments(markers: str) -> Callable[[str], str]:
+_BARE_CR = re.compile(r"\r(?!\n)")
+
+
+def _no_bare_cr(source: str) -> None:
+    """Refuse a bare CR: readers disagree on whether it ends a line, so a comment's end is unknown.
+
+    Raises:
+        SyntaxError: When ``source`` holds a CR that is not part of CRLF.
+    """
+    if _BARE_CR.search(source):
+        raise SyntaxError("bare CR line terminator")
+
+
+def _whole_line_comments(markers: str, bare_cr: bool = False) -> Callable[[str], str]:
     r"""Strip lines that start with one of ``markers`` in a grammarless config format.
 
     A line after one that ends in an odd number of backslashes continues a
     value (Java properties, git config), so it is data even when it starts
-    with a marker. Lines end at `\r\n`, `\n`, or a bare `\r`, as
-    ``java.util.Properties.load`` reads them.
+    with a marker. With ``bare_cr``, a bare `\r` also ends a line, as
+    ``java.util.Properties.load`` reads it; otherwise a bare `\r` fails the strip.
     """
 
     def strip(source: str) -> str:
+        if not bare_cr:
+            _no_bare_cr(source)
         out, continued = [], False
         for line in re.findall(r"[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$", source):
             body = line.rstrip("\r\n")
@@ -604,7 +624,7 @@ def _whole_line_comments(markers: str) -> Callable[[str], str]:
     return strip
 
 
-strip_properties = _whole_line_comments("#!")
+strip_properties = _whole_line_comments("#!", bare_cr=True)
 
 
 def _grammar(lang: str) -> Callable[[str], str]:

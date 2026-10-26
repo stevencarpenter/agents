@@ -885,6 +885,13 @@ class ReviewCaseTest(PositionContractTest):
             with self.subTest(name=name):
                 self.assertEqual(strip_context.strip_source(name, "x # c\n")[1], "copied-verbatim (unknown language)")
 
+    def test_bare_cr_in_grammarless_files_is_refused(self) -> None:
+        """Only Properties.load defines a bare CR as a line end; elsewhere a comment's end is unknown."""
+        for name in ("setup.cfg", ".gitconfig", "a.conf", ".gitignore", "requirements.txt", "go.mod"):
+            with self.subTest(name=name):
+                self.assertEqual(strip_context.strip_source(name, "# c\rk = v\n")[1], "copied-verbatim (parse error)")
+        self.assertEqual(strip_context.strip_source("a.properties", "# c\rk=v\n")[1], "stripped")
+
     def test_grammar_pins_match_everywhere(self) -> None:
         """The scripts that import the stripper and the dev group pin the same wheels."""
         import re
