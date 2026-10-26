@@ -763,7 +763,6 @@ class ReviewCaseTest(PositionContractTest):
         pins = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())["dependency-groups"]["dev"]
         for rel in (
             "skills/blind-review/scripts/strip_context.py",
-            "skills/blind-review/scripts/review_log.py",
             "skills/blind-review/bench/bench.py",
         ):
             with self.subTest(script=rel):

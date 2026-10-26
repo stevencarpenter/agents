@@ -14,6 +14,12 @@ text. The exact payload for each unit is written to ``payloads/`` for audit and
 the reviewer's answer, with the resolved model ID and an input hash, to
 ``results/``. ``audit_request.py`` shows the full request the CLI sends.
 
+Before any review starts, the manifest base ref and ``HEAD`` must resolve to
+commits; the script refuses to run otherwise. After the last unit it writes
+``run.json``: start and finish times (epoch ms), the requested model and
+effort, the base ref and both resolved SHAs, and the reviewer token usage
+summed over all units. ``review_log.py log`` builds the run record from it.
+
 Usage: mechanical_review.py --out DIR [--model sonnet] [--effort high] [--jobs 4]
 """
 
@@ -29,6 +35,9 @@ import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import agent_eval
 
 BRIEF = """\
 You review one code change. The input holds only the changed lines of one file.
@@ -231,6 +240,15 @@ def review_unit(unit: Path, out: Path, argv: list[str], repo_name: str) -> dict:
     return result
 
 
+# run.json token field -> reviewer ``usage`` key.
+USAGE_KEYS = {
+    "input_tokens": "input_tokens",
+    "output_tokens": "output_tokens",
+    "cache_read_tokens": "cache_read_input_tokens",
+    "cache_creation_tokens": "cache_creation_input_tokens",
+}
+
+
 def main(argv: list[str] | None = None) -> int:
     """Review every unit in parallel and print a one-line summary per unit."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -249,11 +267,34 @@ def main(argv: list[str] | None = None) -> int:
         if (out / sub).is_symlink():
             raise SystemExit(f"{out / sub} is a symlink; refusing to write through it")
         (out / sub).mkdir(exist_ok=True)
-    repo_name = Path(json.loads((out / "manifest.json").read_text())["repo"]).name
+    manifest = json.loads((out / "manifest.json").read_text())
+    repo_name = Path(manifest["repo"]).name
+    # A run.json left by an earlier review would describe another revision.
+    (out / "run.json").unlink(missing_ok=True)
+    started_at = agent_eval.now_ms()
+    # Linkage needs exact commits; a review that cannot name them is not recorded.
+    try:
+        base_sha = agent_eval.rev_parse(manifest["repo"], manifest["base"])
+        head_sha = agent_eval.rev_parse(manifest["repo"], "HEAD")
+    except ValueError as exc:
+        print(f"refusing to review: {exc}", file=sys.stderr)
+        return 1
     sandbox(repo_name)  # fail before any review starts
     cmd = reviewer_argv(args.model, args.effort)
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         results = list(pool.map(lambda u: review_unit(u, out, cmd, repo_name), units))
+    run = {
+        "started_at": started_at,
+        "finished_at": agent_eval.now_ms(),
+        "requested_model": args.model,
+        "effort": args.effort,
+        "base": manifest["base"],
+        "base_sha": base_sha,
+        "head_sha": head_sha,
+    }
+    for field, key in USAGE_KEYS.items():
+        run[field] = sum((r["usage"] or {}).get(key, 0) for r in results)
+    _write(out / "run.json", json.dumps(run, indent=2))
     for r in results:
         status = f"{len(r['findings'])} finding(s)" if r["ok"] else f"FAILED: {r['error']}"
         print(f"{r['unit']}: {status}")
