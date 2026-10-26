@@ -60,12 +60,15 @@ def record(kind: str, record_id: str, **fields: object) -> dict:
 
 
 def retire_legacy_ledger() -> None:
-    """Move a ledger in the pre-v1 event format aside once, keeping every row.
+    """Move a ledger that holds only pre-v1 events aside once, keeping every row.
 
     The old events carry no commit SHAs or run times, so they cannot become
-    valid v1 records; they stay readable in ``<stem>.legacy.jsonl``.
+    valid v1 records; they stay readable in ``<stem>.legacy.jsonl``. A ledger
+    that already holds v1 records stays in place; ``load`` skips any pre-v1
+    line in it.
     """
-    if not any("schema_version" not in r for r in agent_eval.read(LEDGER)):
+    records = agent_eval.read(LEDGER)
+    if not records or any("schema_version" in r for r in records):
         return
     legacy = LEDGER.with_name(f"{LEDGER.stem}.legacy{LEDGER.suffix}")
     if legacy.exists():
@@ -81,7 +84,12 @@ def load() -> tuple[dict[str, dict], dict[str, dict], list[dict]]:
     findings: dict[str, dict] = {}
     escapes: list[dict] = []
     verdicts: dict[str, list[dict]] = collections.defaultdict(list)
-    for r in agent_eval.read(LEDGER):
+    records = agent_eval.read(LEDGER)
+    if skipped := sum("schema_version" not in r for r in records):
+        print(f"warning: {LEDGER} holds {skipped} pre-v1 line(s); skipped", file=sys.stderr)
+    for r in records:
+        if "schema_version" not in r:
+            continue
         match r.get("type"):
             case "review_run":
                 runs[r["id"]] = r
@@ -105,23 +113,45 @@ def write(records: list[dict]) -> None:
     agent_eval.ingest(LEDGER)
 
 
-def source_line(repo: str, path: str, side: str, line: int, base_sha: str) -> str | None:
-    """Return the raw source line a finding cites, or None when it cannot be read.
+def masks(row: str, raw: str) -> bool:
+    """Report whether a unit row is the space-masked form of ``raw``.
 
-    Side ``+`` is the working-tree line; side ``-`` is the line at ``base_sha``.
+    The stripper blanks comments column for column and trims trailing spaces,
+    so every non-space character of the row sits at the same column of the
+    raw line. A plain substring test would reject a line with a mid-line
+    comment.
     """
+    return len(row) <= len(raw) and all(c == " " or c == raw[i] for i, c in enumerate(row))
+
+
+def source_line(repo: str, path: str, side: str, line: int, base_sha: str, row: str | None) -> str | None:
+    """Return the raw source line a finding cites, or None with one warning.
+
+    Side ``+`` is the working-tree line (the reviewed tree includes
+    uncommitted changes); side ``-`` is the line at ``base_sha``. The line
+    must still match the reviewed unit ``row``: a file edited between the
+    review and ``log`` gives no line text rather than the wrong one.
+    """
+    where = f"{path}:{side}{line}"
     try:
         if side == "+":
             data = (Path(repo) / path).read_bytes()
         else:
             data = subprocess.run(
                 ["git", "-C", repo, "show", f"{base_sha}:./{path}"],
-                capture_output=True, check=True,
+                capture_output=True, check=True, timeout=agent_eval.GIT_TIMEOUT_SECONDS,
             ).stdout
         rows = data.decode("utf-8").split("\n")
-    except (OSError, subprocess.CalledProcessError, UnicodeDecodeError):
+    except (OSError, subprocess.SubprocessError, UnicodeDecodeError) as exc:
+        print(f"warning: {where}: source not readable ({type(exc).__name__}); line_text omitted",
+              file=sys.stderr)
         return None
-    return rows[line - 1] if 0 < line <= len(rows) else None
+    raw = rows[line - 1] if 0 < line <= len(rows) else None
+    if raw is None or row is None or not masks(row, raw):
+        print(f"warning: {where}: source line differs from the reviewed unit; line_text omitted",
+              file=sys.stderr)
+        return None
+    return raw
 
 
 def cmd_log(args: argparse.Namespace) -> int:
@@ -153,7 +183,9 @@ def cmd_log(args: argparse.Namespace) -> int:
     run_id = agent_eval.short_hash(
         f"{repo}|{meta['base_sha']}|{meta['head_sha']}|{input_sha256}|{meta['started_at']}"
     )
-    session_id = os.environ.get("CLAUDE_CODE_SESSION_ID") or None
+    # run.json fixes the session at review time; an older run.json has no key.
+    session_id = meta["session_id"] if "session_id" in meta else os.environ.get("CLAUDE_CODE_SESSION_ID")
+    session_id = session_id or None
     records = [record(
         "review_run", run_id,
         agent="blind-review",
@@ -181,6 +213,7 @@ def cmd_log(args: argparse.Namespace) -> int:
         entry = units[result["unit"]]
         unit = (out / "units" / f"{result['unit']}.diff").read_text()
         unit_hash = hashlib.sha256(unit.encode()).hexdigest()
+        unit_rows = {r.partition("|")[0]: r.partition("|")[2] for r in unit.split("\n") if "|" in r}
         for f in result["findings"]:
             # Within one run each unit is reviewed once, so this names one reviewer output.
             fid = agent_eval.short_hash(
@@ -188,7 +221,8 @@ def cmd_log(args: argparse.Namespace) -> int:
             )
             base_path = entry.get("base_path", entry["path"])
             line_text = source_line(repo, entry["path"] if f["side"] == "+" else base_path,
-                                    f["side"], f["line"], meta["base_sha"])
+                                    f["side"], f["line"], meta["base_sha"],
+                                    unit_rows.get(f"{f['side']}{f['line']}"))
             records.append(record(
                 "finding", fid,
                 run_id=run_id,
@@ -241,15 +275,21 @@ def cmd_mark(args: argparse.Namespace) -> int:
 def cmd_reconcile(_: argparse.Namespace) -> int:
     """Mark open added-line findings whose raw line is gone as likely-addressed."""
     records = []
+    hashes: dict[Path, set[str] | None] = {}
     for f in load()[1].values():
         if f["status"] != "open" or f["side"] != "+" or f.get("line_text") is None:
             continue
-        try:
-            source = (Path(f["repo"]) / f["path"]).read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue  # repo moved or file deleted: not evidence either way
+        path = Path(f["repo"]) / f["path"]
+        if path not in hashes:
+            try:
+                source = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                source = None  # repo moved or file deleted: not evidence either way
+            hashes[path] = None if source is None else {agent_eval.line_hash(r) for r in source.split("\n")}
+        if hashes[path] is None:
+            continue
         # Raw to raw, as hippo compares: edits above the line move it, so look anywhere.
-        if agent_eval.line_hash(f["line_text"]) not in {agent_eval.line_hash(r) for r in source.split("\n")}:
+        if agent_eval.line_hash(f["line_text"]) not in hashes[path]:
             records.append(record("verdict", str(uuid.uuid4()), finding_id=f["id"],
                                   verdict="likely-addressed", note="flagged line changed",
                                   auto=True, decided_at=agent_eval.now_ms()))

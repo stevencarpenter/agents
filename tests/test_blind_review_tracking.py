@@ -168,6 +168,47 @@ def commit_all(repo: Path, message: str) -> str:
 
 agent_eval = load("agent_eval", SKILL / "scripts/agent_eval.py")
 
+# Section 4.3 of the agent-eval design: (required, optional) fields per record type.
+CONTRACT = {
+    "review_run": (
+        {"id", "agent", "mode", "repo", "base", "base_sha", "head_sha", "input_sha256",
+         "started_at", "finished_at"},
+        {"requested_model", "model_id", "effort", "cli_version", "units_total", "units_failed",
+         "input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens",
+         "session_id", "harness"},
+    ),
+    "finding": (
+        {"id", "run_id", "repo", "path", "side", "line", "severity", "confidence", "claim",
+         "logged_at"},
+        {"line_text", "category"},
+    ),
+    "verdict": ({"id", "finding_id", "verdict", "auto", "decided_at"}, {"commit", "note"}),
+    "escape": ({"id", "repo", "path", "line", "note", "recorded_at"}, {"fix_commit"}),
+    "bench_run": (
+        {"id", "bench", "recorded_at", "repo_commit", "model", "reps", "cases", "cases_sha256",
+         "brief_sha256", "scores"},
+        {"cli_version", "model_ids", "effort", "failed_reviews", "tokens", "per_case"},
+    ),
+}
+SHA_FIELDS = ("base_sha", "head_sha", "commit", "fix_commit")
+
+
+def assert_contract(test: unittest.TestCase, rec: dict) -> None:
+    """Check one record against the v1 envelope and its type's field list."""
+    test.assertEqual(rec.get("schema_version"), 1)
+    required, optional = CONTRACT[rec["type"]]
+    keys = rec.keys() - {"schema_version", "type"}
+    test.assertLessEqual(required, keys, rec["type"])
+    test.assertLessEqual(keys, required | optional, rec["type"])
+    test.assertRegex(rec["id"], r"^[A-Za-z0-9._:-]{1,64}$")
+    for key in keys:
+        if key.endswith("_at"):
+            test.assertIs(type(rec[key]), int, key)
+        if key in SHA_FIELDS:
+            test.assertRegex(rec[key], r"^[0-9a-f]{40}$", key)
+    if rec["type"] == "verdict":
+        test.assertIs(type(rec["auto"]), bool)
+
 
 class AgentEvalTest(unittest.TestCase):
     """The shared helpers must match the hippo contract exactly."""
@@ -255,7 +296,7 @@ class ReviewLogTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         self.calls = isolate_path(self, self.tmp)
         patcher = mock.patch.dict(os.environ, {"BLIND_REVIEW_LEDGER": str(self.tmp / "l.jsonl"),
-                                               "CLAUDE_CODE_SESSION_ID": "s-1"})
+                                               "CLAUDE_CODE_SESSION_ID": "s-env"})
         patcher.start()
         self.addCleanup(patcher.stop)
         self.log = load("review_log_t", SKILL / "scripts/review_log.py")
@@ -264,6 +305,9 @@ class ReviewLogTest(unittest.TestCase):
         bench.git(self.repo, "init", "-q", "-b", "main")
         (self.repo / "a.py").write_text("x = 1\ny = int(s)\n")
         self.base_sha = commit_all(self.repo, "base")
+        (self.repo / "b.txt").write_text("b\n")
+        self.head_sha = commit_all(self.repo, "head")
+        # The reviewed tree holds an uncommitted change on top of head_sha.
         (self.repo / "a.py").write_text("x = 1\ny = eval(s)\n")
         out = self.tmp / "run1"
         (out / "units").mkdir(parents=True)
@@ -278,7 +322,7 @@ class ReviewLogTest(unittest.TestCase):
         (out / "run.json").write_text(json.dumps({
             "started_at": 1792900000000, "finished_at": 1792900042000,
             "requested_model": "haiku", "effort": "low", "base": "HEAD",
-            "base_sha": self.base_sha, "head_sha": self.base_sha,
+            "base_sha": self.base_sha, "head_sha": self.head_sha, "session_id": "s-1",
             "input_tokens": 10, "output_tokens": 2, "cache_read_tokens": 30,
             "cache_creation_tokens": 0,
         }))
@@ -299,9 +343,19 @@ class ReviewLogTest(unittest.TestCase):
         }))
 
     def run_log(self, *argv: str) -> int:
-        """Run review_log.py with stdout and stderr captured."""
-        with mock.patch("sys.stdout", new=io.StringIO()), mock.patch("sys.stderr", new=io.StringIO()):
-            return self.log.main(list(argv))
+        """Run review_log.py with stdout and stderr captured; stderr lands in ``self.stderr``."""
+        with (
+            mock.patch("sys.stdout", new=io.StringIO()),
+            mock.patch("sys.stderr", new=io.StringIO()) as stderr,
+        ):
+            try:
+                return self.log.main(list(argv))
+            finally:
+                self.stderr = stderr.getvalue()
+
+    def hippo_calls(self) -> int:
+        """Return how many times the fake hippo ran."""
+        return len(self.calls.read_text().splitlines()) if self.calls.exists() else 0
 
     def records(self, kind: str) -> list[dict]:
         """Return the ledger records of one type."""
@@ -320,7 +374,7 @@ class ReviewLogTest(unittest.TestCase):
         for r in (run, finding):
             self.assertEqual(r["schema_version"], 1)
         self.assertEqual(finding["run_id"], run["id"])
-        self.assertEqual(run["base_sha"], self.base_sha)
+        self.assertEqual((run["base_sha"], run["head_sha"]), (self.base_sha, self.head_sha))
         self.assertEqual(run["model_id"], "claude-haiku-5-5")
         self.assertEqual((run["units_total"], run["units_failed"]), (1, 0))
         self.assertEqual((run["session_id"], run["harness"]), ("s-1", "claude-code"))
@@ -329,19 +383,37 @@ class ReviewLogTest(unittest.TestCase):
         self.assertEqual(finding["logged_at"], 1792900042000)
         self.assertEqual(self.calls.read_text(), f"ingest agent-eval {self.log.LEDGER}\n")
 
-    def test_no_session_means_no_session_fields(self) -> None:
-        """Outside Claude Code the optional session fields are left out, not empty."""
-        with mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": ""}):
-            self.run_log("log", "--out", str(self.out))
+    def set_run_session(self, *value: str | None) -> None:
+        """Set run.json session_id to ``value``, or remove the key when no value is given."""
+        meta = json.loads((self.out / "run.json").read_text())
+        meta.pop("session_id")
+        if value:
+            meta["session_id"] = value[0]
+        (self.out / "run.json").write_text(json.dumps(meta))
+
+    def test_session_comes_from_run_json_before_the_environment(self) -> None:
+        """A review outside Claude Code stays session-less even if log runs inside it."""
+        self.set_run_session(None)
+        self.run_log("log", "--out", str(self.out))
         (run,) = self.records("review_run")
         self.assertNotIn("session_id", run)
         self.assertNotIn("harness", run)
 
+    def test_old_run_json_falls_back_to_the_environment(self) -> None:
+        """A run.json written before session capture uses the log-time session."""
+        self.set_run_session()
+        self.run_log("log", "--out", str(self.out))
+        (run,) = self.records("review_run")
+        self.assertEqual((run["session_id"], run["harness"]), ("s-env", "claude-code"))
+
     def test_two_logs_of_one_out_dir_are_byte_identical(self) -> None:
         """Ids and times come from the out dir, so a rerun cannot conflict in hippo."""
         first, second = self.tmp / "a.jsonl", self.tmp / "b.jsonl"
-        for ledger in (first, second):
-            with mock.patch.object(self.log, "LEDGER", ledger):
+        for ledger, session in ((first, "s-a"), (second, "s-b")):
+            with (
+                mock.patch.object(self.log, "LEDGER", ledger),
+                mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": session}),
+            ):
                 self.run_log("log", "--out", str(self.out))
         self.assertEqual(first.read_bytes(), second.read_bytes())
 
@@ -352,7 +424,7 @@ class ReviewLogTest(unittest.TestCase):
         (finding,) = self.records("finding")
         input_sha = hashlib.sha256(b"abc").hexdigest()
         self.assertEqual(run["input_sha256"], input_sha)
-        run_key = f"{self.repo}|{self.base_sha}|{self.base_sha}|{input_sha}|1792900000000"
+        run_key = f"{self.repo}|{self.base_sha}|{self.head_sha}|{input_sha}|1792900000000"
         self.assertEqual(run["id"], hashlib.sha256(run_key.encode()).hexdigest()[:16])
         unit_hash = hashlib.sha256(self.unit.encode()).hexdigest()
         finding_key = f"{run['id']}|a.py|{unit_hash}|+2|eval on input"
@@ -363,6 +435,7 @@ class ReviewLogTest(unittest.TestCase):
         self.run_log("log", "--out", str(self.out))
         self.run_log("log", "--out", str(self.out))
         self.assertEqual(len(agent_eval.read(self.log.LEDGER)), 2)
+        self.assertEqual(self.hippo_calls(), 1)  # a rerun writes nothing, so it sends nothing
         fid = self.only_finding()["id"]
         self.run_log("mark", fid, "false-positive")
         self.run_log("mark", fid, "accepted", "--note", "fixed")
@@ -432,6 +505,47 @@ class ReviewLogTest(unittest.TestCase):
         self.run_log("log", "--out", str(self.out))
         self.assertEqual(self.only_finding()["line_text"], "y = eval(s)\x0cz")
 
+    def test_line_text_is_omitted_when_the_source_moved_on(self) -> None:
+        """A line edited between review and log must not be stored as the reviewed line."""
+        (self.repo / "a.py").write_text("x = 1\ny = exec(s)\n")
+        self.run_log("log", "--out", str(self.out))
+        self.assertNotIn("line_text", self.only_finding())
+        self.assertEqual(len(self.stderr.splitlines()), 1)
+        self.assertIn("differs from the reviewed unit", self.stderr)
+
+    def test_unreadable_source_omits_line_text_with_a_warning(self) -> None:
+        """A deleted file gives no line text and one warning line, never a silent gap."""
+        (self.repo / "a.py").unlink()
+        self.run_log("log", "--out", str(self.out))
+        self.assertNotIn("line_text", self.only_finding())
+        self.assertIn("a.py:+2: source not readable", self.stderr)
+
+    def test_unit_rows_are_column_masks_of_the_raw_line(self) -> None:
+        """A blanked mid-line comment still matches; a changed token does not."""
+        self.assertTrue(self.log.masks("int a = 1         + 2;", "int a = 1 /* c */ + 2;"))
+        self.assertTrue(self.log.masks("y = eval(s)", "y = eval(s)  # safe"))
+        self.assertFalse(self.log.masks("y = eval(t)", "y = eval(s)"))
+        self.assertFalse(self.log.masks("y = eval(s)", "y = eval("))
+
+    def test_records_follow_the_v1_contract(self) -> None:
+        """Every record type carries its required fields and no field outside section 4.3."""
+        self.run_log("log", "--out", str(self.out))
+        fid = self.only_finding()["id"]
+        self.run_log("mark", fid, "duplicate", "--note", "n", "--commit", self.head_sha[:7])
+        self.run_log("escape", "--repo", str(self.repo), "--path", "a.py", "--line", "1",
+                     "--note", "missed", "--commit", "HEAD")
+        records = agent_eval.read(self.log.LEDGER) + agent_eval.read(bench.RESULTS)
+        self.assertEqual({r["type"] for r in records}, set(CONTRACT))
+        for rec in records:
+            with self.subTest(type=rec["type"], id=rec["id"]):
+                assert_contract(self, rec)
+
+    def test_automatic_verdict_follows_the_v1_contract(self) -> None:
+        """reconcile writes a contract-valid verdict too."""
+        self.assertEqual(self.reconcile_status("x = 1\n"), "likely-addressed")
+        (verdict,) = self.records("verdict")
+        assert_contract(self, verdict)
+
     def test_failed_review_is_recorded_as_failed_not_clean(self) -> None:
         """A failed unit gives a run with units_failed, no findings, and exit 1."""
         (self.out / "results" / "f01.py.json").write_text(
@@ -468,6 +582,18 @@ class ReviewLogTest(unittest.TestCase):
         self.run_log("mark", fid, "accepted")
         self.assertEqual(self.only_finding()["status"], "accepted")
 
+    def test_stray_pre_v1_line_in_a_v1_ledger_is_skipped_not_moved(self) -> None:
+        """One old line must not move the v1 records or block every command."""
+        self.run_log("log", "--out", str(self.out))
+        before = self.log.LEDGER.read_text()
+        with self.log.LEDGER.open("a") as fh:
+            fh.write('{"type": "status", "id": "abc"}\n')
+        self.log.LEDGER.with_name("l.legacy.jsonl").write_text("old\n")
+        self.assertEqual(self.run_log("summary"), 0)
+        self.assertEqual(self.stderr.count("pre-v1"), 1)
+        self.assertTrue(self.log.LEDGER.read_text().startswith(before))
+        self.assertEqual(len(self.log.load()[1]), 1)
+
     def test_legacy_ledger_is_moved_aside_without_loss(self) -> None:
         """Pre-v1 events cannot become v1 records; they are kept byte for byte."""
         old = '{"type": "finding", "id": "abc", "claim": "x"}\n{"type": "status", "id": "abc"}\n'
@@ -492,9 +618,10 @@ class ReviewLogTest(unittest.TestCase):
         self.assertRegex(verdict["id"], r"^[0-9a-f-]{36}$")
 
     def test_reconcile_keeps_an_unchanged_line_open(self) -> None:
-        """An untouched flagged line writes no verdict."""
+        """An untouched flagged line writes no verdict and sends nothing to hippo."""
         self.assertEqual(self.reconcile_status("x = 1\ny = eval(s)\n"), "open")
         self.assertEqual(self.records("verdict"), [])
+        self.assertEqual(self.hippo_calls(), 1)  # only the log write
 
     def test_reconcile_keeps_a_moved_but_unchanged_line_open(self) -> None:
         """Imports added above the flagged line move it; that is not a fix."""
@@ -570,12 +697,14 @@ class MechanicalRunTest(unittest.TestCase):
         base = commit_all(self.repo, "a")
         (self.repo / "a").write_text("b\n")
         head = commit_all(self.repo, "b")
-        self.assertEqual(self.main("HEAD~1"), 0)
+        with mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "s-review"}):
+            self.assertEqual(self.main("HEAD~1"), 0)
         run = json.loads((self.out / "run.json").read_text())
         self.assertLessEqual(run.pop("started_at"), run.pop("finished_at"))
         self.assertEqual(run, {
             "requested_model": "haiku", "effort": "low", "base": "HEAD~1",
-            "base_sha": base, "head_sha": head, "input_tokens": 10, "output_tokens": 4,
+            "base_sha": base, "head_sha": head, "session_id": "s-review",
+            "input_tokens": 10, "output_tokens": 4,
             "cache_read_tokens": 14, "cache_creation_tokens": 2,
         })
 
@@ -657,9 +786,8 @@ class SandboxTest(unittest.TestCase):
             target.mkdir()
             box = Path(tmp) / "blind-review-sandbox"
             box.symlink_to(target)
-            with mock.patch.object(mechanical_review, "SANDBOX", box):
-                with self.assertRaises(SystemExit):
-                    mechanical_review.sandbox("repo-x")
+            with mock.patch.object(mechanical_review, "SANDBOX", box), self.assertRaises(SystemExit):
+                mechanical_review.sandbox("repo-x")
 
 
 if __name__ == "__main__":

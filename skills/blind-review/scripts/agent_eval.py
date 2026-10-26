@@ -21,6 +21,7 @@ from pathlib import Path
 SCHEMA_VERSION = 1
 # A wedged hippo must not hang the producer; the next write re-sends the file.
 INGEST_TIMEOUT_SECONDS = 120
+GIT_TIMEOUT_SECONDS = 60
 
 
 def now_ms() -> int:
@@ -52,9 +53,9 @@ def rev_parse(repo: str | Path, rev: str) -> str:
         proc = subprocess.run(
             ["git", "-C", str(repo), "rev-parse", "--verify", "--quiet", "--end-of-options",
              f"{rev}^{{commit}}"],
-            capture_output=True, text=True, check=False,
+            capture_output=True, text=True, check=False, timeout=GIT_TIMEOUT_SECONDS,
         )
-    except OSError as exc:
+    except (OSError, subprocess.TimeoutExpired) as exc:
         raise ValueError(f"cannot run git: {exc}") from exc
     sha = proc.stdout.strip()
     if proc.returncode != 0 or len(sha) != 40:
@@ -105,7 +106,8 @@ def ingest(path: Path) -> None:
     try:
         proc = subprocess.run(
             [hippo, "ingest", "agent-eval", str(path)],
-            capture_output=True, text=True, check=False, timeout=INGEST_TIMEOUT_SECONDS,
+            capture_output=True, text=True, errors="replace", check=False,
+            timeout=INGEST_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         reason = type(exc).__name__

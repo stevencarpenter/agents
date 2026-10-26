@@ -87,8 +87,9 @@ the manifest to the agent. The script refuses to run when the base ref or
 `HEAD` of the reviewed repo does not resolve to a commit. After the last unit
 it writes `run.json` to the out dir: `started_at` and `finished_at` (epoch
 ms), `requested_model`, `effort`, `base`, `base_sha`, `head_sha` (full SHAs
-from `git rev-parse` at review start), and the reviewer token usage summed
-over all units (`input_tokens`, `output_tokens`, `cache_read_tokens`,
+from `git rev-parse` at review start), `session_id`
+(`CLAUDE_CODE_SESSION_ID`, or null outside Claude Code), and the reviewer
+token usage summed over all units (`input_tokens`, `output_tokens`, `cache_read_tokens`,
 `cache_creation_tokens`). After a Claude Code upgrade, run
 `<this-skill-dir>/scripts/audit_request.py --out <out-dir>`: it captures the
 full request the CLI sends (no model call), fails on any repo-name leak, and
@@ -193,8 +194,9 @@ Two records, for two questions:
   automatic verdict, else open. The ledger at
   `~/.local/share/blind-review/findings.jsonl` (override with
   `BLIND_REVIEW_LEDGER`) stays local because it holds private paths and
-  code lines. A ledger in the pre-v1 event format is moved aside once to
-  `findings.legacy.jsonl`, unchanged.
+  code lines. A ledger that holds only pre-v1 events is moved aside once to
+  `findings.legacy.jsonl`, unchanged. A stray pre-v1 line in a v1 ledger
+  stays in the file, is skipped, and produces one warning.
 - **Hippo:** both files hold agent-eval v1 records (one JSON object per line
   with `schema_version: 1`, `type`, and a stable `id`), the input format of
   `hippo ingest agent-eval`. After every write, when `hippo` is on `PATH`,
@@ -204,11 +206,18 @@ Two records, for two questions:
   still succeeds, and the next write sends the records again. Hippo redacts
   `claim`, `line_text`, and `note` at ingest; the producers send raw text.
   `line_text` is the raw source line (working tree for `+`, `base_sha` for
-  `-`). The run id is the first 16 hex characters of
+  `-`). When that line no longer matches the reviewed unit row column for
+  column (comments blanked), or the file cannot be read, `log` leaves out
+  `line_text` and prints one warning per finding; hippo then stores no
+  `line_hash`, and `reconcile` and commit linkage skip that finding. Run
+  `log` right after the review so the working tree is still the reviewed
+  tree. A finding's `logged_at` is the review finish time from `run.json`,
+  not the time `log` ran, so every rerun of `log` writes identical records
+  and hippo never sees a conflicting duplicate. The run id is the first 16 hex characters of
   `sha256(repo|base_sha|head_sha|input_sha256|started_at)`, and the finding
   id of `sha256(run_id|path|unit_hash|<side><line>|claim)`. Under Claude Code
-  the run records `CLAUDE_CODE_SESSION_ID` as `session_id` with harness
-  `claude-code`.
+  the run records the review's `CLAUDE_CODE_SESSION_ID` (from `run.json`) as
+  `session_id` with harness `claude-code`.
 
 ### 7. Report
 

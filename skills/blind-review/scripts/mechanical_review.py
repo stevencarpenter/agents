@@ -17,8 +17,9 @@ the reviewer's answer, with the resolved model ID and an input hash, to
 Before any review starts, the manifest base ref and ``HEAD`` must resolve to
 commits; the script refuses to run otherwise. After the last unit it writes
 ``run.json``: start and finish times (epoch ms), the requested model and
-effort, the base ref and both resolved SHAs, and the reviewer token usage
-summed over all units. ``review_log.py log`` builds the run record from it.
+effort, the base ref and both resolved SHAs, the Claude Code session id
+(``CLAUDE_CODE_SESSION_ID``, or null), and the reviewer token usage summed
+over all units. ``review_log.py log`` builds the run record from it.
 
 Usage: mechanical_review.py --out DIR [--model sonnet] [--effort high] [--jobs 4]
 """
@@ -291,6 +292,8 @@ def main(argv: list[str] | None = None) -> int:
         "base": manifest["base"],
         "base_sha": base_sha,
         "head_sha": head_sha,
+        # Fixed here so a later `log` in another session writes the same run record.
+        "session_id": os.environ.get("CLAUDE_CODE_SESSION_ID") or None,
     }
     for field, key in USAGE_KEYS.items():
         run[field] = sum((r["usage"] or {}).get(key, 0) for r in results)
