@@ -212,6 +212,18 @@ class ReviewLogTest(unittest.TestCase):
         self.log.main(["log", "--out", str(self.out)])
         self.assertEqual(len(self.log.LEDGER.read_text().splitlines()), 1)
 
+    def test_missing_result_is_reported_not_logged_as_clean(self) -> None:
+        """An interrupted review leaves no result file; that must not read as 0 findings."""
+        (self.out / "results" / "f01.py.json").unlink()
+        self.assertEqual(self.log.main(["log", "--out", str(self.out)]), 1)
+
+    def test_form_feed_in_a_row_keeps_the_whole_line(self) -> None:
+        """A unit row is split only at newlines, as the unit generator writes it."""
+        (self.out / "units" / "f01.py.diff").write_text("file f01.py\n+2|y = eval(s)\x0cz\n")
+        self.log.main(["log", "--out", str(self.out)])
+        (finding,) = self.log.load()[0].values()
+        self.assertEqual(finding["line_text"], "y = eval(s)\x0cz")
+
     def test_torn_ledger_line_is_skipped(self) -> None:
         """A write cut short must not make every later command fail."""
         self.log.main(["log", "--out", str(self.out)])

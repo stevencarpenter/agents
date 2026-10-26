@@ -109,7 +109,10 @@ def load() -> tuple[dict[str, dict], list[dict]]:
     escapes: list[dict] = []
     if not LEDGER.exists():
         return findings, escapes
-    for number, line in enumerate(LEDGER.read_text(encoding="utf-8").splitlines(), 1):
+    # One event per `\n`: json.dumps(ensure_ascii=False) leaves U+2028 unescaped.
+    for number, line in enumerate(LEDGER.read_text(encoding="utf-8").split("\n"), 1):
+        if not line:
+            continue
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
@@ -132,6 +135,10 @@ def cmd_log(args: argparse.Namespace) -> int:
     run_id = out.name
     events = []
     failed = 0
+    # An interrupted review leaves units with no result; that is not a clean file.
+    for unit_name in sorted(set(paths) - {r.stem for r in (out / "results").glob("*.json")}):
+        print(f"FAILED {unit_name}: no result (review not run or interrupted)", file=sys.stderr)
+        failed += 1
     for result_file in sorted((out / "results").glob("*.json")):
         result = json.loads(result_file.read_text())
         if not result.get("ok", True):
@@ -140,7 +147,7 @@ def cmd_log(args: argparse.Namespace) -> int:
             failed += 1
             continue
         unit = (out / "units" / f"{result['unit']}.diff").read_text()
-        rows = unit.splitlines()
+        rows = unit.split("\n")  # splitlines would also split at a form feed inside a value
         # Key on the repo and the reviewed text, not the out dir name, so two
         # repos or a later change reviewed into a reused out dir stay distinct.
         unit_hash = hashlib.sha256(unit.encode()).hexdigest()

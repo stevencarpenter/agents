@@ -309,7 +309,7 @@ def summary(_: argparse.Namespace) -> int:
     cols = ("recall", "context_required_recall", "safe_false_alarm", "extra_findings_per_run",
             "trap_stability", "finding_jaccard", "input_identical")
     print("recorded_at | commit | cases | model | effort | reps | " + " | ".join(cols))
-    for line in RESULTS.read_text().splitlines():
+    for line in filter(None, RESULTS.read_text(encoding="utf-8").split("\n")):
         r = json.loads(line)
         model = ",".join(r["model_ids"]) or r["model"]
         values = " | ".join(str(r["scores"][c]) for c in cols)
