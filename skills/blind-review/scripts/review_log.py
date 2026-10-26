@@ -396,7 +396,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("escape")
     p.add_argument("--repo", required=True)
     p.add_argument("--path", required=True)
-    p.add_argument("--line", type=int, required=True)
+    p.add_argument("--line", type=int, required=True,
+                   help="line of the defect in the defective revision, the parent of --commit")
     p.add_argument("--note", required=True)
     p.add_argument("--commit", help="commit that fixed the defect; resolved to a full SHA")
     p.set_defaults(func=cmd_escape)

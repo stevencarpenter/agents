@@ -830,9 +830,12 @@ class PrivateCorpusTest(unittest.TestCase):
             mock.patch.object(bench, "RESULTS", self.public),
             mock.patch.object(bench, "_commit", return_value="abc1234"),
             mock.patch("sys.stdout", new=io.StringIO()),
-            mock.patch("sys.stderr", new=io.StringIO()),
+            mock.patch("sys.stderr", new=io.StringIO()) as stderr,
         ):
-            return bench.main(["run", "--reps", "1", "--cases-dir", str(self.cases), *argv])
+            try:
+                return bench.main(["run", "--reps", "1", "--cases-dir", str(self.cases), *argv])
+            finally:
+                self.stderr = stderr.getvalue()
 
     def test_private_run_is_tagged_and_recorded_outside_the_public_results(self) -> None:
         """The record goes to --results with the private bench tag, and hippo gets that file."""
@@ -867,6 +870,44 @@ class PrivateCorpusTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             bench.build_units(case, self.tmp / "build")
         self.assertFalse((self.tmp / "build/escape.py").exists())
+        target = self.tmp / "abs.py"
+        with self.assertRaises(SystemExit):
+            bench.build_units({**PRIVATE_CASE, "base": {str(target): "x\n"}}, self.tmp / "abs")
+        self.assertFalse(target.exists())
+
+    def test_private_case_without_an_anchor_row_is_skipped(self) -> None:
+        """A regenerated private case must not abort the run or count in the scores."""
+        bad = {**PRIVATE_CASE, "id": "e-unanchored",
+               "traps": [{**PRIVATE_CASE["traps"][0], "anchors": [["+", 4]]}]}
+        (self.cases / "e-unanchored.json").write_text(json.dumps(bad))
+        results = self.tmp / "private.jsonl"
+        self.assertEqual(self.run_bench("--record", "--results", str(results)), 0)
+        self.assertIn("skipped e-unanchored: no anchor is a row of its unit", self.stderr)
+        (record,) = agent_eval.read(results)
+        assert_contract(self, record)
+        self.assertEqual(record["cases"], 1)
+        only_good = hashlib.sha256(json.dumps([PRIVATE_CASE], sort_keys=True).encode()).hexdigest()[:12]
+        self.assertEqual(record["cases_sha256"], only_good)
+        self.assertEqual(record["per_case"][-1],
+                         {"case": "e-unanchored", "reps": 0, "skipped": "no anchor is a row of its unit"})
+
+    def test_public_case_without_an_anchor_row_still_aborts(self) -> None:
+        """A hand-written public case with a wrong anchor must be fixed, not skipped."""
+        bad = {**PRIVATE_CASE, "traps": [{**PRIVATE_CASE["traps"][0], "anchors": [["+", 4]]}]}
+        with (
+            mock.patch.object(bench, "load_cases", return_value=[bad]),
+            mock.patch("sys.stdout", new=io.StringIO()),
+            self.assertRaises(bench.AnchorMissing),
+        ):
+            bench.main(["run", "--reps", "1"])
+
+    def test_private_run_removes_its_temp_dir(self) -> None:
+        """Private file text and raw reviewer output must not stay in the temp dir."""
+        root = self.tmp / "bench-root"
+        root.mkdir()
+        with mock.patch.object(bench.tempfile, "mkdtemp", return_value=str(root)):
+            self.assertEqual(self.run_bench("--results", str(self.tmp / "p.jsonl")), 0)
+        self.assertFalse(root.exists())
 
 
 class SandboxTest(unittest.TestCase):
