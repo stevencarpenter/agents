@@ -881,7 +881,8 @@ def _repo_and_out(args: argparse.Namespace) -> tuple[Path, Path]:
             manifest (which maps unit labels to paths) would be reviewed next
             run; above it, cleaning --out/head or --out/units could delete it.
     """
-    repo = Path(args.repo).resolve()
+    # git reports paths from the work-tree root, so a subdirectory --repo (or `.`) must become the root.
+    repo = Path(_git(Path(args.repo).resolve(), "rev-parse", "--show-toplevel").strip()).resolve()
     out = Path(args.out).resolve()
     if out == repo or repo in out.parents or out in repo.parents:
         raise SystemExit(f"--out {out} and --repo {repo} must not contain each other")

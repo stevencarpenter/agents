@@ -933,10 +933,12 @@ class MechanicalModeTest(unittest.TestCase):
         run("config", "user.email", "t@example.com")
         run("config", "user.name", "t")
         for rel, text in base_files.items():
+            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
             (repo / rel).write_text(text)
         run("add", "-A")
         run("commit", "-qm", "base")
         for rel, text in head_files.items():
+            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
             (repo / rel).write_text(text)
         out = Path(tmp) / "out"
         rc = strip_context.main(["mechanical", "--repo", str(repo), "--out", str(out)])
@@ -1192,6 +1194,14 @@ class MechanicalModeTest(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 strip_context.main(["files", "--out", tmp, str(src)])
             self.assertEqual(src.read_text(), "# keep me\nk=v\n")
+
+    def test_repo_subdirectory_reads_paths_from_the_root(self) -> None:
+        """git paths are root-relative, so --repo sub must not read sub/sub/a.properties."""
+        out = self.run_mechanical({"sub/a.properties": "mode=deny\n"}, {"sub/a.properties": "mode=allow\n"})
+        repo = Path(json.loads((out / "manifest.json").read_text())["repo"])
+        strip_context.main(["mechanical", "--repo", str(repo / "sub"), "--out", str(out)])
+        unit = (out / "units" / "f01.properties.diff").read_text()
+        self.assertIn("+1|mode=allow", unit)
 
     def test_out_inside_repo_is_refused(self) -> None:
         """A manifest left in the repo would be reviewed next run, with every path in it."""
