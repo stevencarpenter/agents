@@ -1028,7 +1028,8 @@ _LITERAL_KIND = re.compile(
 # Only space and tab separate tokens; U+00A0 or a form feed inside a shell word is data.
 _WS = " \t\r"
 _WHITESPACE = re.compile(r"(?<!\\)[ \t]+")  # a form feed in a shell word is data too
-_TRAILING = re.compile(r"(?<!\\)[ \t\r]+\Z")
+# A final CR stays: in a shell word it is data, and a CRLF-to-LF change is a change.
+_TRAILING = re.compile(r"(?<!\\)[ \t]+(?=\r?\Z)")
 _CONTINUED = re.compile(r"(?<!\\)(?:\\\\)*\\\r?$")
 
 
@@ -1113,7 +1114,7 @@ def _code_lines(
         # line can be data too (an INI multi-line value) when it was not a comment.
         originals = source.split("\n") if source is not None else None
         return [
-            (n, *(2 * [line.rstrip(_WS) if inline_comments else line.rstrip("\r")]))
+            (n, *(2 * [_TRAILING.sub("", line) if inline_comments else line]))
             for n, line in enumerate(lines, 1)
             if line.strip(_WS)
             or ends_continued[n - 1]
@@ -1165,9 +1166,12 @@ def _changed_ranges(old: list[str], new: list[str]) -> list[tuple[int, int, int,
         a, b = Path(tmp, "a"), Path(tmp, "b")
         a.write_text("".join(f"{line}\n" for line in old), encoding="utf-8")
         b.write_text("".join(f"{line}\n" for line in new), encoding="utf-8")
+        # core.autocrlf would turn CRLF into LF on read, hiding a line-ending change;
+        # cwd=tmp keeps a repository's .gitattributes out of it.
         result = subprocess.run(
-            ["git", "diff", "--no-index", "--no-ext-diff", "--no-textconv", "--no-color",
-             "--histogram", "-U0", str(a), str(b)],
+            ["git", "-c", "core.autocrlf=false", "diff", "--no-index", "--no-ext-diff", "--no-textconv",
+             "--no-color", "--histogram", "-U0", str(a), str(b)],
+            cwd=tmp,
             capture_output=True,
             text=True,
             encoding="utf-8",
