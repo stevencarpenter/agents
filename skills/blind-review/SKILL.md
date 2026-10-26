@@ -190,8 +190,11 @@ any files the stripper could not process. In sidecar mode: one line
   `LANGUAGES_BY_NAME`, and `LANGUAGES_BY_GLOB` (`strip_context.py`) uses
   a tree-sitter grammar pinned in the script header, and its comment nodes
   and docstring nodes are blanked. Embedded `<script>` and `<style>`
-  bodies, Svelte and Vue template expressions, C macro bodies, and Make
-  recipes are parsed with their own grammar. Line-oriented config formats
+  bodies, C macro bodies, and Make recipes are parsed with their own
+  grammar. The supported languages are the ones the owner's repositories
+  use: Python, Rust, Go, TypeScript and JavaScript, Swift, Java, Kotlin,
+  Scala, Groovy, C, Ruby, Lua, SQL, shell, HCL, Nix, Make, Dockerfile, HTML,
+  CSS, XML, JSON, YAML, and TOML. Line-oriented config formats
   (INI, `.properties`, `.gitignore`, `requirements.txt`, `go.mod`)
   have no grammar and use their full-line comment rule. Comments that
   change behavior stay: shebangs, `//go:build`, cgo preambles, Go
@@ -202,12 +205,11 @@ any files the stripper could not process. In sidecar mode: one line
   dialect SQL (Postgres `DO` blocks, T-SQL `[ids]`), Swift regex literals,
   Groovy slashy strings, and JSON5. Every strip is also checked against a
   space-mask contract (same length, same line count, only blanking) and,
-  for Python, against `compile()`. Known silent gaps: strings inside F#
-  comments, HTML `<!-->`, `doc` inside Rust `cfg_attr`, and comments in Vue
-  directive attributes.
+  for Python, against `compile()`. Known silent gaps: HTML `<!-->` and
+  `doc` inside Rust `cfg_attr`.
 - Only languages with a pinned grammar are stripped. Anything else (for
-  example R, Erlang, Clojure, Emacs Lisp, fish, Justfiles, Sass, Solidity,
-  Visual Basic, MATLAB, or assembly) is flagged
+  example C++, C#, PHP, Vue, Svelte, SCSS, Justfiles, zsh-only syntax, or
+  Solidity) is flagged
   `copied-verbatim (unknown language)`, which means its comments reach
   the blind arm: check the manifest before trusting a run whose diff is
   mostly unsupported files.

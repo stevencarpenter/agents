@@ -5,23 +5,17 @@
 #     "tree-sitter==0.25.2",
 #     "tree-sitter-python==0.25.0",
 #     "tree-sitter-c==0.24.2",
-#     "tree-sitter-cpp==0.23.4",
-#     "tree-sitter-c-sharp==0.23.5",
 #     "tree-sitter-java==0.23.5",
 #     "tree-sitter-kotlin==1.1.0",
 #     "tree-sitter-scala==0.26.2",
 #     "tree-sitter-swift==0.7.4",
-#     "tree-sitter-dart==0.1.0",
 #     "tree-sitter-groovy==0.1.2",
 #     "tree-sitter-go==0.25.0",
 #     "tree-sitter-rust==0.24.2",
-#     "tree-sitter-zig==1.1.2",
 #     "tree-sitter-javascript==0.25.0",
 #     "tree-sitter-typescript==0.23.2",
 #     "tree-sitter-css==0.25.0",
-#     "tree-sitter-scss==1.0.0",
 #     "tree-sitter-json==0.24.8",
-#     "tree-sitter-php==0.25.1",
 #     "tree-sitter-bash==0.25.1",
 #     "tree-sitter-make==1.1.1",
 #     "tree-sitter-dockerfile==0.2.0",
@@ -29,21 +23,10 @@
 #     "tree-sitter-yaml==0.7.2",
 #     "tree-sitter-hcl==1.2.0",
 #     "tree-sitter-nix==0.1.0",
-#     "tree-sitter-cmake==0.7.2.post1",
-#     "tree-sitter-powershell==0.26.4",
 #     "tree-sitter-ruby==0.23.1",
-#     "tree-sitter-perl==2.0.0",
-#     "tree-sitter-julia==0.23.1",
-#     "tree-sitter-elixir==0.3.5",
-#     "tree-sitter-haskell==0.24.1",
-#     "tree-sitter-ocaml==0.26.0",
-#     "tree-sitter-fsharp==0.3.12",
-#     "tree-sitter-commonlisp==0.4.1",
 #     "tree-sitter-lua==0.5.0",
 #     "tree-sitter-sql==0.3.11",
-#     "tree-sitter-graphql==0.1.0",
 #     "tree-sitter-html==0.23.2",
-#     "tree-sitter-svelte==1.0.2",
 #     "tree-sitter-xml==0.7.0",
 # ]
 # ///
@@ -98,49 +81,30 @@ DOC_SUFFIXES = {".md", ".rst", ".txt", ".adoc", ".mdx"}
 GRAMMARS = {
     "bash": ("tree_sitter_bash", "language"),
     "c": ("tree_sitter_c", "language"),
-    "c_sharp": ("tree_sitter_c_sharp", "language"),
-    "cmake": ("tree_sitter_cmake", "language"),
-    "commonlisp": ("tree_sitter_commonlisp", "language"),
-    "cpp": ("tree_sitter_cpp", "language"),
     "css": ("tree_sitter_css", "language"),
-    "dart": ("tree_sitter_dart", "language"),
     "dockerfile": ("tree_sitter_dockerfile", "language"),
-    "elixir": ("tree_sitter_elixir", "language"),
-    "fsharp": ("tree_sitter_fsharp", "language"),
-    "fsharp_signature": ("tree_sitter_fsharp", "language_signature"),
     "go": ("tree_sitter_go", "language"),
-    "graphql": ("tree_sitter_graphql", "language"),
     "groovy": ("tree_sitter_groovy", "language"),
-    "haskell": ("tree_sitter_haskell", "language"),
     "hcl": ("tree_sitter_hcl", "language"),
     "html": ("tree_sitter_html", "language"),
     "java": ("tree_sitter_java", "language"),
     "javascript": ("tree_sitter_javascript", "language"),
     "json": ("tree_sitter_json", "language"),
-    "julia": ("tree_sitter_julia", "language"),
     "kotlin": ("tree_sitter_kotlin", "language"),
     "lua": ("tree_sitter_lua", "language"),
     "make": ("tree_sitter_make", "language"),
     "nix": ("tree_sitter_nix", "language"),
-    "ocaml": ("tree_sitter_ocaml", "language_ocaml"),
-    "ocaml_interface": ("tree_sitter_ocaml", "language_ocaml_interface"),
-    "perl": ("tree_sitter_perl", "language"),
-    "php": ("tree_sitter_php", "language_php"),
-    "powershell": ("tree_sitter_powershell", "language"),
     "python": ("tree_sitter_python", "language"),
     "ruby": ("tree_sitter_ruby", "language"),
     "rust": ("tree_sitter_rust", "language"),
     "scala": ("tree_sitter_scala", "language"),
-    "scss": ("tree_sitter_scss", "language"),
     "sql": ("tree_sitter_sql", "language"),
-    "svelte": ("tree_sitter_svelte", "language"),
     "swift": ("tree_sitter_swift", "language"),
     "toml": ("tree_sitter_toml", "language"),
     "tsx": ("tree_sitter_typescript", "language_tsx"),
     "typescript": ("tree_sitter_typescript", "language_typescript"),
     "xml": ("tree_sitter_xml", "language_xml"),
     "yaml": ("tree_sitter_yaml", "language"),
-    "zig": ("tree_sitter_zig", "language"),
 }
 
 # Node kinds that are comments in at least one grammar. Each grammar's query
@@ -168,18 +132,6 @@ DOC_QUERIES = {
         (expression_statement . (string) @doc .)
         (expression_statement . (concatenated_string (string) @doc) .)
     """,
-    "elixir": """
-        (unary_operator "@" (call (identifier) @_name (arguments . [(string) (sigil)] @doc .))
-         (#any-of? @_name "moduledoc" "doc" "typedoc"))
-    """,
-    "julia": """
-        (_ (string_literal) @doc . [(function_definition) (macro_definition) (struct_definition)
-            (module_definition) (abstract_definition) (primitive_definition) (const_statement)
-            (assignment)])
-    """,
-    "graphql": "(description (string_value) @doc)",
-    # A string that is the whole body is the return value, not a docstring.
-    "commonlisp": "(defun (defun_header) . (str_lit) @doc . (_))",
     "rust": """
         (attribute_item (attribute (identifier) @_name (string_literal) @doc) (#eq? @_name "doc"))
         (inner_attribute_item (attribute (identifier) @_name (string_literal) @doc)
@@ -214,7 +166,6 @@ KEEP = {
         rb"#[ \t]*(?:frozen_string_literal|encoding|coding|warn_indent|warn_past_scope"
         rb"|shareable_constant_value)[ \t]*:[ \t]*[\w-]+[ \t]*"
     ),
-    "powershell": re.compile(rb"(?i)#requires(?:[ \t]+-\w+(?:[ \t]+[\w.,@{}=';\"-]+)?)+[ \t]*"),
     "swift": re.compile(rb"//[ \t]*swift-tools-version:[ \t]*[\d.]+[ \t]*"),
     # MySQL runs `/*! ... */` and reads `/*+ ... */` as optimizer hints.
     "sql": re.compile(rb"/\*[!+][\s\S]*"),
@@ -234,7 +185,7 @@ _JS_TYPES = {
 }
 _SCRIPT_LANGS = {"js": "javascript", "javascript": "javascript", "jsx": "javascript", "ts": "typescript",
                  "typescript": "typescript", "tsx": "tsx"}
-_STYLE_LANGS = {"": "css", "css": "css", "postcss": "css", "scss": "scss", "less": "scss"}
+_STYLE_LANGS = {"": "css", "css": "css", "postcss": "css"}
 _MAKE_COMMENT = re.compile(rb"(?<!\\)#[^\r\n]*")
 _DOC_CONTENT = {"string_content", "quoted_content", "content"}
 _DOC_QUOTE = re.compile(rb'[^"\'`]*("""|\'\'\'|"|\'|`)')
@@ -404,7 +355,7 @@ def _collect(
         raise SyntaxError(f"{lang} parse error at line {_first_error(root).start_point.row + 1}")
     comments, docs = _queries(lang)
     py_blocks = [range(m.start(), m.end()) for m in _PY_SCRIPT_BLOCK.finditer(data)] if lang == "python" else []
-    markup = lang in ("html", "svelte")
+    markup = lang == "html"
     for node in _captures(comments, root, "comment"):
         if _kept(lang, node, data, py_blocks) or (markup and _in_text_element(node, data)):
             continue
@@ -426,7 +377,7 @@ def _collect(
             spans.append((base + node.start_byte + quote.end(), base + node.end_byte - len(quote.group(1)), True))
         elif len(text) > 2:
             raise SyntaxError(f"{lang} docstring delimiters not recognized at line {node.start_point.row + 1}")
-    if lang in ("c", "cpp"):
+    if lang == "c":
         # The grammar keeps a macro body as raw text, so comments in it need their own parse.
         for arg in _captures(_query(lang, "(preproc_arg) @arg"), root, "arg"):
             arg_text = data[arg.start_byte : arg.end_byte]
@@ -450,12 +401,6 @@ def _collect(
                 _collect(inner, data[body.start_byte : body.end_byte], base + body.start_byte, spans, layout=layout)
             elif body is not None and layout is not None:
                 layout[0].append((base + body.start_byte, base + body.end_byte))  # a data block
-    if lang == "svelte":
-        # Template expressions are JS, though a fragment such as `items as item` is not a program.
-        for expr in _captures(_query(lang, "(svelte_raw_text) @js"), root, "js"):
-            _collect(
-                "javascript", data[expr.start_byte : expr.end_byte], base + expr.start_byte, spans, True, layout
-            )
 
 
 @functools.cache
@@ -498,81 +443,6 @@ def _tree_sitter(lang: str, source: str) -> str:
     spans: list[tuple[int, int, bool]] = []
     _collect(lang, source.encode("utf-8"), 0, spans)
     return _blank(source, spans)
-
-
-# A tag, a comment, or a script or style body: braces there are not an interpolation.
-_VUE_NOT_TEXT = "[(start_tag) (end_tag) (self_closing_tag) (comment) (raw_text)] @x"
-
-
-def _vue_interpolations(data: bytes, not_text: list[tuple[int, int]]) -> list[tuple[int, int]]:
-    """Return the ``{{ ... }}`` spans that start in template text, scanning left to right."""
-    found, pos = [], 0
-    while (start := data.find(b"{{", pos)) >= 0:
-        if any(s <= start < e for s, e in not_text):
-            pos = start + 2
-            continue
-        end = data.find(b"}}", start + 2)
-        if end < 0:
-            break
-        found.append((start, end + 2))
-        pos = end + 2
-    return found
-
-
-def strip_vue(source: str) -> str:
-    """Strip a Vue single-file component as HTML, plus comments in ``{{ }}`` JS.
-
-    Vue reads an interpolation up to the first ``}}`` before it looks for tags,
-    so ``{{ "<!-- x -->" }}`` holds a string, not a comment. Which braces are
-    interpolations depends on where the tags are, and the tags depend on which
-    braces are masked, so mask and reparse until the two agree.
-
-    Raises:
-        SyntaxError: When they never agree; a guess could blank template text.
-    """
-    return _blank(source, _vue_spans(source.encode("utf-8")))
-
-
-def _subtract(spans: list[tuple[int, int]], holes: list[tuple[int, int]]) -> list[tuple[int, int]]:
-    """Return ``spans`` with every ``holes`` range cut out."""
-    for hole_start, hole_end in holes:
-        spans = [
-            piece
-            for start, end in spans
-            for piece in ((start, min(end, hole_start)), (max(start, hole_end), end))
-            if piece[0] < piece[1]
-        ]
-    return spans
-
-
-def _vue_spans(data: bytes, layout: Layout | None = None) -> list[tuple[int, int, bool]]:
-    """Return the blank spans of a Vue component; see ``strip_vue``."""
-    parser = Parser(_language_object("html"))
-    tree = parser.parse(data)  # held while its nodes are read
-    root = tree.root_node
-    for _ in range(8):
-        not_text = [(n.start_byte, n.end_byte) for n in _captures(_query("html", _VUE_NOT_TEXT), root, "x")]
-        interpolations = _vue_interpolations(data, not_text)
-        masked = bytearray(data)
-        for start, end in interpolations:
-            masked[start:end] = bytes(b if b in b"\r\n" else 32 for b in data[start:end])
-        tree = parser.parse(bytes(masked))
-        root = tree.root_node
-        settled = [(n.start_byte, n.end_byte) for n in _captures(_query("html", _VUE_NOT_TEXT), root, "x")]
-        if _vue_interpolations(data, settled) == interpolations:
-            break
-    else:
-        raise SyntaxError("vue interpolations and tags do not settle")
-    spans: list[tuple[int, int, bool]] = []
-    markup: Layout = ([], [])
-    _collect("html", bytes(masked), 0, spans, layout=markup)
-    if layout is not None:
-        # A text node spans the masked interpolations; their JS literals are recorded below.
-        layout[0].extend(_subtract(markup[0], interpolations))
-        layout[1].extend(markup[1])
-    for start, end in interpolations:
-        _collect("javascript", data[start + 2 : end - 2], start + 2, spans, fragment=True, layout=layout)
-    return spans
 
 
 def _lines(pattern: str) -> Callable[[str], str]:
@@ -644,24 +514,18 @@ REQUIREMENTS_LINES = _lines(r"(?:^|(?<=[ \t]))#[^\r\n]*")
 LANGUAGES_BY_SUFFIX: dict[str, Callable[[str], str]] = {
     **_suffixes(".py .pyi .pyw", _grammar("python")),
     **_suffixes(".c .h .glsl .vert .frag .hlsl", _grammar("c")),
-    **_suffixes(".cc .cpp .cxx .c++ .hpp .hh .hxx .h++ .ino .cu .cuh .metal", _grammar("cpp")),
-    **_suffixes(".cs", _grammar("c_sharp")),
     **_suffixes(".java", _grammar("java")),
     **_suffixes(".kt .kts", _grammar("kotlin")),
     **_suffixes(".scala .sc", _grammar("scala")),
     **_suffixes(".swift", _grammar("swift")),
-    **_suffixes(".dart", _grammar("dart")),
     **_suffixes(".groovy .gradle", _grammar("groovy")),
     **_suffixes(".go", _grammar("go")),
     **_suffixes(".rs", _grammar("rust")),
-    **_suffixes(".zig", _grammar("zig")),
     **_suffixes(".js .jsx .mjs .cjs", _grammar("javascript")),
     **_suffixes(".ts .mts .cts", _grammar("typescript")),
     **_suffixes(".tsx", _grammar("tsx")),
     **_suffixes(".css", _grammar("css")),
-    **_suffixes(".scss .less", _grammar("scss")),
     **_suffixes(".json .jsonc .json5", _grammar("json")),
-    **_suffixes(".php", _grammar("php")),
     **_suffixes(".sh .bash .zsh .ksh", _grammar("bash")),
     **_suffixes(".mk", _grammar("make")),
     **_suffixes(".dockerfile", _grammar("dockerfile")),
@@ -671,25 +535,11 @@ LANGUAGES_BY_SUFFIX: dict[str, Callable[[str], str]] = {
     **_suffixes(".properties", strip_properties),
     **_suffixes(".conf", HASH_LINES),
     **_suffixes(".rb .rake .gemspec .ru", _grammar("ruby")),
-    **_suffixes(".pl .pm .t", _grammar("perl")),
-    **_suffixes(".jl", _grammar("julia")),
-    **_suffixes(".ex .exs", _grammar("elixir")),
-    **_suffixes(".hs", _grammar("haskell")),
-    **_suffixes(".ml", _grammar("ocaml")),
-    **_suffixes(".mli", _grammar("ocaml_interface")),
-    **_suffixes(".fs .fsx", _grammar("fsharp")),
-    **_suffixes(".fsi", _grammar("fsharp_signature")),
-    **_suffixes(".lisp .lsp .cl", _grammar("commonlisp")),
-    **_suffixes(".ps1 .psm1 .psd1", _grammar("powershell")),
     **_suffixes(".lua", _grammar("lua")),
     **_suffixes(".sql", _grammar("sql")),
     **_suffixes(".tf .tfvars .hcl", _grammar("hcl")),
     **_suffixes(".nix", _grammar("nix")),
-    **_suffixes(".graphql .gql", _grammar("graphql")),
-    **_suffixes(".cmake", _grammar("cmake")),
     **_suffixes(".html .htm", _grammar("html")),
-    **_suffixes(".vue", strip_vue),
-    **_suffixes(".svelte", _grammar("svelte")),
     **_suffixes(
         ".xml .xhtml .svg .plist .xsd .xsl .xslt .csproj .fsproj .vbproj .props .targets .xaml"
         " .storyboard .xib .config .resx .nuspec",
@@ -705,7 +555,6 @@ LANGUAGES_BY_NAME: dict[str, Callable[[str], str]] = {
         "Brewfile Gemfile Rakefile Podfile Vagrantfile Guardfile Fastfile Appfile Dangerfile",
         _grammar("ruby"),
     ),
-    **_suffixes("CMakeLists.txt", _grammar("cmake")),
     **_suffixes(
         ".envrc .bashrc .bash_profile .bash_aliases .bash_logout .profile .zshrc .zshenv .zprofile"
         " .zlogin .zlogout",
@@ -737,7 +586,7 @@ LANGUAGES_BY_GLOB: list[tuple[str, Callable[[str], str]]] = [
 _SHEBANG = re.compile(r"#![ \t]*(?:\S*/)?(?:env[ \t]+(?:-S[ \t]+)?(?:\S*/)?)?([a-z]+)")
 _SHEBANG_LANGUAGES = {
     "sh": "bash", "bash": "bash", "zsh": "bash", "ksh": "bash", "dash": "bash",
-    "python": "python", "ruby": "ruby", "perl": "perl", "node": "javascript",
+    "python": "python", "ruby": "ruby", "node": "javascript",
 }
 
 
@@ -1084,7 +933,7 @@ def cmd_diff(args: argparse.Namespace) -> int:
 
 
 # Leading whitespace is syntax here, so a re-indent is a code change.
-INDENT_SENSITIVE_LANGUAGES = {"python", "yaml", "haskell", "fsharp", "fsharp_signature", "make"}
+INDENT_SENSITIVE_LANGUAGES = {"python", "yaml", "make"}
 # A line holding only a blanked docstring or one of its quote delimiters.
 _BLANK_STRING = re.compile(r"""[rRbBuU]{0,2}(\"\"\"|'''|"|')(?:\s*\1)?""")
 # Node kinds whose text is data, so whitespace inside them counts.
@@ -1124,8 +973,6 @@ def _layout(rel: str, text: str) -> tuple[set[int], list[tuple[int, int]]] | Non
     try:
         if isinstance(strip, functools.partial) and strip.func is _tree_sitter:
             _collect(strip.args[0], data, 0, [], layout=layout)
-        elif strip is strip_vue:
-            _vue_spans(data, layout)
         else:
             return None
     except SyntaxError:
@@ -1355,7 +1202,7 @@ def cmd_files(args: argparse.Namespace) -> int:
         rel = src.name if src.is_absolute() else os.path.normpath(str(src))
         if rel.startswith("..") or os.path.isabs(rel):
             rel = src.name
-        if any(entry["path"] == rel for entry in manifest):
+        if rel == "manifest.json" or any(entry["path"] == rel for entry in manifest):
             raise SystemExit(f"two inputs map to {out / rel}; pass relative paths that differ")
         stripped, action = process_file(rel, src.read_bytes())
         manifest.append({"path": rel, "action": action})
