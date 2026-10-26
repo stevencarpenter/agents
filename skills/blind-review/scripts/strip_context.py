@@ -385,12 +385,19 @@ def _collect(
         for arg in _captures(_query(lang, "(preproc_arg) @arg"), root, "arg"):
             arg_text = data[arg.start_byte : arg.end_byte]
             _collect(lang, arg_text, base + arg.start_byte, spans, fragment=True, layout=layout)
+    if lang == "dockerfile":
+        # A RUN, CMD, or ENTRYPOINT shell form is a shell command: its quotes are data, its `#` a comment.
+        for cmd in _captures(_query(lang, "(shell_command) @sh"), root, "sh"):
+            _collect("bash", data[cmd.start_byte : cmd.end_byte], base + cmd.start_byte, spans, fragment=True, layout=layout)
     if lang == "make":
         # Outside recipes and define bodies, make ends a line at any unescaped `#`.
         protected = [(n.start_byte, n.end_byte) for n in _captures(_query(lang, "[(recipe_line) (raw_text)] @p"), root, "p")]
         for m in _MAKE_COMMENT.finditer(data):
             if not any(start <= m.start() < end for start, end in protected):
                 spans.append((base + m.start(), base + m.end(), False))
+        if layout is not None:  # a define body is the variable's value, whitespace included
+            for body in _captures(_query(lang, "(define_directive (raw_text) @v)"), root, "v"):
+                layout[0].append((base + body.start_byte, base + body.end_byte))
         # make hands a recipe line to the shell, so its `#` comments are shell comments.
         for line in _captures(_query(lang, "(recipe_line) @line"), root, "line"):
             text = data[line.start_byte : line.end_byte]
@@ -944,7 +951,7 @@ _BLANK_STRING = re.compile(r"""[rRbBuU]{0,2}(\"\"\"|'''|"|')(?:\s*\1)?""")
 _LITERAL_KIND = re.compile(
     r"string|heredoc|regex|sigil|str_lit|char_literal|rune_literal|character_literal|quote_scalar|block_scalar"
     r"|plain_scalar|jsx_text|^literal$|quoted_argument|bracket_argument"  # YAML, JSX, SQL, CMake values
-    r"|attribute_value|^text$|^CharData$"  # markup text: `<pre>` and CSS can make its whitespace render
+    r"|attribute_value|AttValue|^text$|^CharData$"  # markup text: `<pre>` and CSS can make its whitespace render
 )
 # A backslash-escaped space is part of a word (shell `foo\ bar`), so it never starts a run.
 # Only ASCII whitespace separates tokens; U+00A0 inside a shell word is data.
