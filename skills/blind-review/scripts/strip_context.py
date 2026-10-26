@@ -485,7 +485,7 @@ def _no_bare_cr(source: str) -> None:
         raise SyntaxError("bare CR line terminator")
 
 
-def _whole_line_comments(markers: str, bare_cr: bool = False) -> Callable[[str], str]:
+def _whole_line_comments(markers: str, bare_cr: bool = False, continuation: bool = True) -> Callable[[str], str]:
     r"""Strip lines that start with one of ``markers`` in a grammarless config format.
 
     A line after one that ends in an odd number of backslashes continues a
@@ -505,7 +505,7 @@ def _whole_line_comments(markers: str, bare_cr: bool = False) -> Callable[[str],
                 out.append(" " * len(body) + line[len(body) :])
                 continue  # a comment line never continues
             out.append(line)
-            continued = _CONTINUED.search(body) is not None
+            continued = continuation and _CONTINUED.search(body) is not None
         return "".join(out)
 
     return strip
@@ -523,7 +523,9 @@ def _suffixes(spec: str, strip: Callable[[str], str]) -> dict[str, Callable[[str
 
 
 HASH_LINES = _whole_line_comments("#")
-INI_LINES = _whole_line_comments("#;")
+# configparser has no backslash continuation; git config does.
+INI_LINES = _whole_line_comments("#;", continuation=False)
+GIT_CONFIG_LINES = _whole_line_comments("#;")
 # pip: a `#` at line start or after whitespace starts a comment; `url#egg=` is data.
 REQUIREMENTS_LINES = _lines(r"(?:^|(?<=[ \t]))#[^\r\n]*")
 
@@ -583,8 +585,12 @@ LANGUAGES_BY_NAME: dict[str, Callable[[str], str]] = {
         _lines(r"^#[^\r\n]*"),
     ),
     **_suffixes(
-        ".editorconfig .gitconfig .gitmodules .npmrc .flake8 .pylintrc .coveragerc",
+        ".editorconfig .npmrc .flake8 .pylintrc .coveragerc",
         INI_LINES,
+    ),
+    **_suffixes(
+        ".gitconfig .gitmodules",
+        GIT_CONFIG_LINES,
     ),
     **_suffixes("go.mod go.work", _lines(r"^[ \t]*//[^\r\n]*")),
     **_suffixes("Pipfile", _grammar("toml")),
@@ -960,10 +966,10 @@ _LITERAL_KIND = re.compile(
     r"|attribute_value|AttValue|^text$|^CharData$"  # markup text: `<pre>` and CSS can make its whitespace render
 )
 # A backslash-escaped space is part of a word (shell `foo\ bar`), so it never starts a run.
-# Only ASCII whitespace separates tokens; U+00A0 inside a shell word is data.
-_WS = " \t\r\f\v"
-_WHITESPACE = re.compile(r"(?<!\\)[ \t\r\f\v]+")
-_TRAILING = re.compile(r"(?<!\\)[ \t\r\f\v]+\Z")
+# Only space and tab separate tokens; U+00A0 or a form feed inside a shell word is data.
+_WS = " \t\r"
+_WHITESPACE = re.compile(r"(?<!\\)[ \t]+")  # a form feed in a shell word is data too
+_TRAILING = re.compile(r"(?<!\\)[ \t\r]+\Z")
 _CONTINUED = re.compile(r"(?<!\\)(?:\\\\)*\\\r?$")
 
 

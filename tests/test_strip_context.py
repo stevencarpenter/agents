@@ -706,6 +706,13 @@ class ReviewCaseTest(PositionContractTest):
             with self.subTest(name=name):
                 self.assertEqual(strip_context.strip_source(name, "x # c\n")[1], "copied-verbatim (unknown language)")
 
+    def test_ini_comments_do_not_continue_but_git_config_values_do(self) -> None:
+        """configparser has no backslash continuation, so a `#` line after `C:\\` is a comment."""
+        out = self.assert_masked("setup.cfg", "[x]\npath = C:\\\n# gone\n")
+        self.assertNotIn("gone", out)
+        out = self.assert_masked(".gitconfig", '[a]\n\tx = "a \\\n# keep"\n')
+        self.assertIn("# keep", out)
+
     def test_bare_cr_in_grammarless_files_is_refused(self) -> None:
         """Only Properties.load defines a bare CR as a line end; elsewhere a comment's end is unknown."""
         for name in ("setup.cfg", ".gitconfig", "a.conf", ".gitignore", "requirements.txt", "go.mod"):
@@ -994,6 +1001,7 @@ class MechanicalModeTest(unittest.TestCase):
             ("a.sh", "echo one \\\n\necho two\n", "echo one \\\necho two\n"),
             ("a.sh", 'printf "<%s>" foo\\  bar\n', 'printf "<%s>" foo\\ bar\n'),
             ("a.sh", "printf '<%s>' foo\u00a0bar\n", "printf '<%s>' foo bar\n"),
+            ("a.sh", "printf '<%s>' foo\x0cbar\n", "printf '<%s>' foo bar\n"),
             ("Makefile", "define VALUE\ndeny  all\nendef\n", "define VALUE\ndeny all\nendef\n"),
             ("Makefile", "X = deny  all\n", "X = deny all\n"),
             ("a.xml", '<a b="deny  all"/>\n', '<a b="deny all"/>\n'),
