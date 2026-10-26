@@ -1,0 +1,25 @@
+{
+  "id": "c13-py-late-binding",
+  "description": "A default-argument binding is removed from a lambda in a comprehension.",
+  "base": {
+    "handlers.py": "def make_handlers(fs):\n    return [(lambda f=f: f()) for f in fs]\n"
+  },
+  "head": {
+    "handlers.py": "def make_handlers(fs):\n    return [(lambda: f()) for f in fs]\n"
+  },
+  "traps": [
+    {
+      "id": "late-binding",
+      "kind": "bug",
+      "category": "correctness",
+      "path": "handlers.py",
+      "anchors": [
+        [
+          "+",
+          2
+        ]
+      ],
+      "why": "Every lambda now calls the last f."
+    }
+  ]
+}

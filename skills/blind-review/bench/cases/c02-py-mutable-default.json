@@ -1,0 +1,41 @@
+{
+  "id": "c02-py-mutable-default",
+  "description": "A mutable default argument, beside a correct guarded index.",
+  "base": {
+    "util.py": "import os\n"
+  },
+  "head": {
+    "util.py": "import os\n\n\ndef add_tag(tag, tags=[]):\n    tags.append(tag)\n    return tags\n\n\ndef first_or_none(xs):\n    return xs[0] if xs else None\n"
+  },
+  "traps": [
+    {
+      "id": "mutable-default",
+      "kind": "bug",
+      "category": "correctness",
+      "path": "util.py",
+      "anchors": [
+        [
+          "+",
+          4
+        ],
+        [
+          "+",
+          5
+        ]
+      ],
+      "why": "The list default is shared across calls."
+    },
+    {
+      "id": "guarded-index",
+      "kind": "safe",
+      "path": "util.py",
+      "anchors": [
+        [
+          "+",
+          10
+        ]
+      ],
+      "why": "xs[0] runs only when xs is non-empty."
+    }
+  ]
+}

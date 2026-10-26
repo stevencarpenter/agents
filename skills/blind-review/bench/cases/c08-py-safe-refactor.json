@@ -1,0 +1,32 @@
+{
+  "id": "c08-py-safe-refactor",
+  "description": "A loop becomes an equivalent comprehension.",
+  "base": {
+    "evens.py": "def evens(xs):\n    out = []\n    for x in xs:\n        if x % 2 == 0:\n            out.append(x)\n    return out\n"
+  },
+  "head": {
+    "evens.py": "def evens(xs):\n    return [x for x in xs if x % 2 == 0]\n"
+  },
+  "traps": [
+    {
+      "id": "equivalent-comprehension",
+      "kind": "safe",
+      "path": "evens.py",
+      "anchors": [
+        [
+          "+",
+          2
+        ],
+        [
+          "-",
+          3
+        ],
+        [
+          "-",
+          5
+        ]
+      ],
+      "why": "Same output for every input."
+    }
+  ]
+}

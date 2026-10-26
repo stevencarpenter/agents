@@ -1,0 +1,32 @@
+{
+  "id": "c14-py-safe-ternary",
+  "description": "A zero guard becomes an equivalent conditional expression.",
+  "base": {
+    "ratio.py": "def ratio(a, b):\n    if b == 0:\n        return 0.0\n    return a / b\n"
+  },
+  "head": {
+    "ratio.py": "def ratio(a, b):\n    return 0.0 if b == 0 else a / b\n"
+  },
+  "traps": [
+    {
+      "id": "equivalent-ternary",
+      "kind": "safe",
+      "path": "ratio.py",
+      "anchors": [
+        [
+          "+",
+          2
+        ],
+        [
+          "-",
+          2
+        ],
+        [
+          "-",
+          3
+        ]
+      ],
+      "why": "Same result for every input, including b == 0."
+    }
+  ]
+}

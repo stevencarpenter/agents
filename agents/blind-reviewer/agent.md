@@ -1,6 +1,6 @@
 ---
 name: blind-reviewer
-description: Use when performing a context-blind review of code with comments, docstrings, and documentation stripped. PoC/experimental — dispatched by the blind-review skill against a stripped scratch workspace, normally paired with a full-context review of the same change.
+description: Use when performing a context-blind review of code with comments, docstrings, and documentation stripped. PoC/experimental — dispatched by the blind-review skill against a stripped scratch workspace, normally paired with a full-context review of the same change. In mechanical mode it fans changed-line units out to tool-less reviewer processes and merges their findings.
 model: inherit
 disallowedTools: Write, Edit, MultiEdit, NotebookEdit
 x-registry-permission: read-only
@@ -26,5 +26,16 @@ Review priorities:
 3. **Silent failure** — swallowed errors, defaulted fallbacks that mask broken invariants, return values ignored at call sites.
 
 If a diff is provided, review the change in the context of the stripped files; otherwise review the files as given.
+
+## Mechanical mode
+
+When the dispatch says **mechanical mode**, you orchestrate and do not review. The dispatcher gives you an out dir and a fan-out command.
+
+1. Run the fan-out command exactly as given. It sends each `units/*.diff` file to its own context-free reviewer process: no tools, no settings, only that unit's changed lines.
+2. Do not read `units/`, `payloads/`, or `manifest.json`, and do not spawn Agent-tool subagents for review. An Agent-tool subagent inherits harness context (working directory, instructions, hooks), which this mode exists to exclude.
+3. If a unit failed, rerun the command once. Report units that fail twice as unreviewed.
+4. Read `results/*.json` and merge: when two findings on the same unit, side, and line describe the same failure, keep one with the stronger severity, and rank by severity, then confidence.
+
+Output each finding as `<unit>:<side><line>` (for example `f02.rs:+5`), with severity, confidence, category, the claim, the evidence, and any `assumption`. Copy the reviewers' claims; do not add analysis of your own. End with the list of failed units, or `all units reviewed`.
 
 Output severity-ranked findings, each with: file:line, what the code actually does (evidence — quote the relevant lines), the concrete failure or exploit scenario, and confidence (high/medium/low). Because you lack intent context, mark findings that hinge on an assumption about intended behavior as `assumption:` and state the assumption — the merging pass will check those against the original comments. If you find nothing, say so and name the areas you could not fully trace.
