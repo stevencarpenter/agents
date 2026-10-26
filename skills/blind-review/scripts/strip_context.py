@@ -169,7 +169,7 @@ DOC_QUERIES = {
         (expression_statement . (concatenated_string (string) @doc) .)
     """,
     "elixir": """
-        (unary_operator (call (identifier) @_name (arguments . [(string) (sigil)] @doc .))
+        (unary_operator "@" (call (identifier) @_name (arguments . [(string) (sigil)] @doc .))
          (#any-of? @_name "moduledoc" "doc" "typedoc"))
     """,
     "julia": """
@@ -1355,6 +1355,8 @@ def cmd_files(args: argparse.Namespace) -> int:
         rel = src.name if src.is_absolute() else os.path.normpath(str(src))
         if rel.startswith("..") or os.path.isabs(rel):
             rel = src.name
+        if any(entry["path"] == rel for entry in manifest):
+            raise SystemExit(f"two inputs map to {out / rel}; pass relative paths that differ")
         stripped, action = process_file(rel, src.read_bytes())
         manifest.append({"path": rel, "action": action})
         if stripped is not None:

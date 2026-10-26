@@ -869,6 +869,12 @@ class ReviewCaseTest(PositionContractTest):
         self.assertNotIn("Always safe", out)
         self.assertNotIn("gone2", out)
 
+    def test_elixir_doc_needs_the_attribute_operator(self) -> None:
+        """`-doc("x")` is a call to doc/1, not a module attribute."""
+        out = self.assert_masked("a.ex", 'x = -doc("allow")\n@doc "gone"\ndef f, do: 1\n')
+        self.assertIn('"allow"', out)
+        self.assertNotIn("gone", out)
+
     def test_fragment_that_does_not_parse_still_loses_comments(self) -> None:
         """A template expression need not be a program; its comments must not leak."""
         out = self.assert_masked("a.svelte", "{#each items as item /* gone */}{item}{/each}\n")
@@ -1355,6 +1361,16 @@ class MechanicalModeTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             strip_context.main(["files", "--out", str(files_out), "sub/a.py"])
         self.assertEqual((repo / "a.py").read_text(), "x = 2  # keep me\n")
+
+    def test_files_with_colliding_destinations_are_refused(self) -> None:
+        """Two absolute inputs with one basename would overwrite each other's copy."""
+        with tempfile.TemporaryDirectory() as tmp:
+            for sub in ("a", "b"):
+                (Path(tmp) / sub).mkdir()
+                (Path(tmp) / sub / "settings.properties").write_text(f"k={sub}\n")
+            with self.assertRaises(SystemExit):
+                strip_context.main(["files", "--out", str(Path(tmp) / "out"),
+                                    str(Path(tmp) / "a/settings.properties"), str(Path(tmp) / "b/settings.properties")])
 
     def test_files_out_containing_an_input_is_refused(self) -> None:
         """Writing the stripped copy next to its source would replace the source."""
