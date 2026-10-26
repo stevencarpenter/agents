@@ -228,8 +228,10 @@ def _kept(lang: str, node: Node, data: bytes, py_blocks: list[range]) -> bool:
     if node.start_byte == 0 and text.startswith(b"#!"):
         return True
     keep = KEEP.get(lang)
-    starts_line = not data[data.rfind(b"\n", 0, node.start_byte) + 1 : node.start_byte].strip()
-    if keep is not None and keep.fullmatch(text) and (starts_line or lang == "sql"):
+    indent = data[data.rfind(b"\n", 0, node.start_byte) + 1 : node.start_byte]
+    # Only //go:embed is honored when indented; other directives must start the line.
+    placed = not indent or (not indent.strip(b" \t") and text.startswith(b"//go:embed"))
+    if keep is not None and keep.fullmatch(text) and (placed or lang == "sql"):
         if lang not in _HEADER_DIRECTIVES:
             return True
         prev = node.prev_named_sibling
@@ -515,20 +517,60 @@ def _whole_line_comments(markers: str, bare_cr: bool = False, continuation: bool
 strip_properties = _whole_line_comments("#!", bare_cr=True)
 
 
-# A `//` outside a quoted path, and the go tool's two meaningful comments.
-_GOMOD_COMMENT = re.compile(r'^((?:[^"/\r\n]|"[^"\r\n]*"|/(?!/))*)(//[^\r\n]*)', re.MULTILINE)
-_GOMOD_KEEP = re.compile(r"//[ \t]*(?:indirect|Deprecated:.*)[ \t]*")
+# The go tool's two meaningful comments in go.mod.
+_GOMOD_INDIRECT = re.compile(r"//[ \t]*indirect[ \t]*")
+_GOMOD_DEPRECATED = re.compile(r"//[ \t]*Deprecated:.*")
+
+
+def _gomod_comment_start(line: str) -> int:
+    """Return where a `//` comment starts in a go.mod line, or -1, tracking quotes as modfile does.
+
+    Raises:
+        SyntaxError: On an unterminated quoted string; its end, and so the comment's, is unknown.
+    """
+    i, n = 0, len(line)
+    while i < n:
+        ch = line[i]
+        if line.startswith("//", i):
+            return i
+        if ch in "\"`":
+            end = i + 1
+            while end < n and line[end] != ch:
+                end += 2 if ch == '"' and line[end] == "\\" else 1
+            if end >= n:
+                raise SyntaxError("unterminated go.mod string")
+            i = end
+        i += 1
+    return -1
 
 
 def strip_gomod(source: str) -> str:
-    """Strip `//` comments from go.mod and go.work, keeping `// indirect` and `// Deprecated:`."""
+    """Strip `//` comments from go.mod and go.work.
+
+    Two comments mean something to the go tool and stay: `// indirect` after a
+    requirement, and `// Deprecated:` in the comment block just before `module`.
+    """
     _no_bare_cr(source)
-
-    def blank(m: re.Match[str]) -> str:
-        comment = m.group(2)
-        return m.group(1) + (comment if _GOMOD_KEEP.fullmatch(comment.rstrip("\r")) else " " * len(comment))
-
-    return _GOMOD_COMMENT.sub(blank, source)
+    lines = source.split("\n")
+    module_at = next((k for k, line in enumerate(lines) if line.lstrip(" \t").startswith("module")), -1)
+    header = set()
+    k = module_at - 1
+    while k >= 0 and lines[k].lstrip(" \t").startswith("//"):
+        header.add(k)
+        k -= 1
+    out = []
+    for k, line in enumerate(lines):
+        start = _gomod_comment_start(line)
+        if start < 0:
+            out.append(line)
+            continue
+        comment = line[start:].rstrip("\r")
+        code = line[:start].strip(" \t")
+        keep = (code and not code.startswith(("module", "go ", "toolchain")) and _GOMOD_INDIRECT.fullmatch(comment)) or (
+            k in header and _GOMOD_DEPRECATED.fullmatch(comment)
+        )
+        out.append(line if keep else line[:start] + " " * len(comment) + line[start + len(comment) :])
+    return "\n".join(out)
 
 
 def _grammar(lang: str) -> Callable[[str], str]:

@@ -715,18 +715,21 @@ class ReviewCaseTest(PositionContractTest):
 
     def test_go_mod_comments(self) -> None:
         """Trailing prose goes; `// indirect` and `// Deprecated:` mean something to the go tool."""
-        src = ("// Deprecated: use v2\nmodule example.com/demo // already validated\n"
-               "require (\n\ta v1.0.0 // indirect\n\tb v1.0.0 // pinned for a bug\n)\n")
+        src = ("// Deprecated: use v2\nmodule example.com/demo // indirect\n"
+               "require (\n\ta v1.0.0 // indirect\n\tb v1.0.0 // pinned for a bug\n)\n"
+               "// Deprecated: gone\nreplace \"c // d\" => ./e // gone2\n")
         out = self.assert_masked("go.mod", src)
-        for text in ("// Deprecated: use v2", "// indirect", "module example.com/demo"):
+        for text in ("// Deprecated: use v2", "\ta v1.0.0 // indirect", "module example.com/demo", '"c // d"'):
             self.assertIn(text, out)
-        for text in ("validated", "pinned"):
+        for text in ("module example.com/demo // indirect", "pinned", "gone"):
             self.assertNotIn(text, out)
+        self.assertEqual(strip_context.strip_source("go.mod", 'replace "a => b // c\n')[1], "copied-verbatim (parse error)")
 
     def test_indented_go_directive_is_kept(self) -> None:
         """The compiler reads an indented //go:embed too."""
-        out = self.assert_masked("a.go", "package a\n\n  //go:embed a.txt\nvar s string\n")
+        out = self.assert_masked("a.go", "package a\n\n  //go:embed a.txt\nvar s string\n  //go:noinline\nfunc f() {}\n")
         self.assertIn("//go:embed a.txt", out)
+        self.assertNotIn("noinline", out, "only //go:embed is honored when indented")
 
     def test_bare_cr_in_grammarless_files_is_refused(self) -> None:
         """Only Properties.load defines a bare CR as a line end; elsewhere a comment's end is unknown."""
