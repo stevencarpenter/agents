@@ -52,9 +52,15 @@ then hands the file to ``hippo ingest agent-eval`` when ``hippo`` is on PATH.
 The record ``id`` is the first 16 hex characters of the SHA-256 of the
 record's canonical JSON without ``id``. ``summary`` prints that history.
 
+``run --cases-dir DIR`` runs a private corpus (for example the output of
+``hippo eval export-bench-cases``) instead of ``cases/``. Its records carry
+``bench: blind-review-private`` and go to ``--results`` (default
+``$XDG_DATA_HOME/blind-review/private-results.jsonl``), never to the public
+``results.jsonl``.
+
 Usage: bench.py run [--model sonnet] [--effort high] [--reps 3] [--jobs 4]
-                    [--case ID]... [--record]
-       bench.py summary
+                    [--case ID]... [--cases-dir DIR] [--results PATH] [--record]
+       bench.py summary [--results PATH]
 """
 
 from __future__ import annotations
@@ -80,6 +86,13 @@ import mechanical_review
 import strip_context
 
 BENCH = "blind-review-mechanical"
+PRIVATE_BENCH = "blind-review-private"
+
+
+def private_results() -> Path:
+    """Return the default results file for private-corpus runs."""
+    data = os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share"
+    return Path(data) / "blind-review" / "private-results.jsonl"
 
 
 def bench_run_id(record: dict) -> str:
@@ -90,9 +103,10 @@ def bench_run_id(record: dict) -> str:
     )
 
 
-def load_cases(ids: list[str] | None = None) -> list[dict]:
-    """Load cases from ``cases/``, optionally only the named IDs."""
-    cases = [json.loads(p.read_text()) for p in sorted((HERE / "cases").glob("*.json"))]
+def load_cases(ids: list[str] | None = None, cases_dir: Path | None = None) -> list[dict]:
+    """Load cases from ``cases_dir`` (default ``cases/``), optionally only the named IDs."""
+    paths = sorted((cases_dir or HERE / "cases").glob("*.json"))
+    cases = [json.loads(p.read_text()) for p in paths]
     return [c for c in cases if not ids or c["id"] in ids]
 
 
@@ -115,12 +129,19 @@ def build_units(case: dict, root: Path) -> tuple[Path, dict[str, str]]:
     repo = root / "repo"
     repo.mkdir(parents=True)
     git(repo, "init", "-q", "-b", "main")
-    for rel, text in case["base"].items():
+    def write(rel: str, text: str) -> None:
+        # Private cases carry real repo paths: keep them inside the fixture repo.
+        if Path(rel).is_absolute() or ".." in Path(rel).parts:
+            raise SystemExit(f"{case['id']}: unsafe path {rel!r}")
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
         (repo / rel).write_text(text)
+
+    for rel, text in case["base"].items():
+        write(rel, text)
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", "base")
     for rel, text in case["head"].items():
-        (repo / rel).write_text(text)
+        write(rel, text)
     out = root / "out"
     strip_context.main(["mechanical", "--repo", str(repo), "--out", str(out)])
     manifest = json.loads((out / "manifest.json").read_text())
@@ -175,7 +196,10 @@ def jaccard(sets: list[set]) -> float:
 
 def run(args: argparse.Namespace) -> int:
     """Run every case ``--reps`` times, print the scores, and optionally record them."""
-    cases = load_cases(args.case)
+    results_path = args.results or (private_results() if args.cases_dir else RESULTS)
+    if args.cases_dir and results_path.resolve() == RESULTS.resolve():
+        raise SystemExit(f"a private corpus must not be recorded in {RESULTS}")
+    cases = load_cases(args.case, args.cases_dir)
     missing = set(args.case or ()) - {c["id"] for c in cases}
     if missing or not cases:
         raise SystemExit(f"no such case: {', '.join(sorted(missing)) or '(none loaded)'}")
@@ -258,7 +282,7 @@ def run(args: argparse.Namespace) -> int:
     record = {
         "schema_version": agent_eval.SCHEMA_VERSION,
         "type": "bench_run",
-        "bench": BENCH,
+        "bench": PRIVATE_BENCH if args.cases_dir else BENCH,
         "recorded_at": agent_eval.now_ms(),
         "repo_commit": _commit(),
         "cli_version": mechanical_review.cli_version(),
@@ -285,9 +309,10 @@ def run(args: argparse.Namespace) -> int:
     if args.record and failed:
         print(f"not recorded: {len(failed)} review(s) failed", file=sys.stderr)
     elif args.record:
-        agent_eval.append(RESULTS, [record])
-        print(f"recorded -> {RESULTS}")
-        agent_eval.ingest(RESULTS)
+        results_path.parent.mkdir(parents=True, exist_ok=True)
+        agent_eval.append(results_path, [record])
+        print(f"recorded -> {results_path}")
+        agent_eval.ingest(results_path)
     return 1 if failed else 0
 
 
@@ -302,15 +327,16 @@ def _commit() -> str:
     return out("rev-parse", "--short", "HEAD").strip() + ("-dirty" if dirty else "")
 
 
-def summary(_: argparse.Namespace) -> int:
+def summary(args: argparse.Namespace) -> int:
     """Print the recorded score history, oldest first."""
-    if not RESULTS.exists():
+    results_path = args.results or RESULTS
+    if not results_path.exists():
         print("no recorded runs")
         return 0
     cols = ("recall", "context_required_recall", "safe_false_alarm", "extra_findings_per_run",
             "trap_stability", "finding_jaccard", "input_identical")
     print("recorded_at | commit | cases | model | effort | reps | " + " | ".join(cols))
-    for r in agent_eval.read(RESULTS):
+    for r in agent_eval.read(results_path):
         if r.get("type") != "bench_run":
             continue
         model = ",".join(r["model_ids"]) or r["model"]
@@ -334,8 +360,12 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--jobs", type=int, default=4)
     r.add_argument("--case", action="append")
     r.add_argument("--record", action="store_true")
+    r.add_argument("--cases-dir", type=Path, help="private corpus directory instead of cases/")
+    r.add_argument("--results", type=Path, help="results file (private default: see above)")
     r.set_defaults(func=run)
-    sub.add_parser("summary").set_defaults(func=summary)
+    s = sub.add_parser("summary")
+    s.add_argument("--results", type=Path)
+    s.set_defaults(func=summary)
     args = parser.parse_args(argv)
     return args.func(args)
 

@@ -176,6 +176,22 @@ Two records, for two questions:
   first 16 hex characters of the SHA-256 of the record's canonical JSON
   (sorted keys, no spaces) without `id`. `bench.py summary` prints the
   history.
+- **Score (private corpus):** the public cases are synthetic, so they
+  measure only what they plant. Real defects make harder cases:
+  `hippo eval export-bench-cases --out DIR` writes one case per accepted
+  finding with a known fix commit and per escape with `fix_commit`, redacted
+  with the hippo ingest engines (`base` is the fixed file, `head` the
+  defective one, the trap is the flagged line). `DIR` must be outside every
+  git checkout; hippo refuses otherwise. Run
+  `bench.py run --cases-dir DIR --record`. The record carries
+  `bench: blind-review-private` and goes to `--results PATH` (default
+  `$XDG_DATA_HOME/blind-review/private-results.jsonl`, else
+  `~/.local/share/blind-review/private-results.jsonl`), then to
+  `hippo ingest agent-eval`. The public `bench/results.jsonl` never receives
+  a private run, and `bench.py` refuses it as `--results` with
+  `--cases-dir`. `bench.py summary --results PATH` prints that history.
+  Running the cases sends their redacted file text to the reviewer model,
+  as the original review did.
 - **Effectiveness (real use):** did findings on real changes help ship
   better code? Run `<this-skill-dir>/scripts/review_log.py log --out
   <out-dir>` after each real run: it reads `run.json` and writes one
