@@ -614,7 +614,8 @@ def _whole_line_comments(markers: str, bare_cr: bool = False) -> Callable[[str],
         out, continued = [], False
         for line in re.findall(r"[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$", source):
             body = line.rstrip("\r\n")
-            if not continued and body.lstrip(" \t\f")[:1] in markers:
+            first = body.lstrip(" \t\f")[:1]
+            if not continued and first and first in markers:  # "" is in every string
                 out.append(" " * len(body) + line[len(body) :])
                 continue  # a comment line never continues
             out.append(line)
@@ -1342,6 +1343,10 @@ def cmd_mechanical(args: argparse.Namespace) -> int:
 
 def cmd_files(args: argparse.Namespace) -> int:
     out = Path(args.out).resolve()
+    # A write under --out could replace an input with its stripped copy.
+    inside = [p for p in args.paths if Path(p).resolve() == out or out in Path(p).resolve().parents]
+    if inside:
+        raise SystemExit(f"--out {out} must not contain an input: {inside[0]}")
     manifest: list[dict[str, str]] = []
     for p in args.paths:
         src = Path(p)

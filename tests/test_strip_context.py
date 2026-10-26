@@ -1155,6 +1155,7 @@ class MechanicalModeTest(unittest.TestCase):
             ("a.jsx", "const e = <pre>deny  all</pre>;\n", "const e = <pre>deny all</pre>;\n"),
             ("a.sql", "SELECT 'deny  all';\n", "SELECT 'deny all';\n"),
             ("a.cmake", 'set(X "deny  all")\n', 'set(X "deny all")\n'),
+            ("setup.cfg", "[x]\nm = hello\n\t\n  world\n", "[x]\nm = hello\n  world\n"),
             ("a.xml", "<a>deny  all</a>\n", "<a>deny all</a>\n"),
             ("a.sh", "echo one \\\n\necho two\n", "echo one \\\necho two\n"),
             ("a.sh", 'printf "<%s>" foo\\  bar\n', 'printf "<%s>" foo\\ bar\n'),
@@ -1171,7 +1172,8 @@ class MechanicalModeTest(unittest.TestCase):
                 base_s, base_action = strip_context.strip_source(rel, base)
                 head_s, head_action = strip_context.strip_source(rel, head)
                 self.assertEqual((base_action, head_action), ("stripped", "stripped"))
-                self.assertNotEqual(strip_context.mechanical_hunks(rel, base_s, head_s), "")
+                hunks = strip_context.mechanical_hunks(rel, base_s, head_s, sources=(base, head))
+                self.assertNotEqual(hunks, "")
 
     def test_grammarless_values_keep_continued_and_blank_rows(self) -> None:
         """A continued git config value may hold `#` lines; a spaces-only INI value row is data."""
@@ -1353,6 +1355,15 @@ class MechanicalModeTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             strip_context.main(["files", "--out", str(files_out), "sub/a.py"])
         self.assertEqual((repo / "a.py").read_text(), "x = 2  # keep me\n")
+
+    def test_files_out_containing_an_input_is_refused(self) -> None:
+        """Writing the stripped copy next to its source would replace the source."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "a.properties"
+            src.write_text("# keep me\nk=v\n")
+            with self.assertRaises(SystemExit):
+                strip_context.main(["files", "--out", tmp, str(src)])
+            self.assertEqual(src.read_text(), "# keep me\nk=v\n")
 
     def test_out_inside_repo_is_refused(self) -> None:
         """A manifest left in the repo would be reviewed next run, with every path in it."""
