@@ -178,12 +178,17 @@ def _findings(reply: object) -> list[dict] | None:
     return findings
 
 
+def _write(path: Path, text: str) -> None:
+    """Write a payload or result; a symlink left there is removed, never followed."""
+    if path.is_symlink():
+        path.unlink()
+    path.write_text(text, encoding="utf-8")
+
+
 def review_unit(unit: Path, out: Path, argv: list[str], repo_name: str) -> dict:
     """Review one unit in a fresh empty directory and record payload and result."""
     text = unit.read_text(encoding="utf-8")
-    (out / "payloads" / f"{unit.stem}.json").write_text(
-        json.dumps({"argv": argv, "stdin": text}, indent=2), encoding="utf-8"
-    )
+    _write(out / "payloads" / f"{unit.stem}.json", json.dumps({"argv": argv, "stdin": text}, indent=2))
     reply: object = None
     try:
         proc = subprocess.run(
@@ -222,9 +227,7 @@ def review_unit(unit: Path, out: Path, argv: list[str], repo_name: str) -> dict:
         "input_sha256": hashlib.sha256(json.dumps([argv, text]).encode()).hexdigest(),
         "error": None if findings is not None else error,
     }
-    (out / "results" / f"{unit.stem}.json").write_text(
-        json.dumps(result, indent=2), encoding="utf-8"
-    )
+    _write(out / "results" / f"{unit.stem}.json", json.dumps(result, indent=2))
     return result
 
 

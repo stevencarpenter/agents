@@ -7,6 +7,7 @@ import io
 import json
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 from importlib.machinery import SourceFileLoader
@@ -256,6 +257,21 @@ class SandboxTest(unittest.TestCase):
                 (box / "stray.txt").write_text("x")
                 with self.assertRaises(SystemExit):
                     mechanical_review.sandbox("repo-x")
+
+    def test_result_symlink_is_not_written_through(self) -> None:
+        """A leftover result link must not let a rerun overwrite the file it points at."""
+        with tempfile.TemporaryDirectory() as tmp:
+            out, target = Path(tmp) / "out", Path(tmp) / "source.py"
+            target.write_text("keep\n")
+            for sub in ("units", "payloads", "results"):
+                (out / sub).mkdir(parents=True)
+            unit = out / "units" / "f01.py.diff"
+            unit.write_text("file f01.py\n+1|x = 1\n")
+            (out / "results" / "f01.py.json").symlink_to(target)
+            (out / "payloads" / "f01.py.json").symlink_to(target)
+            fake = [sys.executable, "-c", "print('{}')"]
+            mechanical_review.review_unit(unit, out, fake, "no-such-repo-name")
+            self.assertEqual(target.read_text(), "keep\n")
 
     def test_refuses_symlinked_sandbox(self) -> None:
         """On a shared /tmp another user could point the path at their own directory."""
