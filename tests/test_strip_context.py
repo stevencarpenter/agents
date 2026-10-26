@@ -1159,6 +1159,16 @@ class MechanicalModeTest(unittest.TestCase):
                 self.assertEqual((base_action, head_action), ("stripped", "stripped"))
                 self.assertNotEqual(strip_context.mechanical_hunks(rel, base_s, head_s), "")
 
+    def test_grammarless_values_keep_continued_and_blank_rows(self) -> None:
+        """A continued git config value may hold `#` lines; a spaces-only INI value row is data."""
+        out = self.run_mechanical(
+            {".gitconfig": '[alias]\n\tsay = "!echo \'hello \\\n# deny\'"\n', "setup.cfg": "[x]\nm = hello\n  \n  world\n# c\n"},
+            {".gitconfig": '[alias]\n\tsay = "!echo \'hello \\\n# pass\'"\n', "setup.cfg": "[x]\nm = hello\n  world\n# a longer comment\n"},
+        )
+        units = {f["path"]: f.get("unit") for f in json.loads((out / "manifest.json").read_text())["files"]}
+        self.assertIn("pass", (out / "units" / f"{units['.gitconfig']}.diff").read_text())
+        self.assertIsNotNone(units["setup.cfg"], "the removed spaces-only value row must surface")
+
     def test_trailing_value_space_reaches_the_reviewer(self) -> None:
         """A context-free reviewer must see the changed character, not two equal rows."""
         hunks = strip_context.mechanical_hunks("a.properties", "message=hello\n", "message=hello \n")

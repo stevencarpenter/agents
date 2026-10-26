@@ -581,22 +581,30 @@ def _lines(pattern: str) -> Callable[[str], str]:
     return lambda source: compiled.sub(lambda m: " " * len(m.group()), source)
 
 
-def strip_properties(source: str) -> str:
-    r"""Strip `#` and `!` comment lines from a Java `.properties` file.
+def _whole_line_comments(markers: str) -> Callable[[str], str]:
+    r"""Strip lines that start with one of ``markers`` in a grammarless config format.
 
-    A line that follows a `\`-continued value line is part of that value,
-    even when it starts with `#`, as ``java.util.Properties.load`` reads it.
+    A line after one that ends in an odd number of backslashes continues a
+    value (Java properties, git config), so it is data even when it starts
+    with a marker. Lines end at `\r\n`, `\n`, or a bare `\r`, as
+    ``java.util.Properties.load`` reads them.
     """
-    out, continued = [], False
-    # Properties.load ends a line at `\r\n`, `\n`, or a bare `\r`.
-    for line in re.findall(r"[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$", source):
-        body = line.rstrip("\r\n")
-        if not continued and body.lstrip(" \t\f")[:1] in ("#", "!"):
-            out.append(" " * len(body) + line[len(body) :])
-            continue  # a comment line never continues
-        out.append(line)
-        continued = _CONTINUED.search(body) is not None
-    return "".join(out)
+
+    def strip(source: str) -> str:
+        out, continued = [], False
+        for line in re.findall(r"[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$", source):
+            body = line.rstrip("\r\n")
+            if not continued and body.lstrip(" \t\f")[:1] in markers:
+                out.append(" " * len(body) + line[len(body) :])
+                continue  # a comment line never continues
+            out.append(line)
+            continued = _CONTINUED.search(body) is not None
+        return "".join(out)
+
+    return strip
+
+
+strip_properties = _whole_line_comments("#!")
 
 
 def _grammar(lang: str) -> Callable[[str], str]:
@@ -607,8 +615,8 @@ def _suffixes(spec: str, strip: Callable[[str], str]) -> dict[str, Callable[[str
     return dict.fromkeys(spec.split(), strip)
 
 
-HASH_LINES = _lines(r"^[ \t]*#[^\r\n]*")
-INI_LINES = _lines(r"^[ \t]*[#;][^\r\n]*")
+HASH_LINES = _whole_line_comments("#")
+INI_LINES = _whole_line_comments("#;")
 # pip: a `#` at line start or after whitespace starts a comment; `url#egg=` is data.
 REQUIREMENTS_LINES = _lines(r"(?:^|(?<=[ \t]))#[^\r\n]*")
 
@@ -1107,6 +1115,7 @@ def _code_lines(
     indent_sensitive: bool,
     layout: tuple[set[int], list[tuple[int, int]]] | None = (set(), []),
     inline_comments: bool = False,
+    source: str | None = None,
 ) -> list[tuple[int, str, str]]:
     """Return (line_number, compare_key, display) for each line that holds code.
 
@@ -1123,12 +1132,15 @@ def _code_lines(
     ends_continued = [False] + [_CONTINUED.search(line) is not None for line in lines[:-1]]
     if layout is None:
         # These formats comment only whole lines, so trailing spaces are value data,
-        # except where a trailing comment was blanked (requirements files). An empty
-        # line can be data too (an INI multi-line value); a blanked comment is spaces.
+        # except where a trailing comment was blanked (requirements files). A blank
+        # line can be data too (an INI multi-line value) when it was not a comment.
+        originals = source.split("\n") if source is not None else None
         return [
             (n, *(2 * [line.rstrip() if inline_comments else line.rstrip("\r")]))
             for n, line in enumerate(lines, 1)
-            if line.strip() or ends_continued[n - 1] or (not line.rstrip("\r") and n < len(lines))
+            if line.strip()
+            or ends_continued[n - 1]
+            or (n < len(lines) and (not line.rstrip("\r") or (originals is not None and originals[n - 1] == line)))
         ]
     doc_rows, literals = layout
     rows = []
@@ -1197,13 +1209,16 @@ def _changed_ranges(old: list[str], new: list[str]) -> list[tuple[int, int, int,
     return ranges
 
 
-def mechanical_hunks(rel: str, base: str, head: str) -> str:
+def mechanical_hunks(rel: str, base: str, head: str, sources: tuple[str, str] | None = None) -> str:
     """Render only the changed code lines between two stripped texts.
 
     Args:
         rel: Repository-relative path, used to pick indentation handling.
         base: Stripped base text ("" for an added file).
         head: Stripped head text ("" for a deleted file).
+        sources: The unstripped (base, head) texts. Without a grammar, a
+            whitespace-only line equal to its source line is data, not a
+            blanked comment; without ``sources`` it is dropped.
 
     Returns:
         ``-N|line`` and ``+N|line`` rows with original line numbers, groups
@@ -1212,8 +1227,9 @@ def mechanical_hunks(rel: str, base: str, head: str) -> str:
     sensitive = _grammar_name(rel, head or base) in INDENT_SENSITIVE_LANGUAGES
     found = _dispatch(rel, head or base)
     inline = found is not None and found[1] is REQUIREMENTS_LINES
-    old = _code_lines(base, sensitive, _layout(rel, base), inline)
-    new = _code_lines(head, sensitive, _layout(rel, head), inline)
+    base_source, head_source = sources or (None, None)
+    old = _code_lines(base, sensitive, _layout(rel, base), inline, base_source)
+    new = _code_lines(head, sensitive, _layout(rel, head), inline, head_source)
     groups = []
     for i1, i2, j1, j2 in _changed_ranges([k for _, k, _ in old], [k for _, k, _ in new]):
         rows = [f"-{n}|{d}" for n, _, d in old[i1:i2]]
@@ -1248,18 +1264,20 @@ def cmd_mechanical(args: argparse.Namespace) -> int:
         if pair == (None, None):
             entry["action"] = _NO_CONTENT
             continue
-        texts = []
+        texts, sources = [], []
         for data in pair:
             if data is None:
                 texts.append("")
+                sources.append("")
                 continue
             stripped, action = process_file(rel, data)
             if stripped is None or action != "stripped":
                 entry["action"] = action if stripped is None else f"omitted ({action})"
                 break
             texts.append(stripped)
+            sources.append(data.decode("utf-8"))
         else:
-            hunks = mechanical_hunks(rel, *texts)
+            hunks = mechanical_hunks(rel, *texts, sources=(sources[0], sources[1]))
             if not hunks:
                 entry["action"] = "no-code-change"
                 continue
