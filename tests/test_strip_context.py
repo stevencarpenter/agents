@@ -713,6 +713,21 @@ class ReviewCaseTest(PositionContractTest):
         out = self.assert_masked(".gitconfig", '[a]\n\tx = "a \\\n# keep"\n')
         self.assertIn("# keep", out)
 
+    def test_go_mod_comments(self) -> None:
+        """Trailing prose goes; `// indirect` and `// Deprecated:` mean something to the go tool."""
+        src = ("// Deprecated: use v2\nmodule example.com/demo // already validated\n"
+               "require (\n\ta v1.0.0 // indirect\n\tb v1.0.0 // pinned for a bug\n)\n")
+        out = self.assert_masked("go.mod", src)
+        for text in ("// Deprecated: use v2", "// indirect", "module example.com/demo"):
+            self.assertIn(text, out)
+        for text in ("validated", "pinned"):
+            self.assertNotIn(text, out)
+
+    def test_indented_go_directive_is_kept(self) -> None:
+        """The compiler reads an indented //go:embed too."""
+        out = self.assert_masked("a.go", "package a\n\n  //go:embed a.txt\nvar s string\n")
+        self.assertIn("//go:embed a.txt", out)
+
     def test_bare_cr_in_grammarless_files_is_refused(self) -> None:
         """Only Properties.load defines a bare CR as a line end; elsewhere a comment's end is unknown."""
         for name in ("setup.cfg", ".gitconfig", "a.conf", ".gitignore", "requirements.txt", "go.mod"):

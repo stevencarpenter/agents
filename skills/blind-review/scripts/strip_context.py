@@ -228,7 +228,8 @@ def _kept(lang: str, node: Node, data: bytes, py_blocks: list[range]) -> bool:
     if node.start_byte == 0 and text.startswith(b"#!"):
         return True
     keep = KEEP.get(lang)
-    if keep is not None and keep.fullmatch(text) and (node.start_point.column == 0 or lang == "sql"):
+    starts_line = not data[data.rfind(b"\n", 0, node.start_byte) + 1 : node.start_byte].strip()
+    if keep is not None and keep.fullmatch(text) and (starts_line or lang == "sql"):
         if lang not in _HEADER_DIRECTIVES:
             return True
         prev = node.prev_named_sibling
@@ -514,6 +515,22 @@ def _whole_line_comments(markers: str, bare_cr: bool = False, continuation: bool
 strip_properties = _whole_line_comments("#!", bare_cr=True)
 
 
+# A `//` outside a quoted path, and the go tool's two meaningful comments.
+_GOMOD_COMMENT = re.compile(r'^((?:[^"/\r\n]|"[^"\r\n]*"|/(?!/))*)(//[^\r\n]*)', re.MULTILINE)
+_GOMOD_KEEP = re.compile(r"//[ \t]*(?:indirect|Deprecated:.*)[ \t]*")
+
+
+def strip_gomod(source: str) -> str:
+    """Strip `//` comments from go.mod and go.work, keeping `// indirect` and `// Deprecated:`."""
+    _no_bare_cr(source)
+
+    def blank(m: re.Match[str]) -> str:
+        comment = m.group(2)
+        return m.group(1) + (comment if _GOMOD_KEEP.fullmatch(comment.rstrip("\r")) else " " * len(comment))
+
+    return _GOMOD_COMMENT.sub(blank, source)
+
+
 def _grammar(lang: str) -> Callable[[str], str]:
     return functools.partial(_tree_sitter, lang)
 
@@ -592,7 +609,7 @@ LANGUAGES_BY_NAME: dict[str, Callable[[str], str]] = {
         ".gitconfig .gitmodules",
         GIT_CONFIG_LINES,
     ),
-    **_suffixes("go.mod go.work", _lines(r"^[ \t]*//[^\r\n]*")),
+    **_suffixes("go.mod go.work", strip_gomod),
     **_suffixes("Pipfile", _grammar("toml")),
 }
 LANGUAGES_BY_GLOB: list[tuple[str, Callable[[str], str]]] = [
