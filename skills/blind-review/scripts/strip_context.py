@@ -993,6 +993,33 @@ def _base_and_head(
 _NO_CONTENT = "skipped (no file content, such as a submodule)"
 
 
+def _clear(path: Path) -> None:
+    """Remove a generated file or tree; a symlink is removed, never followed."""
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.exists():
+        shutil.rmtree(path)
+
+
+def _write(out: Path, dest: Path, text: str) -> None:
+    """Write a generated file under ``out`` without following a symlink out of it.
+
+    Raises:
+        SystemExit: When a directory on the way to ``dest`` leads outside
+            ``out``; writing there could overwrite a source file.
+    """
+    existing = dest.parent
+    while not existing.exists() and existing != out:
+        existing = existing.parent
+    resolved = existing.resolve()
+    if resolved != out and out not in resolved.parents:
+        raise SystemExit(f"{dest.parent} leads outside --out {out}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.is_symlink():
+        dest.unlink()
+    dest.write_text(text, encoding="utf-8")
+
+
 def _repo_and_out(args: argparse.Namespace) -> tuple[Path, Path]:
     """Resolve --repo and --out, refusing an --out inside the repo.
 
@@ -1012,7 +1039,7 @@ def cmd_diff(args: argparse.Namespace) -> int:
     repo, out = _repo_and_out(args)
     # A tree from an earlier run can hold files this change no longer touches.
     for generated in ("base", "head"):
-        shutil.rmtree(out / generated, ignore_errors=True)
+        _clear(out / generated)
     changed = _changed_files(repo, args.base)
     manifest: list[dict[str, str]] = []
     diff_chunks: list[str] = []
@@ -1036,9 +1063,7 @@ def cmd_diff(args: argparse.Namespace) -> int:
                 entry["action"] = action
             if stripped is None:
                 continue
-            dest = out / tree / rel
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(stripped, encoding="utf-8")
+            _write(out, out / tree / rel, stripped)
             if label == "base":
                 stripped_base = stripped
             else:
@@ -1049,12 +1074,9 @@ def cmd_diff(args: argparse.Namespace) -> int:
         diff_chunks.append(_unified_diff(stripped_base or "", stripped_head or "", rel))
 
     out.mkdir(parents=True, exist_ok=True)
-    (out / "stripped.diff").write_text("".join(diff_chunks), encoding="utf-8")
+    _write(out, out / "stripped.diff", "".join(diff_chunks))
     _assert_diff_applies(repo, out / "stripped.diff")
-    (out / "manifest.json").write_text(
-        json.dumps({"repo": str(repo), "base": args.base, "files": manifest}, indent=2),
-        encoding="utf-8",
-    )
+    _write(out, out / "manifest.json", json.dumps({"repo": str(repo), "base": args.base, "files": manifest}, indent=2))
     print(f"stripped {len(changed)} changed file(s) into {out}")
     print(f"review targets: {out}/head and {out}/stripped.diff")
     return 0
@@ -1071,6 +1093,7 @@ _LITERAL_KIND = re.compile(
 )
 # A backslash-escaped space is part of a word (shell `foo\ bar`), so it never starts a run.
 _WHITESPACE = re.compile(r"(?<!\\)\s+")
+_TRAILING = re.compile(r"(?<!\\)\s+\Z")
 _CONTINUED = re.compile(r"(?<!\\)(?:\\\\)*\\\r?$")
 
 
@@ -1127,7 +1150,7 @@ def _compare_key(line: str, parts: list[tuple[int, int]]) -> str:
     if not parts or parts[0][0] > 0:
         key = key.lstrip()
     if not parts or parts[-1][1] < len(line):
-        key = key.rstrip()
+        key = _TRAILING.sub("", key)  # `foo\ ` at a line end keeps its escaped space
     return key
 
 
@@ -1189,7 +1212,7 @@ def _code_lines(
         if indent_sensitive and not (parts and parts[0][0] == 0):
             key = line[: len(line) - len(line.lstrip())] + key
         ends_in_literal = parts and parts[-1][1] == len(line)
-        rows.append((number, key, line if ends_in_literal else line.rstrip()))
+        rows.append((number, key, line if ends_in_literal else _TRAILING.sub("", line)))
     return rows
 
 
@@ -1272,7 +1295,7 @@ def cmd_mechanical(args: argparse.Namespace) -> int:
     # Output of an earlier run describes another revision. mechanical_review.py
     # globs units/, so a leftover unit would be reviewed as if it were current.
     for generated in ("units", "payloads", "results"):
-        shutil.rmtree(out / generated, ignore_errors=True)
+        _clear(out / generated)
     units.mkdir(parents=True)
     manifest: list[dict[str, str]] = []
     unit_count = 0
@@ -1306,13 +1329,11 @@ def cmd_mechanical(args: argparse.Namespace) -> int:
             found = _dispatch(rel, texts[-1] or texts[0])
             label = f"f{unit_count:02d}{found[0] if found else ''}"
             entry.update(action="stripped", unit=label)
-            (units / f"{label}.diff").write_text(f"file {label}\n{hunks}", encoding="utf-8")
-    (out / "manifest.json").write_text(
-        json.dumps(
-            {"repo": str(repo), "base": args.base, "mode": "mechanical", "files": manifest},
-            indent=2,
-        ),
-        encoding="utf-8",
+            _write(out, units / f"{label}.diff", f"file {label}\n{hunks}")
+    _write(
+        out,
+        out / "manifest.json",
+        json.dumps({"repo": str(repo), "base": args.base, "mode": "mechanical", "files": manifest}, indent=2),
     )
     print(f"wrote {unit_count} unit(s) from {len(manifest)} changed file(s) into {units}")
     return 0
@@ -1331,13 +1352,9 @@ def cmd_files(args: argparse.Namespace) -> int:
         stripped, action = process_file(rel, src.read_bytes())
         manifest.append({"path": rel, "action": action})
         if stripped is not None:
-            dest = out / rel
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(stripped, encoding="utf-8")
+            _write(out, out / rel, stripped)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "manifest.json").write_text(
-        json.dumps({"files": manifest}, indent=2), encoding="utf-8"
-    )
+    _write(out, out / "manifest.json", json.dumps({"files": manifest}, indent=2))
     print(f"stripped {len(args.paths)} file(s) into {out}")
     return 0
 

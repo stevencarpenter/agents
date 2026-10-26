@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -1153,6 +1154,7 @@ class MechanicalModeTest(unittest.TestCase):
             ("a.xml", "<a>deny  all</a>\n", "<a>deny all</a>\n"),
             ("a.sh", "echo one \\\n\necho two\n", "echo one \\\necho two\n"),
             ("a.sh", 'printf "<%s>" foo\\  bar\n', 'printf "<%s>" foo\\ bar\n'),
+            ("a.sh", "printf '<%s>' foo\\ \necho done\n", "printf '<%s>' foo\\\necho done\n"),
             ("a.properties", "a=x\\\n# deny\n", "a=x\\\n# allow\n"),
             ("a.properties", "# c\rkey=a\n", "# c\rkey=b\n"),
             ("a.properties", "message=hello\n", "message=hello \n"),
@@ -1324,6 +1326,29 @@ class MechanicalModeTest(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 strip_context.main([mode, "--repo", str(repo), "--out", str(repo.parent)])
         self.assertTrue((repo / ".git").is_dir())
+
+    def test_symlinks_in_out_are_never_followed(self) -> None:
+        """A `head` symlink or a manifest symlink into the repo must not be written through."""
+        out = self.run_mechanical({"a.py": "x = 1  # keep me\n"}, {"a.py": "x = 2  # keep me\n"})
+        repo = Path(json.loads((out / "manifest.json").read_text())["repo"])
+        diff_out = out.parent / "diff-out"
+        diff_out.mkdir()
+        (diff_out / "head").symlink_to(repo)
+        (diff_out / "manifest.json").symlink_to(repo / "a.py")
+        strip_context.main(["diff", "--repo", str(repo), "--out", str(diff_out)])
+        self.assertEqual((repo / "a.py").read_text(), "x = 2  # keep me\n")
+        self.assertFalse((diff_out / "head").is_symlink())
+        files_out = out.parent / "files-out"
+        files_out.mkdir()
+        (files_out / "sub").symlink_to(repo)
+        src = out.parent / "src"
+        (src / "sub").mkdir(parents=True)
+        (src / "sub" / "a.py").write_text("x = 3  # c\n")
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(src)
+        with self.assertRaises(SystemExit):
+            strip_context.main(["files", "--out", str(files_out), "sub/a.py"])
+        self.assertEqual((repo / "a.py").read_text(), "x = 2  # keep me\n")
 
     def test_out_inside_repo_is_refused(self) -> None:
         """A manifest left in the repo would be reviewed next run, with every path in it."""
