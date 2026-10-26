@@ -186,6 +186,8 @@ _JS_TYPES = {
 _SCRIPT_LANGS = {"js": "javascript", "javascript": "javascript", "jsx": "javascript", "ts": "typescript",
                  "typescript": "typescript", "tsx": "tsx"}
 _STYLE_LANGS = {"": "css", "css": "css", "postcss": "css"}
+# A SHELL instruction or an escape directive means commands are not plain /bin/sh lines.
+_DOCKER_OTHER_SHELL = re.compile(rb"^[ \t]*(?i:shell)[ \t]|^[ \t]*#[ \t]*(?i:escape)[ \t]*=", re.MULTILINE)
 _MAKE_COMMENT = re.compile(rb"(?<!\\)#[^\r\n]*")
 _DOC_CONTENT = {"string_content", "quoted_content", "content"}
 _DOC_QUOTE = re.compile(rb'[^"\'`]*("""|\'\'\'|"|\'|`)')
@@ -385,10 +387,14 @@ def _collect(
         for arg in _captures(_query(lang, "(preproc_arg) @arg"), root, "arg"):
             arg_text = data[arg.start_byte : arg.end_byte]
             _collect(lang, arg_text, base + arg.start_byte, spans, fragment=True, layout=layout)
-    if lang == "dockerfile":
-        # A RUN, CMD, or ENTRYPOINT shell form is a shell command: its quotes are data, its `#` a comment.
+    if lang == "dockerfile" and not _DOCKER_OTHER_SHELL.search(data):
+        # A RUN, CMD, or ENTRYPOINT shell form runs in /bin/sh: its quotes are data, its `#` a comment.
+        # A command bash cannot parse keeps its text, so nothing is blanked on a guess.
         for cmd in _captures(_query(lang, "(shell_command) @sh"), root, "sh"):
-            _collect("bash", data[cmd.start_byte : cmd.end_byte], base + cmd.start_byte, spans, fragment=True, layout=layout)
+            try:
+                _collect("bash", data[cmd.start_byte : cmd.end_byte], base + cmd.start_byte, spans, layout=layout)
+            except SyntaxError:
+                pass
     if lang == "make":
         # Outside recipes and define bodies, make ends a line at any unescaped `#`.
         protected = [(n.start_byte, n.end_byte) for n in _captures(_query(lang, "[(recipe_line) (raw_text)] @p"), root, "p")]

@@ -721,6 +721,14 @@ class ReviewCaseTest(PositionContractTest):
         out = self.assert_masked("a.html", '<script type="text/template"><p>// keep</p></script>\n')
         self.assertIn("// keep", out)
 
+    def test_dockerfile_commands_are_shell_only_under_sh(self) -> None:
+        """Under SHELL or an escape directive, `#` in a command is not known to be a comment."""
+        out = self.assert_masked("Dockerfile", "FROM a\nRUN x # gone\n")
+        self.assertNotIn("gone", out)
+        for src in ('FROM a\nSHELL ["pwsh", "-c"]\nRUN x # keep\n', "# escape=`\nFROM a\nRUN x # keep\n"):
+            with self.subTest(src=src):
+                self.assertIn("x # keep", self.assert_masked("Dockerfile", src))
+
     def test_grammar_pins_match_everywhere(self) -> None:
         """The scripts that import the stripper and the dev group pin the same wheels."""
         import re
