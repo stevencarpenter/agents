@@ -295,10 +295,13 @@ def _embedded_language(element: Node, data: bytes) -> str | None:
     """Pick the grammar of a <script> or <style> body, or None when it is data."""
     start = element.child(0)
     attrs = _attributes(start, data) if start is not None else {}
-    if element.type == "style_element":
-        return _STYLE_LANGS.get(attrs.get("lang", ""))
-    if "lang" in attrs:
-        return _SCRIPT_LANGS.get(attrs["lang"])
+    langs = _STYLE_LANGS if element.type == "style_element" else _SCRIPT_LANGS
+    if "lang" in attrs or element.type == "style_element":
+        lang = attrs.get("lang", "")
+        if lang not in langs:
+            # A `lang` names code (scss, coffee); passing it through as data would leak its comments.
+            raise SyntaxError(f"no grammar for <{element.type.split('_')[0]} lang={lang}>")
+        return langs[lang]
     kind = attrs.get("type", "").split(";")[0].strip()
     if kind in _JS_TYPES:
         return "javascript"

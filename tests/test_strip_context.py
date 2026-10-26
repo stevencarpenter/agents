@@ -713,6 +713,14 @@ class ReviewCaseTest(PositionContractTest):
                 self.assertEqual(strip_context.strip_source(name, "# c\rk = v\n")[1], "copied-verbatim (parse error)")
         self.assertEqual(strip_context.strip_source("a.properties", "# c\rk=v\n")[1], "stripped")
 
+    def test_embedded_code_without_a_grammar_fails_closed(self) -> None:
+        """`<style lang="scss">` is code; with no grammar its comments must not pass as data."""
+        for src in ('<style lang="scss">$a: 1; // why</style>\n', '<script lang="coffee"># why\nx = 1</script>\n'):
+            with self.subTest(src=src):
+                self.assertEqual(strip_context.strip_source("a.html", src)[1], "copied-verbatim (parse error)")
+        out = self.assert_masked("a.html", '<script type="text/template"><p>// keep</p></script>\n')
+        self.assertIn("// keep", out)
+
     def test_grammar_pins_match_everywhere(self) -> None:
         """The scripts that import the stripper and the dev group pin the same wheels."""
         import re
