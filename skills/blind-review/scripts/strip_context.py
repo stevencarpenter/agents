@@ -676,7 +676,7 @@ LANGUAGES_BY_NAME: dict[str, Callable[[str], str]] = {
         " .zlogin .zlogout",
         _grammar("bash"),
     ),
-    **_suffixes(".env", HASH_LINES),
+    **_suffixes(".env", _grammar("bash")),  # sourced by shells; quoted values span lines
     **_suffixes(
         ".gitignore .gitattributes .dockerignore .npmignore .prettierignore .eslintignore"
         " .helmignore CODEOWNERS",
@@ -694,7 +694,7 @@ LANGUAGES_BY_GLOB: list[tuple[str, Callable[[str], str]]] = [
     ("constraints*.txt", REQUIREMENTS_LINES),
     ("Dockerfile.*", _grammar("dockerfile")),
     ("Containerfile.*", _grammar("dockerfile")),
-    (".env.*", HASH_LINES),
+    (".env.*", _grammar("bash")),
 ]
 
 
@@ -1119,7 +1119,7 @@ def _code_lines(
         # These formats comment only whole lines, so trailing spaces are value data,
         # except where a trailing comment was blanked (requirements files).
         return [
-            (n, line.rstrip() if inline_comments else line.rstrip("\r"), line.rstrip())
+            (n, *(2 * [line.rstrip() if inline_comments else line.rstrip("\r")]))
             for n, line in enumerate(lines, 1)
             if line.strip() or ends_continued[n - 1]
         ]

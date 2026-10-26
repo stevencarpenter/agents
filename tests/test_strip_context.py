@@ -1148,6 +1148,7 @@ class MechanicalModeTest(unittest.TestCase):
             ("a.properties", "a=x\\\n# deny\n", "a=x\\\n# allow\n"),
             ("a.properties", "# c\rkey=a\n", "# c\rkey=b\n"),
             ("a.properties", "message=hello\n", "message=hello \n"),
+            (".env", 'MESSAGE="hello\n# deny\n"\n', 'MESSAGE="hello\n# allow\n"\n'),
         ]
         for rel, base, head in cases:
             with self.subTest(base=base):
@@ -1155,6 +1156,11 @@ class MechanicalModeTest(unittest.TestCase):
                 head_s, head_action = strip_context.strip_source(rel, head)
                 self.assertEqual((base_action, head_action), ("stripped", "stripped"))
                 self.assertNotEqual(strip_context.mechanical_hunks(rel, base_s, head_s), "")
+
+    def test_trailing_value_space_reaches_the_reviewer(self) -> None:
+        """A context-free reviewer must see the changed character, not two equal rows."""
+        hunks = strip_context.mechanical_hunks("a.properties", "message=hello\n", "message=hello \n")
+        self.assertIn("+1|message=hello \n", hunks)
 
     def test_vue_attribute_braces_are_text(self) -> None:
         """`{{` in a static attribute is not an interpolation, so `//` there is data."""

@@ -192,7 +192,7 @@ any files the stripper could not process. In sidecar mode: one line
   and docstring nodes are blanked. Embedded `<script>` and `<style>`
   bodies, Svelte and Vue template expressions, C macro bodies, and Make
   recipes are parsed with their own grammar. Line-oriented config formats
-  (INI, `.properties`, `.gitignore`, `requirements.txt`, `.env`, `go.mod`)
+  (INI, `.properties`, `.gitignore`, `requirements.txt`, `go.mod`)
   have no grammar and use their full-line comment rule. Comments that
   change behavior stay: shebangs, `//go:build`, cgo preambles, Go
   `// Output:`, PEP 723 metadata, Ruby magic comments, TypeScript
