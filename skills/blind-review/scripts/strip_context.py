@@ -1089,6 +1089,7 @@ _BLANK_STRING = re.compile(r"""[rRbBuU]{0,2}(\"\"\"|'''|"|')(?:\s*\1)?""")
 # Node kinds whose text is data, so whitespace inside them counts.
 _LITERAL_KIND = re.compile(
     r"string|heredoc|regex|sigil|str_lit|char_literal|rune_literal|character_literal|quote_scalar|block_scalar"
+    r"|plain_scalar|jsx_text|^literal$|quoted_argument|bracket_argument"  # YAML, JSX, SQL, CMake values
     r"|attribute_value|^text$|^CharData$"  # markup text: `<pre>` and CSS can make its whitespace render
 )
 # A backslash-escaped space is part of a word (shell `foo\ bar`), so it never starts a run.
