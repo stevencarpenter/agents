@@ -119,9 +119,10 @@ def masks(row: str, raw: str) -> bool:
     The stripper blanks comments column for column and trims trailing spaces,
     so every non-space character of the row sits at the same column of the
     raw line. A plain substring test would reject a line with a mid-line
-    comment.
+    comment. A blank row (a comment-only or empty line) proves nothing about
+    the raw line, so it never matches.
     """
-    return len(row) <= len(raw) and all(c == " " or c == raw[i] for i, c in enumerate(row))
+    return bool(row.strip()) and len(row) <= len(raw) and all(c == " " or c == raw[i] for i, c in enumerate(row))
 
 
 def source_line(repo: str, path: str, side: str, line: int, base_sha: str, row: str | None) -> str | None:

@@ -526,6 +526,15 @@ class ReviewLogTest(unittest.TestCase):
         self.assertTrue(self.log.masks("y = eval(s)", "y = eval(s)  # safe"))
         self.assertFalse(self.log.masks("y = eval(t)", "y = eval(s)"))
         self.assertFalse(self.log.masks("y = eval(s)", "y = eval("))
+        self.assertFalse(self.log.masks("", "x = 1"))
+        self.assertFalse(self.log.masks("    ", "    x = 1"))
+
+    def test_blank_unit_row_omits_line_text(self) -> None:
+        """A finding on a blanked comment-only row must not store whatever line is there now."""
+        (self.out / "units" / "f01.py.diff").write_text("file f01.py\n+2|\n")
+        self.run_log("log", "--out", str(self.out))
+        self.assertNotIn("line_text", self.only_finding())
+        self.assertIn("differs from the reviewed unit", self.stderr)
 
     def test_records_follow_the_v1_contract(self) -> None:
         """Every record type carries its required fields and no field outside section 4.3."""
@@ -534,8 +543,9 @@ class ReviewLogTest(unittest.TestCase):
         self.run_log("mark", fid, "duplicate", "--note", "n", "--commit", self.head_sha[:7])
         self.run_log("escape", "--repo", str(self.repo), "--path", "a.py", "--line", "1",
                      "--note", "missed", "--commit", "HEAD")
-        records = agent_eval.read(self.log.LEDGER) + agent_eval.read(bench.RESULTS)
-        self.assertEqual({r["type"] for r in records}, set(CONTRACT))
+        records = agent_eval.read(self.log.LEDGER)
+        # bench_run is checked on bench.py output in BenchRecordTest.
+        self.assertEqual({r["type"] for r in records}, set(CONTRACT) - {"bench_run"})
         for rec in records:
             with self.subTest(type=rec["type"], id=rec["id"]):
                 assert_contract(self, rec)
@@ -581,6 +591,16 @@ class ReviewLogTest(unittest.TestCase):
         fid = self.only_finding()["id"]
         self.run_log("mark", fid, "accepted")
         self.assertEqual(self.only_finding()["status"], "accepted")
+
+    def test_escape_on_a_pre_v1_ledger_moves_it_first(self) -> None:
+        """escape writes no v1 record into an old-format file, so no mixed ledger arises."""
+        old = '{"type": "escape", "at": "2026-01-01T00:00:00+00:00", "note": "x"}\n'
+        self.log.LEDGER.write_text(old)
+        self.run_log("escape", "--repo", str(self.repo), "--path", "a.py", "--line", "1",
+                     "--note", "missed")
+        self.assertEqual(self.log.LEDGER.with_name("l.legacy.jsonl").read_text(), old)
+        (escape,) = agent_eval.read(self.log.LEDGER)
+        assert_contract(self, escape)
 
     def test_stray_pre_v1_line_in_a_v1_ledger_is_skipped_not_moved(self) -> None:
         """One old line must not move the v1 records or block every command."""
@@ -735,6 +755,7 @@ class BenchRecordTest(unittest.TestCase):
                          (1, "bench_run", "blind-review-mechanical"))
         self.assertIsInstance(record["recorded_at"], int)
         self.assertEqual(record["model_ids"], ["m-1"])
+        assert_contract(self, record)
         body = json.dumps({k: v for k, v in record.items() if k != "id"},
                           sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         self.assertEqual(record["id"], hashlib.sha256(body.encode()).hexdigest()[:16])
