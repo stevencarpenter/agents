@@ -1020,6 +1020,7 @@ class MechanicalModeTest(unittest.TestCase):
             ("a.sh", 'printf "<%s>" foo\\  bar\n', 'printf "<%s>" foo\\ bar\n'),
             ("a.sh", "printf '<%s>' foo\u00a0bar\n", "printf '<%s>' foo bar\n"),
             ("a.sh", "printf '<%s>' foo\x0cbar\n", "printf '<%s>' foo bar\n"),
+            ("a.sh", "printf '<%s>' foo\r\n", "printf '<%s>' foo\n"),
             ("Makefile", "define VALUE\ndeny  all\nendef\n", "define VALUE\ndeny all\nendef\n"),
             ("Makefile", "X = deny  all\n", "X = deny all\n"),
             ("a.xml", '<a b="deny  all"/>\n', '<a b="deny all"/>\n'),
