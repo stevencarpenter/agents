@@ -1,7 +1,34 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = []
+# dependencies = [
+#     "tree-sitter==0.25.2",
+#     "tree-sitter-python==0.25.0",
+#     "tree-sitter-c==0.24.2",
+#     "tree-sitter-java==0.23.5",
+#     "tree-sitter-kotlin==1.1.0",
+#     "tree-sitter-scala==0.26.2",
+#     "tree-sitter-swift==0.7.4",
+#     "tree-sitter-groovy==0.1.2",
+#     "tree-sitter-go==0.25.0",
+#     "tree-sitter-rust==0.24.2",
+#     "tree-sitter-javascript==0.25.0",
+#     "tree-sitter-typescript==0.23.2",
+#     "tree-sitter-css==0.25.0",
+#     "tree-sitter-json==0.24.8",
+#     "tree-sitter-bash==0.25.1",
+#     "tree-sitter-make==1.1.1",
+#     "tree-sitter-dockerfile==0.2.0",
+#     "tree-sitter-toml==0.7.0",
+#     "tree-sitter-yaml==0.7.2",
+#     "tree-sitter-hcl==1.2.0",
+#     "tree-sitter-nix==0.1.0",
+#     "tree-sitter-ruby==0.23.1",
+#     "tree-sitter-lua==0.5.0",
+#     "tree-sitter-sql==0.3.11",
+#     "tree-sitter-html==0.23.2",
+#     "tree-sitter-xml==0.7.0",
+# ]
 # ///
 """review_log.py: track whether real mechanical-review findings were useful.
 
@@ -45,6 +72,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import agent_eval
+import strip_context
 
 LEDGER = Path(
     os.environ.get("BLIND_REVIEW_LEDGER", Path.home() / ".local/share/blind-review/findings.jsonl")
@@ -113,46 +141,58 @@ def write(records: list[dict]) -> None:
     agent_eval.ingest(LEDGER)
 
 
-def masks(row: str, raw: str) -> bool:
-    """Report whether a unit row is the space-masked form of ``raw``.
+def read_source(repo: str, path: str, side: str, base_sha: str) -> list[str]:
+    """Return the lines of the file a finding cites.
 
-    The stripper blanks comments column for column and trims trailing spaces,
-    so every non-space character of the row sits at the same column of the
-    raw line. A plain substring test would reject a line with a mid-line
-    comment. A blank row (a comment-only or empty line) proves nothing about
-    the raw line, so it never matches.
+    Side ``+`` is the working tree (the reviewed tree includes uncommitted
+    changes); side ``-`` is the file at ``base_sha``. Lines split at ``\\n``
+    only, as the stripper does.
     """
-    return bool(row.strip()) and len(row) <= len(raw) and all(c == " " or c == raw[i] for i, c in enumerate(row))
+    if side == "+":
+        data = (Path(repo) / path).read_bytes()
+    else:
+        data = subprocess.run(
+            ["git", "-C", repo, "show", f"{base_sha}:./{path}"],
+            capture_output=True, check=True, timeout=agent_eval.GIT_TIMEOUT_SECONDS,
+        ).stdout
+    return data.decode("utf-8").split("\n")
 
 
-def source_line(repo: str, path: str, side: str, line: int, base_sha: str, row: str | None) -> str | None:
+def strip_lines(path: str, lines: list[str]) -> list[str]:
+    """Return ``lines`` as ``strip_context`` strips them for unit rows."""
+    stripped, action = strip_context.strip_source(path, "\n".join(lines))
+    if action != "stripped":
+        raise ValueError(action)
+    return stripped.split("\n")
+
+
+def source_line(repo: str, path: str, side: str, line: int, base_sha: str, row: str | None,
+                cache: dict[tuple[str, str], tuple[list[str], list[str]]]) -> str | None:
     """Return the raw source line a finding cites, or None with one warning.
 
-    Side ``+`` is the working-tree line (the reviewed tree includes
-    uncommitted changes); side ``-`` is the line at ``base_sha``. The line
-    must still match the reviewed unit ``row``: a file edited between the
-    review and ``log`` gives no line text rather than the wrong one.
+    The line must still equal the reviewed unit ``row`` once the whole current
+    file is stripped the way the unit was and both are right-trimmed: a line
+    edited between the review and ``log`` gives no line text rather than the
+    wrong one, while a comment added or removed does not. A blank row (a
+    comment-only or empty line) never matches. ``cache`` holds the raw and
+    stripped lines per ``(path, side)`` for one ``log`` run.
     """
     where = f"{path}:{side}{line}"
     try:
-        if side == "+":
-            data = (Path(repo) / path).read_bytes()
-        else:
-            data = subprocess.run(
-                ["git", "-C", repo, "show", f"{base_sha}:./{path}"],
-                capture_output=True, check=True, timeout=agent_eval.GIT_TIMEOUT_SECONDS,
-            ).stdout
-        rows = data.decode("utf-8").split("\n")
-    except (OSError, subprocess.SubprocessError, UnicodeDecodeError) as exc:
+        if (path, side) not in cache:
+            raw_rows = read_source(repo, path, side, base_sha)
+            cache[(path, side)] = (raw_rows, strip_lines(path, raw_rows))
+        raw_rows, stripped_rows = cache[(path, side)]
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
         print(f"warning: {where}: source not readable ({type(exc).__name__}); line_text omitted",
               file=sys.stderr)
         return None
-    raw = rows[line - 1] if 0 < line <= len(rows) else None
-    if raw is None or row is None or not masks(row, raw):
+    if (row is None or not row.strip() or not 0 < line <= len(raw_rows)
+            or len(stripped_rows) != len(raw_rows) or stripped_rows[line - 1].rstrip() != row.rstrip()):
         print(f"warning: {where}: source line differs from the reviewed unit; line_text omitted",
               file=sys.stderr)
         return None
-    return raw
+    return raw_rows[line - 1]
 
 
 def cmd_log(args: argparse.Namespace) -> int:
@@ -172,6 +212,7 @@ def cmd_log(args: argparse.Namespace) -> int:
         print(f"FAILED {unit_name}: no result (review not run or interrupted)", file=sys.stderr)
         failed += 1
     results = [json.loads(p.read_text()) for p in sorted((out / "results").glob("*.json"))]
+    stripped: dict[tuple[str, str], tuple[list[str], list[str]]] = {}
     for result in results:
         if not result.get("ok", True):
             # A failed review is not a clean one; it must not read as 0 findings.
@@ -223,7 +264,7 @@ def cmd_log(args: argparse.Namespace) -> int:
             base_path = entry.get("base_path", entry["path"])
             line_text = source_line(repo, entry["path"] if f["side"] == "+" else base_path,
                                     f["side"], f["line"], meta["base_sha"],
-                                    unit_rows.get(f"{f['side']}{f['line']}"))
+                                    unit_rows.get(f"{f['side']}{f['line']}"), stripped)
             records.append(record(
                 "finding", fid,
                 run_id=run_id,

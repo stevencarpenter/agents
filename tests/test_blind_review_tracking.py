@@ -501,9 +501,9 @@ class ReviewLogTest(unittest.TestCase):
 
     def test_line_text_is_split_at_newlines_only(self) -> None:
         """A form feed inside a source line keeps the whole raw line."""
-        (self.repo / "a.py").write_text("x = 1\ny = eval(s)\x0cz\n")
+        (self.repo / "a.py").write_text("x = 1\ny = eval(s)\x0c# z\n")
         self.run_log("log", "--out", str(self.out))
-        self.assertEqual(self.only_finding()["line_text"], "y = eval(s)\x0cz")
+        self.assertEqual(self.only_finding()["line_text"], "y = eval(s)\x0c# z")
 
     def test_line_text_is_omitted_when_the_source_moved_on(self) -> None:
         """A line edited between review and log must not be stored as the reviewed line."""
@@ -520,14 +520,40 @@ class ReviewLogTest(unittest.TestCase):
         self.assertNotIn("line_text", self.only_finding())
         self.assertIn("a.py:+2: source not readable", self.stderr)
 
-    def test_unit_rows_are_column_masks_of_the_raw_line(self) -> None:
-        """A blanked mid-line comment still matches; a changed token does not."""
-        self.assertTrue(self.log.masks("int a = 1         + 2;", "int a = 1 /* c */ + 2;"))
-        self.assertTrue(self.log.masks("y = eval(s)", "y = eval(s)  # safe"))
-        self.assertFalse(self.log.masks("y = eval(t)", "y = eval(s)"))
-        self.assertFalse(self.log.masks("y = eval(s)", "y = eval("))
-        self.assertFalse(self.log.masks("", "x = 1"))
-        self.assertFalse(self.log.masks("    ", "    x = 1"))
+    def log_line(self, name: str, unit_row: str, current: str, line: int = 1) -> dict:
+        """Log one finding on ``name`` whose unit row is ``unit_row`` while the file holds ``current``."""
+        (self.repo / name).write_text(current + "\n")
+        manifest = json.loads((self.out / "manifest.json").read_text())
+        manifest["files"][0]["path"] = name
+        (self.out / "manifest.json").write_text(json.dumps(manifest))
+        (self.out / "units" / "f01.py.diff").write_text(f"file f01.py\n+{line}|{unit_row}\n")
+        self.write_result({**self.finding(), "line": line})
+        self.run_log("log", "--out", str(self.out))
+        return self.only_finding()
+
+    def test_appended_code_omits_line_text(self) -> None:
+        """Code appended after review is not the reviewed line."""
+        found = self.log_line("a.py", "y = eval(s)", "y = eval(s) if trusted else None")
+        self.assertNotIn("line_text", found)
+        self.assertIn("differs from the reviewed unit", self.stderr)
+
+    def test_code_inserted_into_whitespace_omits_line_text(self) -> None:
+        """``x = 1`` and ``x+= 1`` differ only in blanks and still do not match."""
+        self.assertNotIn("line_text", self.log_line("a.py", "x = 1", "x+= 1"))
+
+    def test_changed_token_omits_line_text(self) -> None:
+        """A token edited inside the line does not match."""
+        self.assertNotIn("line_text", self.log_line("a.py", "y = eval(s)", "y = eval(t)"))
+
+    def test_mid_line_comment_keeps_line_text(self) -> None:
+        """A blanked mid-line comment still matches and the raw line is stored."""
+        raw = "y = f(/* c */ s);"
+        self.assertEqual(self.log_line("a.js", "y = f(        s);", raw)["line_text"], raw)
+
+    def test_trailing_comment_added_after_review_keeps_line_text(self) -> None:
+        """A comment added after review strips to the reviewed row."""
+        raw = "y = eval(s)  # added later"
+        self.assertEqual(self.log_line("a.py", "y = eval(s)", raw)["line_text"], raw)
 
     def test_blank_unit_row_omits_line_text(self) -> None:
         """A finding on a blanked comment-only row must not store whatever line is there now."""
