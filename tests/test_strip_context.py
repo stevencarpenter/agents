@@ -1152,6 +1152,7 @@ class MechanicalModeTest(unittest.TestCase):
             ("a.html", "<pre>deny  all</pre>\n", "<pre>deny all</pre>\n"),
             ("a.xml", "<a>deny  all</a>\n", "<a>deny all</a>\n"),
             ("a.sh", "echo one \\\n\necho two\n", "echo one \\\necho two\n"),
+            ("a.sh", 'printf "<%s>" foo\\  bar\n', 'printf "<%s>" foo\\ bar\n'),
             ("a.properties", "a=x\\\n# deny\n", "a=x\\\n# allow\n"),
             ("a.properties", "# c\rkey=a\n", "# c\rkey=b\n"),
             ("a.properties", "message=hello\n", "message=hello \n"),
