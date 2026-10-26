@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "tree-sitter==0.26.0",
+#     "tree-sitter==0.25.2",
 #     "tree-sitter-python==0.25.0",
 #     "tree-sitter-c==0.24.2",
 #     "tree-sitter-cpp==0.23.4",
@@ -397,7 +397,9 @@ def _collect(
     Raises:
         SyntaxError: When ``data`` is not a fragment and the grammar cannot parse it.
     """
-    root = Parser(_language_object(lang)).parse(data).root_node
+    # Hold the tree: a node outlives a dropped tree only as a dangling pointer (a segfault).
+    tree = Parser(_language_object(lang)).parse(data)
+    root = tree.root_node
     if root.has_error and not fragment:
         raise SyntaxError(f"{lang} parse error at line {_first_error(root).start_point.row + 1}")
     comments, docs = _queries(lang)
@@ -546,14 +548,16 @@ def _subtract(spans: list[tuple[int, int]], holes: list[tuple[int, int]]) -> lis
 def _vue_spans(data: bytes, layout: Layout | None = None) -> list[tuple[int, int, bool]]:
     """Return the blank spans of a Vue component; see ``strip_vue``."""
     parser = Parser(_language_object("html"))
-    root = parser.parse(data).root_node
+    tree = parser.parse(data)  # held while its nodes are read
+    root = tree.root_node
     for _ in range(8):
         not_text = [(n.start_byte, n.end_byte) for n in _captures(_query("html", _VUE_NOT_TEXT), root, "x")]
         interpolations = _vue_interpolations(data, not_text)
         masked = bytearray(data)
         for start, end in interpolations:
             masked[start:end] = bytes(b if b in b"\r\n" else 32 for b in data[start:end])
-        root = parser.parse(bytes(masked)).root_node
+        tree = parser.parse(bytes(masked))
+        root = tree.root_node
         settled = [(n.start_byte, n.end_byte) for n in _captures(_query("html", _VUE_NOT_TEXT), root, "x")]
         if _vue_interpolations(data, settled) == interpolations:
             break

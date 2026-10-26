@@ -1338,6 +1338,16 @@ class MechanicalModeTest(unittest.TestCase):
         self.assertLess(time.monotonic() - start, 5)
         self.assertEqual(hunks.count('+'), 80)
 
+    def test_medium_file_does_not_crash_the_binding(self) -> None:
+        """tree-sitter 0.26.0 segfaulted on a 200-function file; run in a child so a crash fails here."""
+        code = (
+            f"import sys; sys.path.insert(0, {str(SCRIPT.parent)!r}); import strip_context as s\n"
+            "src = ''.join(f'def f{i}(x):\\n    \"\"\"Doc.\"\"\"\\n    return x  # n\\n\\n' for i in range(2000))\n"
+            "print(s.strip_source('a.py', src)[1])\n"
+        )
+        result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False)
+        self.assertEqual((result.returncode, result.stdout.strip()), (0, "stripped"), result.stderr[-500:])
+
     def test_compiler_overflow_is_a_failed_validation(self) -> None:
         """A huge generated expression must be labeled, not abort the run."""
         _, action = strip_context.strip_source("a.py", "x = " + "+".join(["1"] * 200000) + "\n")
