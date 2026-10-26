@@ -947,8 +947,10 @@ _LITERAL_KIND = re.compile(
     r"|attribute_value|^text$|^CharData$"  # markup text: `<pre>` and CSS can make its whitespace render
 )
 # A backslash-escaped space is part of a word (shell `foo\ bar`), so it never starts a run.
-_WHITESPACE = re.compile(r"(?<!\\)\s+")
-_TRAILING = re.compile(r"(?<!\\)\s+\Z")
+# Only ASCII whitespace separates tokens; U+00A0 inside a shell word is data.
+_WS = " \t\r\f\v"
+_WHITESPACE = re.compile(r"(?<!\\)[ \t\r\f\v]+")
+_TRAILING = re.compile(r"(?<!\\)[ \t\r\f\v]+\Z")
 _CONTINUED = re.compile(r"(?<!\\)(?:\\\\)*\\\r?$")
 
 
@@ -1001,7 +1003,7 @@ def _compare_key(line: str, parts: list[tuple[int, int]]) -> str:
         pos = end
     key = "".join(pieces)
     if not parts or parts[0][0] > 0:
-        key = key.lstrip()
+        key = key.lstrip(_WS)
     if not parts or parts[-1][1] < len(line):
         key = _TRAILING.sub("", key)  # `foo\ ` at a line end keeps its escaped space
     return key
@@ -1033,9 +1035,9 @@ def _code_lines(
         # line can be data too (an INI multi-line value) when it was not a comment.
         originals = source.split("\n") if source is not None else None
         return [
-            (n, *(2 * [line.rstrip() if inline_comments else line.rstrip("\r")]))
+            (n, *(2 * [line.rstrip(_WS) if inline_comments else line.rstrip("\r")]))
             for n, line in enumerate(lines, 1)
-            if line.strip()
+            if line.strip(_WS)
             or ends_continued[n - 1]
             or (n < len(lines) and (not line.rstrip("\r") or (originals is not None and originals[n - 1] == line)))
         ]
@@ -1052,7 +1054,7 @@ def _code_lines(
             if s >= end:
                 break
             parts.append((max(s, start) - start, min(e, end) - start))
-        body = line.strip()
+        body = line.strip(_WS)
         if not body:
             if parts:  # a blank or whitespace-only line inside a multi-line string is data
                 rows.append((number, _compare_key(line, parts), line))
@@ -1063,7 +1065,7 @@ def _code_lines(
             continue
         key = _compare_key(line, parts)
         if indent_sensitive and not (parts and parts[0][0] == 0):
-            key = line[: len(line) - len(line.lstrip())] + key
+            key = line[: len(line) - len(line.lstrip(_WS))] + key
         ends_in_literal = parts and parts[-1][1] == len(line)
         rows.append((number, key, line if ends_in_literal else _TRAILING.sub("", line)))
     return rows
