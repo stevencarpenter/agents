@@ -230,7 +230,8 @@ def cmd_log(args: argparse.Namespace) -> int:
     session_id = session_id or None
     records = [record(
         "review_run", run_id,
-        agent="blind-review",
+        # The registry agent name, so hippo joins runs with the agent's sessions.
+        agent="blind-reviewer",
         mode=manifest.get("mode", "mechanical"),
         requested_model=meta["requested_model"],
         model_id=",".join(sorted({m for r in results for m in r.get("model_id", "").split(",") if m})),

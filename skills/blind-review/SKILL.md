@@ -201,7 +201,9 @@ Two records, for two questions:
 - **Effectiveness (real use):** did findings on real changes help ship
   better code? Run `<this-skill-dir>/scripts/review_log.py log --out
   <out-dir>` after each real run: it reads `run.json` and writes one
-  `review_run` record and one `finding` record per finding. Rerunning `log`
+  `review_run` record (`agent` is `blind-reviewer`, the registry agent name,
+  so hippo joins it with that agent's sessions) and one `finding` record per
+  finding. Rerunning `log`
   on the same out dir writes nothing new. When the user fixes or dismisses
   a finding, record it with `review_log.py mark <id>
   accepted|false-positive|not-useful|duplicate [--note TEXT] [--commit REV]`.
