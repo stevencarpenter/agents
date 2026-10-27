@@ -176,6 +176,28 @@ Two records, for two questions:
   first 16 hex characters of the SHA-256 of the record's canonical JSON
   (sorted keys, no spaces) without `id`. `bench.py summary` prints the
   history.
+- **Score (private corpus):** the public cases are synthetic, so they
+  measure only what they plant. Real defects make harder cases:
+  `hippo eval export-bench-cases --out DIR` writes one case per accepted
+  finding with a known fix commit and per escape with `fix_commit`, redacted
+  with the hippo ingest engines (`base` is the fixed file, `head` the
+  defective one, the trap is the flagged line). `DIR` must be outside every
+  git checkout; hippo refuses otherwise. Run
+  `bench.py run --cases-dir DIR --record`. The record carries
+  `bench: blind-review-private` and goes to `--results PATH` (default
+  `$XDG_DATA_HOME/blind-review/private-results.jsonl`, else
+  `~/.local/share/blind-review/private-results.jsonl`), then to
+  `hippo ingest agent-eval`. The public `bench/results.jsonl` never receives
+  a private run, and `bench.py` refuses it as `--results` with
+  `--cases-dir`. `bench.py summary --results PATH` prints that history.
+  Each export rewrites `DIR` as a snapshot: it removes case files it did
+  not write, such as a finding no longer accepted. A private case whose
+  anchor is not a row of its unit after the strip is skipped
+  (`skipped <id>: no anchor is a row of its unit`), left out of the scores,
+  and listed in `per_case` with `reps: 0`. A private run removes its
+  temporary build and review directory when it ends.
+  Running the cases sends their redacted file text to the reviewer model,
+  as the original review did.
 - **Effectiveness (real use):** did findings on real changes help ship
   better code? Run `<this-skill-dir>/scripts/review_log.py log --out
   <out-dir>` after each real run: it reads `run.json` and writes one
@@ -185,6 +207,8 @@ Two records, for two questions:
   accepted|false-positive|not-useful|duplicate [--note TEXT] [--commit REV]`.
   When a defect surfaces later in reviewed code, record it with
   `review_log.py escape --repo R --path P --line N --note TEXT [--commit REV]`.
+  `N` is the line in the defective revision, the parent of `--commit`; the
+  private-corpus export reads it there and has no content check for it.
   `--commit` takes any revision, such as a short SHA, and is stored as the
   full SHA; a revision that does not resolve is an error. Run
   `review_log.py reconcile` (an open `+` finding whose raw source line,

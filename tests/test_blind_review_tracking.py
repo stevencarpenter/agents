@@ -796,6 +796,120 @@ class BenchRecordTest(unittest.TestCase):
             self.assertEqual(row["id"], bench.bench_run_id(row))
 
 
+PRIVATE_FILE = "src/pkg/auth.py"
+PRIVATE_CASE = {
+    "id": "f-0123456789abcdef",
+    "description": "Accepted finding 0123456789abcdef: the change reintroduces the flagged line.",
+    "base": {PRIVATE_FILE: "def check(user):\n    if user.is_admin:\n        return True\n    return False\n"},
+    "head": {PRIVATE_FILE: "def check(user):\n    if user.is_admin or True:\n        return True\n    return False\n"},
+    "traps": [{"id": "defect", "kind": "bug", "category": "logic", "severity": "high",
+               "path": PRIVATE_FILE, "anchors": [["+", 2]], "why": "The or True bypasses the check."}],
+}
+
+
+class PrivateCorpusTest(unittest.TestCase):
+    """``run --cases-dir`` must score a private corpus and keep it out of results.jsonl."""
+
+    def setUp(self) -> None:
+        """Write the private case to a temp corpus and isolate PATH and the public results."""
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.cases = self.tmp / "corpus"
+        self.cases.mkdir()
+        (self.cases / f"{PRIVATE_CASE['id']}.json").write_text(json.dumps(PRIVATE_CASE))
+        self.calls = isolate_path(self, self.tmp)
+        self.public = self.tmp / "public-results.jsonl"
+
+    def run_bench(self, *argv: str) -> int:
+        """Run bench.py with a reviewer that reports nothing."""
+        ok = {"ok": True, "findings": [], "usage": {"input_tokens": 3}, "model_id": "m-1",
+              "input_sha256": "x", "error": None}
+        with (
+            mock.patch.object(bench.mechanical_review, "review_unit", return_value=ok),
+            mock.patch.object(bench.mechanical_review, "cli_version", return_value="t"),
+            mock.patch.object(bench, "RESULTS", self.public),
+            mock.patch.object(bench, "_commit", return_value="abc1234"),
+            mock.patch("sys.stdout", new=io.StringIO()),
+            mock.patch("sys.stderr", new=io.StringIO()) as stderr,
+        ):
+            try:
+                return bench.main(["run", "--reps", "1", "--cases-dir", str(self.cases), *argv])
+            finally:
+                self.stderr = stderr.getvalue()
+
+    def test_private_run_is_tagged_and_recorded_outside_the_public_results(self) -> None:
+        """The record goes to --results with the private bench tag, and hippo gets that file."""
+        results = self.tmp / "private.jsonl"
+        self.assertEqual(self.run_bench("--record", "--results", str(results)), 0)
+        self.assertFalse(self.public.exists())
+        (record,) = agent_eval.read(results)
+        assert_contract(self, record)
+        self.assertEqual(record["bench"], "blind-review-private")
+        self.assertEqual(record["cases"], 1)
+        self.assertEqual(record["scores"]["recall"], 0.0)
+        self.assertEqual(record["per_case"][0]["case"], PRIVATE_CASE["id"])
+        self.assertEqual(self.calls.read_text(), f"ingest agent-eval {results}\n")
+
+    def test_default_private_results_path(self) -> None:
+        """Without --results a private run records under the XDG data directory."""
+        data = self.tmp / "data"
+        with mock.patch.dict(os.environ, {"XDG_DATA_HOME": str(data)}):
+            self.assertEqual(self.run_bench("--record"), 0)
+        self.assertEqual(len(agent_eval.read(data / "blind-review/private-results.jsonl")), 1)
+        self.assertFalse(self.public.exists())
+
+    def test_public_results_file_is_refused_for_a_private_corpus(self) -> None:
+        """Naming results.jsonl explicitly must not leak private case ids into the repo."""
+        with self.assertRaises(SystemExit):
+            self.run_bench("--record", "--results", str(self.public))
+        self.assertFalse(self.public.exists())
+
+    def test_case_path_outside_the_fixture_repo_is_refused(self) -> None:
+        """A case file is data; its paths must not write outside the fixture repo."""
+        case = {**PRIVATE_CASE, "base": {"../escape.py": "x\n"}}
+        with self.assertRaises(SystemExit):
+            bench.build_units(case, self.tmp / "build")
+        self.assertFalse((self.tmp / "build/escape.py").exists())
+        target = self.tmp / "abs.py"
+        with self.assertRaises(SystemExit):
+            bench.build_units({**PRIVATE_CASE, "base": {str(target): "x\n"}}, self.tmp / "abs")
+        self.assertFalse(target.exists())
+
+    def test_private_case_without_an_anchor_row_is_skipped(self) -> None:
+        """A regenerated private case must not abort the run or count in the scores."""
+        bad = {**PRIVATE_CASE, "id": "e-unanchored",
+               "traps": [{**PRIVATE_CASE["traps"][0], "anchors": [["+", 4]]}]}
+        (self.cases / "e-unanchored.json").write_text(json.dumps(bad))
+        results = self.tmp / "private.jsonl"
+        self.assertEqual(self.run_bench("--record", "--results", str(results)), 0)
+        self.assertIn("skipped e-unanchored: no anchor is a row of its unit", self.stderr)
+        (record,) = agent_eval.read(results)
+        assert_contract(self, record)
+        self.assertEqual(record["cases"], 1)
+        only_good = hashlib.sha256(json.dumps([PRIVATE_CASE], sort_keys=True).encode()).hexdigest()[:12]
+        self.assertEqual(record["cases_sha256"], only_good)
+        self.assertEqual(record["per_case"][-1],
+                         {"case": "e-unanchored", "reps": 0, "skipped": "no anchor is a row of its unit"})
+
+    def test_public_case_without_an_anchor_row_still_aborts(self) -> None:
+        """A hand-written public case with a wrong anchor must be fixed, not skipped."""
+        bad = {**PRIVATE_CASE, "traps": [{**PRIVATE_CASE["traps"][0], "anchors": [["+", 4]]}]}
+        with (
+            mock.patch.object(bench, "load_cases", return_value=[bad]),
+            mock.patch("sys.stdout", new=io.StringIO()),
+            self.assertRaises(bench.AnchorMissing),
+        ):
+            bench.main(["run", "--reps", "1"])
+
+    def test_private_run_removes_its_temp_dir(self) -> None:
+        """Private file text and raw reviewer output must not stay in the temp dir."""
+        root = self.tmp / "bench-root"
+        root.mkdir()
+        with mock.patch.object(bench.tempfile, "mkdtemp", return_value=str(root)):
+            self.assertEqual(self.run_bench("--results", str(self.tmp / "p.jsonl")), 0)
+        self.assertFalse(root.exists())
+
+
 class SandboxTest(unittest.TestCase):
     """The fixed reviewer cwd must stay empty and must not name the repo."""
 

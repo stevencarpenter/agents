@@ -52,9 +52,18 @@ then hands the file to ``hippo ingest agent-eval`` when ``hippo`` is on PATH.
 The record ``id`` is the first 16 hex characters of the SHA-256 of the
 record's canonical JSON without ``id``. ``summary`` prints that history.
 
+``run --cases-dir DIR`` runs a private corpus (for example the output of
+``hippo eval export-bench-cases``) instead of ``cases/``. Its records carry
+``bench: blind-review-private`` and go to ``--results`` (default
+``$XDG_DATA_HOME/blind-review/private-results.jsonl``), never to the public
+``results.jsonl``. A private case whose anchor is not a row of its unit is
+skipped: it is left out of the scores and ``cases_sha256`` and listed in
+``per_case`` with ``reps: 0`` and ``skipped``. The temporary build and review
+directory of a private run is removed when the run ends.
+
 Usage: bench.py run [--model sonnet] [--effort high] [--reps 3] [--jobs 4]
-                    [--case ID]... [--record]
-       bench.py summary
+                    [--case ID]... [--cases-dir DIR] [--results PATH] [--record]
+       bench.py summary [--results PATH]
 """
 
 from __future__ import annotations
@@ -65,6 +74,7 @@ import hashlib
 import itertools
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -80,6 +90,13 @@ import mechanical_review
 import strip_context
 
 BENCH = "blind-review-mechanical"
+PRIVATE_BENCH = "blind-review-private"
+
+
+def private_results() -> Path:
+    """Return the default results file for private-corpus runs."""
+    data = os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share"
+    return Path(data) / "blind-review" / "private-results.jsonl"
 
 
 def bench_run_id(record: dict) -> str:
@@ -90,9 +107,10 @@ def bench_run_id(record: dict) -> str:
     )
 
 
-def load_cases(ids: list[str] | None = None) -> list[dict]:
-    """Load cases from ``cases/``, optionally only the named IDs."""
-    cases = [json.loads(p.read_text()) for p in sorted((HERE / "cases").glob("*.json"))]
+def load_cases(ids: list[str] | None = None, cases_dir: Path | None = None) -> list[dict]:
+    """Load cases from ``cases_dir`` (default ``cases/``), optionally only the named IDs."""
+    paths = sorted((cases_dir or HERE / "cases").glob("*.json"))
+    cases = [json.loads(p.read_text()) for p in paths]
     return [c for c in cases if not ids or c["id"] in ids]
 
 
@@ -110,17 +128,28 @@ def git(repo: Path, *args: str) -> None:
     )
 
 
+class AnchorMissing(SystemExit):
+    """A trap anchor is not a row of its unit after the mechanical strip."""
+
+
 def build_units(case: dict, root: Path) -> tuple[Path, dict[str, str]]:
     """Create the case repo, run the mechanical strip, return (out dir, path->unit)."""
     repo = root / "repo"
     repo.mkdir(parents=True)
     git(repo, "init", "-q", "-b", "main")
-    for rel, text in case["base"].items():
+    def write(rel: str, text: str) -> None:
+        # Private cases carry real repo paths: keep them inside the fixture repo.
+        if Path(rel).is_absolute() or ".." in Path(rel).parts:
+            raise SystemExit(f"{case['id']}: unsafe path {rel!r}")
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
         (repo / rel).write_text(text)
+
+    for rel, text in case["base"].items():
+        write(rel, text)
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", "base")
     for rel, text in case["head"].items():
-        (repo / rel).write_text(text)
+        write(rel, text)
     out = root / "out"
     strip_context.main(["mechanical", "--repo", str(repo), "--out", str(out)])
     manifest = json.loads((out / "manifest.json").read_text())
@@ -129,7 +158,7 @@ def build_units(case: dict, root: Path) -> tuple[Path, dict[str, str]]:
         unit = units.get(trap["path"])
         rows = (out / "units" / f"{unit}.diff").read_text() if unit else ""
         if not any(f"\n{side}{line}|" in rows for side, line in trap["anchors"]):
-            raise SystemExit(f"{case['id']}/{trap['id']}: no anchor is a row of its unit")
+            raise AnchorMissing(f"{case['id']}/{trap['id']}: no anchor is a row of its unit")
     return out, units
 
 
@@ -175,13 +204,39 @@ def jaccard(sets: list[set]) -> float:
 
 def run(args: argparse.Namespace) -> int:
     """Run every case ``--reps`` times, print the scores, and optionally record them."""
-    cases = load_cases(args.case)
+    results_path = args.results or (private_results() if args.cases_dir else RESULTS)
+    if args.cases_dir and results_path.resolve() == RESULTS.resolve():
+        raise SystemExit(f"a private corpus must not be recorded in {RESULTS}")
+    cases = load_cases(args.case, args.cases_dir)
     missing = set(args.case or ()) - {c["id"] for c in cases}
     if missing or not cases:
         raise SystemExit(f"no such case: {', '.join(sorted(missing)) or '(none loaded)'}")
-    cmd = mechanical_review.reviewer_argv(args.model, args.effort)
     root = Path(tempfile.mkdtemp(prefix="bench-"))
-    built = {c["id"]: build_units(c, root / c["id"]) for c in cases}
+    try:
+        return _run(args, cases, root, results_path)
+    finally:
+        if args.cases_dir:
+            # Private file text and raw reviewer output must not outlive the run.
+            shutil.rmtree(root, ignore_errors=True)
+
+
+def _run(args: argparse.Namespace, cases: list[dict], root: Path, results_path: Path) -> int:
+    """Build, review, score, and optionally record ``cases`` under ``root``."""
+    cmd = mechanical_review.reviewer_argv(args.model, args.effort)
+    built, skipped = {}, []
+    for c in cases:
+        try:
+            built[c["id"]] = build_units(c, root / c["id"])
+        except AnchorMissing:
+            # A public case is authored by hand and must be fixed; a private case
+            # is regenerated by every export, so it is left out instead.
+            if not args.cases_dir:
+                raise
+            print(f"skipped {c['id']}: no anchor is a row of its unit", file=sys.stderr)
+            skipped.append(c["id"])
+    cases = [c for c in cases if c["id"] in built]
+    if not cases:
+        raise SystemExit("no case left to run")
     jobs = [
         (c["id"], rep, unit_file)
         for c in cases
@@ -242,6 +297,9 @@ def run(args: argparse.Namespace) -> int:
         per_case.append({"case": case["id"], "reps": len(reps), "trap_hits": hits,
                          "extra": sum(r["extra"] for r in reps)})
 
+    per_case += [{"case": cid, "reps": 0, "skipped": "no anchor is a row of its unit"}
+                 for cid in skipped]
+
     def rate(num: int, den: int) -> float | None:
         return round(num / den, 3) if den else None
 
@@ -258,7 +316,7 @@ def run(args: argparse.Namespace) -> int:
     record = {
         "schema_version": agent_eval.SCHEMA_VERSION,
         "type": "bench_run",
-        "bench": BENCH,
+        "bench": PRIVATE_BENCH if args.cases_dir else BENCH,
         "recorded_at": agent_eval.now_ms(),
         "repo_commit": _commit(),
         "cli_version": mechanical_review.cli_version(),
@@ -278,16 +336,20 @@ def run(args: argparse.Namespace) -> int:
     record = {"id": bench_run_id(record)} | record
     print(json.dumps({k: record[k] for k in record if k != "per_case"}, indent=2))
     for row in per_case:
+        if "skipped" in row:
+            continue
         print(f"  {row['case']}: hits {row['trap_hits']} of {row['reps']}, extra {row['extra']}")
     for line in failed:
         print(f"FAILED {line}", file=sys.stderr)
-    print(f"raw output in {root}")
+    if not args.cases_dir:
+        print(f"raw output in {root}")
     if args.record and failed:
         print(f"not recorded: {len(failed)} review(s) failed", file=sys.stderr)
     elif args.record:
-        agent_eval.append(RESULTS, [record])
-        print(f"recorded -> {RESULTS}")
-        agent_eval.ingest(RESULTS)
+        results_path.parent.mkdir(parents=True, exist_ok=True)
+        agent_eval.append(results_path, [record])
+        print(f"recorded -> {results_path}")
+        agent_eval.ingest(results_path)
     return 1 if failed else 0
 
 
@@ -302,15 +364,16 @@ def _commit() -> str:
     return out("rev-parse", "--short", "HEAD").strip() + ("-dirty" if dirty else "")
 
 
-def summary(_: argparse.Namespace) -> int:
+def summary(args: argparse.Namespace) -> int:
     """Print the recorded score history, oldest first."""
-    if not RESULTS.exists():
+    results_path = args.results or RESULTS
+    if not results_path.exists():
         print("no recorded runs")
         return 0
     cols = ("recall", "context_required_recall", "safe_false_alarm", "extra_findings_per_run",
             "trap_stability", "finding_jaccard", "input_identical")
     print("recorded_at | commit | cases | model | effort | reps | " + " | ".join(cols))
-    for r in agent_eval.read(RESULTS):
+    for r in agent_eval.read(results_path):
         if r.get("type") != "bench_run":
             continue
         model = ",".join(r["model_ids"]) or r["model"]
@@ -334,8 +397,12 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--jobs", type=int, default=4)
     r.add_argument("--case", action="append")
     r.add_argument("--record", action="store_true")
+    r.add_argument("--cases-dir", type=Path, help="private corpus directory instead of cases/")
+    r.add_argument("--results", type=Path, help="results file (private default: see above)")
     r.set_defaults(func=run)
-    sub.add_parser("summary").set_defaults(func=summary)
+    s = sub.add_parser("summary")
+    s.add_argument("--results", type=Path)
+    s.set_defaults(func=summary)
     args = parser.parse_args(argv)
     return args.func(args)
 
