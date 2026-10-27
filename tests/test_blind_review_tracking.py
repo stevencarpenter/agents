@@ -375,6 +375,7 @@ class ReviewLogTest(unittest.TestCase):
             self.assertEqual(r["schema_version"], 1)
         self.assertEqual(finding["run_id"], run["id"])
         self.assertEqual((run["base_sha"], run["head_sha"]), (self.base_sha, self.head_sha))
+        self.assertEqual(run["agent"], "blind-reviewer")
         self.assertEqual(run["model_id"], "claude-haiku-5-5")
         self.assertEqual((run["units_total"], run["units_failed"]), (1, 0))
         self.assertEqual((run["session_id"], run["harness"]), ("s-1", "claude-code"))
