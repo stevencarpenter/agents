@@ -11,7 +11,7 @@ Usage (from the agent-registry repo root):
     uv run --project eval python eval/run_eval.py --agent-model claude-opus-4-8
 
 Prerequisites: ANTHROPIC_API_KEY set; MLflow >= 3.8; ideally MLFLOW_TRACKING_URI
-+ an experiment (a SQL-backed tracking server is needed for scorer registration —
++ an experiment (a SQL-backed tracking server is needed for scorer registration:
 without it the run falls back to passing scorer objects inline, which still works).
 See HANDOFF.md.
 """
@@ -69,7 +69,7 @@ def main() -> int:
     variants = [v.strip() for v in args.variants.split(",") if v.strip()]
     _OUT.mkdir(parents=True, exist_ok=True)
 
-    mlflow.anthropic.autolog()  # trace every agent + judge call
+    mlflow.anthropic.autolog()
     exp_id = _resolve_experiment(args.experiment)
     print(f"experiment={args.experiment} ({exp_id})  agent_model={args.agent_model}  judge_model={args.judge_model}")
 
@@ -77,7 +77,7 @@ def main() -> int:
     try:
         scorers_by_domain = register_all(experiment_id=exp_id)
         print("registered judges:", {d: [s.name for s in v] for d, v in scorers_by_domain.items()})
-    except Exception as exc:  # noqa: BLE001 — backend may not support registration
+    except Exception as exc:  # noqa: BLE001  # backend may not support registration
         print(f"scorer registration unavailable ({type(exc).__name__}: {exc}); using inline scorer objects")
         scorers_by_domain = SCORERS
 
@@ -98,12 +98,10 @@ def main() -> int:
                     scorers=scorers_by_domain[domain],
                 )
             per_variant_metrics[variant] = result.metrics
-            # Persist row-level detail when available.
             table = (result.tables or {}).get("eval_results_table")
             if table is not None:
                 pd.DataFrame(table).to_csv(_OUT / f"{domain}__{variant}__rows.csv", index=False)
 
-        # Build the per-scorer comparison for this domain.
         for scorer in scorers_by_domain[domain]:
             name = scorer.name
             entry = {"domain": domain, "scorer": name}

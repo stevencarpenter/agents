@@ -37,7 +37,7 @@
       "expected_output": "A discriminated-union Result return distinguishing all four failure kinds, unknown-based validation with type guards and no as-casts, explicit return types, defaulted optional fields, and vitest tests covering every branch.",
       "files": ["evals/files/config_loader_spec.md"],
       "expectations": [
-        "Return type is a discriminated union (e.g. { ok: true, config } | { ok: false, error }) where the error side distinguishes network failure, non-2xx, malformed JSON, and schema-invalid (with field and reason) — callers never need try/catch and never receive undefined",
+        "Return type is a discriminated union (e.g. { ok: true, config } | { ok: false, error }) where the error side distinguishes network failure, non-2xx, malformed JSON, and schema-invalid (with field and reason): callers never need try/catch and never receive undefined",
         "JSON.parse output is handled as unknown and narrowed by an explicit validation function using type guards; no as Config anywhere, no any",
         "All exported functions have explicit return type annotations including Promise<...> on async ones",
         "Validation enforces https on apiBaseUrl, integer 0-10 on retryLimit, and applies defaults (featureFlags {}, retryLimit 3) for absent optional fields",

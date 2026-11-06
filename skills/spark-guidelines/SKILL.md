@@ -11,20 +11,20 @@ Shared rubric for Spark pipelines. Confirm repository and cluster versions befor
 
 - Apache Spark 4.x docs: https://spark.apache.org/docs/latest/
 - Structured Streaming guide (especially `transformWithState`): https://spark.apache.org/docs/latest/streaming/
-- The cluster's exact Spark/Delta/Iceberg versions — semantics change between releases
-- The live catalog and existing table formats in the repo — match what's there
+- The cluster's exact Spark/Delta/Iceberg versions: semantics change between releases
+- The live catalog and existing table formats in the repo: match what's there
 
 ## Pipeline Design
 
 - **Data contract before code.** Establish the schema, semantics, and sink behavior affected by the change. A new pipeline also needs latency, volume, and recovery requirements; a small transform edit does not require a new architecture document.
 - **Medallion, catalog, and lakehouse table design:** apply `data-engineering-guidelines`.
-- **MERGE tie-breaks.** When CDC can deliver equal `event_timestamp` values for the same key, define a secondary ordering column (usually `ingest_timestamp` or a monotonic sequence) in both dedup and `whenMatchedUpdate` conditions — otherwise replays are nondeterministic.
+- **MERGE tie-breaks.** When CDC can deliver equal `event_timestamp` values for the same key, define a secondary ordering column (usually `ingest_timestamp` or a monotonic sequence) in both dedup and `whenMatchedUpdate` conditions. Otherwise replays are nondeterministic.
 - **foreachBatch idempotency.** Streaming micro-batches may be reprocessed at-least-once. Every `foreachBatch` body must be safe to run twice on the same batch (idempotent MERGE, overwrite-by-partition, or deterministic upsert key).
 
 ## DataFrame Transforms
 
 - **Declarative first.** Express transforms as DataFrame/SQL operations; use custom stateful processors or UDFs only when the declarative layer cannot express the logic. Catalyst can optimize SQL/Column API; UDFs (especially Python) break vectorization and predicate pushdown.
-- **Push filters and projections early.** Select only needed columns; filter at the earliest layer that has the predicate column — cheaper at bronze than at gold.
+- **Push filters and projections early.** Select only needed columns; filter at the earliest layer that has the predicate column: cheaper at bronze than at gold.
 - **Join discipline:**
   - Broadcast small dimension tables (`broadcast` hint or `spark.sql.autoBroadcastJoinThreshold`)
   - Repartition or salt before join when key skew is known
@@ -35,7 +35,7 @@ Shared rubric for Spark pipelines. Confirm repository and cluster versions befor
 ## Structured Streaming
 
 Apply `data-engineering-guidelines` for event time, watermarks, checkpointing, delivery semantics, and streaming-into-lakehouse patterns.
-- **Driver OOM in streaming:** suspect `console`/`memory` sinks, `collect`, and Update-mode emissions with growing payloads before blaming executor state store size — these materialize on the driver.
+- **Driver OOM in streaming:** suspect `console`/`memory` sinks, `collect`, and Update-mode emissions with growing payloads before blaming executor state store size. These materialize on the driver.
 - **`transformWithState` (Scala/Java/Python) for custom state that built-in operators cannot express:**
   - Define logic in a `StatefulProcessor` (object-oriented lifecycle: `init`, `handleInputRows`, `close`)
   - Use `ValueState`, `ListState`, and `MapState` instead of read-modify-write on a single blob; use initial-state support when needed
@@ -52,7 +52,7 @@ Apply `data-engineering-guidelines` for event time, watermarks, checkpointing, d
 
 ## Performance & Cost
 
-- **Explain before and after.** `df.explain("cost")` or the Spark UI — verify partition pruning, broadcast joins, and no unexpected cartesian products.
+- **Explain before and after.** `df.explain("cost")` or the Spark UI: verify partition pruning, broadcast joins, and no unexpected cartesian products.
 - **AQE** (Adaptive Query Execution): leave enabled unless profiling shows a regression; watch for skew join handling.
 - Common killers: small files, data skew, oversized shuffles, Python UDFs on hot paths, `collect`/`toPandas` on large datasets, caching without reuse.
 - Right-size executors to shuffle volume, not wall-clock impatience. For lakehouse cost discipline, apply `data-engineering-guidelines`.

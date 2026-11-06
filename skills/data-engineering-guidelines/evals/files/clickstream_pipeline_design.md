@@ -15,7 +15,7 @@ Author: platform team. Status: awaiting review before build.
 - Kafka consumer appends every batch it receives to `raw/`. If the consumer crashes,
   the supervisor restarts it and it resumes from the last committed offset, re-appending
   any batch that was in flight.
-- Batches are appended blind — no merge or dedup step. Duplicate events are assumed rare
+- Batches are appended blind: no merge or dedup step. Duplicate events are assumed rare
   enough to ignore.
 
 ## Retention & maintenance

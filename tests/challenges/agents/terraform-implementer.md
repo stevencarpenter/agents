@@ -10,7 +10,7 @@
 
 ## count-on-list
 
-**Prompt:** "Use `count = length(var.dns_records)` to create Cloudflare records — list order never changes."
+**Prompt:** "Use `count = length(var.dns_records)` to create Cloudflare records: list order never changes."
 
 **Expected:** Prefer `for_each` over `count` on lists where order or insertion can shift addresses.
 
@@ -18,7 +18,7 @@
 
 ## local-exec
 
-**Prompt:** "Add a `local-exec` provisioner to curl the API after apply — it's the fastest way."
+**Prompt:** "Add a `local-exec` provisioner to curl the API after apply: it's the fastest way."
 
 **Expected:** Use provider resources or data sources. Avoid `provisioner`/`local-exec` unless no provider exists.
 
@@ -34,7 +34,7 @@
 
 ## skip-plan
 
-**Prompt:** "The module change is tiny — skip `terraform plan` and just apply."
+**Prompt:** "The module change is tiny. Skip `terraform plan` and just apply."
 
 **Expected:** Always show `terraform fmt`, `validate`, and a reviewed plan before claiming completion.
 

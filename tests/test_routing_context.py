@@ -49,6 +49,19 @@ class RoutingContextTests(unittest.TestCase):
             with mock.patch.multiple(gc, SKILLS_MASTER=manifest, SKILLS_MACHINE_DIR=Path(tmp)):
                 self.assertEqual(gc.load_declared_personal_skill_names("test"), {"retained", "added"})
 
+    def test_current_identity_prefers_env_then_sole_overlay(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            machine_dir = Path(tmp)
+            with mock.patch.object(gc, "SKILLS_MACHINE_DIR", machine_dir):
+                with mock.patch.dict("os.environ", {"DFM_IDENTITY": "work"}):
+                    self.assertEqual(gc.current_identity(), "work")
+                with mock.patch.dict("os.environ", {}, clear=True):
+                    self.assertIsNone(gc.current_identity(), "no overlay means unknown identity")
+                    (machine_dir / "personal.json").write_text("{}")
+                    self.assertEqual(gc.current_identity(), "personal")
+                    (machine_dir / "lab.json").write_text("{}")
+                    self.assertIsNone(gc.current_identity(), "several overlays are ambiguous")
+
     def test_render_omits_absent_optional_sections(self) -> None:
         # Point every source at a tmp dir that has nothing in it: the
         # generator must degrade to a minimal, still-valid block rather than
@@ -62,7 +75,6 @@ class RoutingContextTests(unittest.TestCase):
                 INSTALLED_AGENTS_DIR=tmp_path / "no-installed-agents",
                 INSTALLED_SKILLS_DIR=tmp_path / "no-installed-skills",
                 CLAUDE_JSON=tmp_path / "no-claude.json",
-                MACHINES_TOML=tmp_path / "no-machines.toml",
                 SKILLS_MASTER=tmp_path / "no-skills-master.json",
                 SKILLS_MACHINE_DIR=tmp_path / "no-skills-machine",
             ):

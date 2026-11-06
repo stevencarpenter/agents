@@ -19,14 +19,13 @@ import os
 
 from mlflow.genai.judges import make_judge
 
-# Strong judge model. make_judge wants a "provider:/model" id. Verify your key
-# can call it; override with EVAL_JUDGE_MODEL.
+# make_judge needs a "provider:/model" id. Override with EVAL_JUDGE_MODEL.
 JUDGE_MODEL = os.environ.get("EVAL_JUDGE_MODEL", "anthropic:/claude-opus-4-8")
 
 _SCALE = (
     "Score 1-5 where 1 = badly fails the criterion and 5 = exemplary. "
     "Judge ONLY the criterion below; ignore unrelated strengths or weaknesses. "
-    "Be a discriminating grader — reserve 5 for genuinely excellent work."
+    "Be a discriminating grader: reserve 5 for genuinely excellent work."
 )
 
 
@@ -35,7 +34,7 @@ def _judge(name: str, criterion: str):
         name=name,
         instructions=(
             f"You are grading the response to a {{{{ inputs }}}} task.\n\n"
-            f"CRITERION — {criterion}\n\n"
+            f"CRITERION: {criterion}\n\n"
             f"Response to grade:\n{{{{ outputs }}}}\n\n{_SCALE}"
         ),
         model=JUDGE_MODEL,

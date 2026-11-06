@@ -1,6 +1,6 @@
 ---
 name: spark-scala-implementer
-description: Use when implementing Apache Spark 4 data pipelines in Scala — batch ETL, lakehouse MERGE/CDC, Dataset and DataFrame transforms, and Structured Streaming jobs with transformWithState.
+description: Use when implementing Apache Spark 4 data pipelines in Scala, batch ETL, lakehouse MERGE/CDC, Dataset and DataFrame transforms, and Structured Streaming jobs with transformWithState.
 model: inherit
 x-registry-permission: edit
 color: red

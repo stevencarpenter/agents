@@ -1,6 +1,6 @@
 ---
 name: terraform-implementer
-description: Use when writing Terraform/OpenTofu modules and config — module structure, variables, provider pinning, and safe state/secret handling.
+description: Use when writing Terraform/OpenTofu modules and config, module structure, variables, provider pinning, and safe state/secret handling.
 model: inherit
 x-registry-permission: edit
 color: blue

@@ -23,11 +23,11 @@
       "expected_output": "Typed CheckpointStore using pathlib, atomic temp-file-then-rename saves, distinct missing-vs-corrupt signaling, strict job_id validation blocking traversal, idempotent delete, and tests using TemporaryDirectory.",
       "files": ["evals/files/checkpoint_spec.md"],
       "expectations": [
-        "Every public signature is fully typed, using modern syntax (dict[str, ...], X | None — not Optional/Dict) and pathlib.Path for all filesystem paths",
-        "save() writes to a temp file in the same directory then os.replace/Path.replace renames it — a crash mid-save cannot corrupt the previous checkpoint",
+        "Every public signature is fully typed, using modern syntax (dict[str, ...], X | None, not Optional/Dict) and pathlib.Path for all filesystem paths",
+        "save() writes to a temp file in the same directory then os.replace/Path.replace renames it: a crash mid-save cannot corrupt the previous checkpoint",
         "Missing checkpoint and corrupt checkpoint are distinguishable: missing is an expected condition (None return or FileNotFoundError per a documented choice); corrupt raises a distinct specific exception, never a bare Exception or silent None",
-        "job_id is validated against the allowed character set before any filesystem access, with a ValueError (or domain error) on violation — a traversal id like ../../etc/passwd is tested and rejected",
-        "delete() of a missing checkpoint is a no-op via an intentional specific idiom (missing_ok=True, contextlib.suppress(FileNotFoundError), or except FileNotFoundError) — never a bare except or except Exception",
+        "job_id is validated against the allowed character set before any filesystem access, with a ValueError (or domain error) on violation: a traversal id like ../../etc/passwd is tested and rejected",
+        "delete() of a missing checkpoint is a no-op via an intentional specific idiom (missing_ok=True, contextlib.suppress(FileNotFoundError), or except FileNotFoundError), never a bare except or except Exception",
         "Tests use tempfile.TemporaryDirectory (never the project tree), cover round-trip, rename-based atomicity, missing vs corrupt, validation rejection, and delete idempotency, and use a single framework consistently",
         "No dependencies beyond the standard library; the proof command is stated exactly (pytest or unittest invocation)"
       ]

@@ -25,12 +25,10 @@ GIT_TIMEOUT_SECONDS = 60
 
 
 def now_ms() -> int:
-    """Return the current time as Unix epoch milliseconds."""
     return time.time_ns() // 1_000_000
 
 
 def short_hash(text: str) -> str:
-    """Return the first 16 hex characters of the SHA-256 of ``text``."""
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 

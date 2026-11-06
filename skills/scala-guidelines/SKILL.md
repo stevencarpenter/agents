@@ -1,6 +1,6 @@
 ---
 name: scala-guidelines
-description: Use when writing or reviewing idiomatic Scala — functional design, immutability, ADTs, type classes, effect systems, and collection performance.
+description: Use when writing or reviewing idiomatic Scala (functional design, immutability, ADTs, type classes, effect systems, and collection performance).
 ---
 
 # Scala Guidelines
@@ -11,7 +11,7 @@ Shared Scala rubric for agents. Prefer repo-local conventions (Scala 2 vs 3, eff
 
 - Scala 3 (Dotty) reference and the official style guide
 - *Effective Scala* (Twitter); the cats / ZIO docs when the repo uses an effect system
-- The repo's `build.sbt`/`build.mill` and compiler flags (`-Xfatal-warnings`, `-Wunused`) — these are the contract
+- The repo's `build.sbt`/`build.mill` and compiler flags (`-Xfatal-warnings`, `-Wunused`): these are the contract
 
 ## Core Rubric
 
@@ -22,7 +22,7 @@ Shared Scala rubric for agents. Prefer repo-local conventions (Scala 2 vs 3, eff
 - Scala 3: `given`/`using` for type classes; Scala 2: implicit instances scoped narrowly. Don't smuggle behavior through broad implicit conversions.
 - Effects: if the repo uses cats-effect or ZIO, keep effects in `IO`/`F[_]` to the edges; don't run effects in constructors or block inside them. Tagless-final only when it buys real abstraction.
 - Collections: know strict vs lazy (`View`, `LazyList`); `List.head` and `tail` are constant time, while indexed access and append are linear. Pick the structure that matches the access pattern ([performance table](https://docs.scala-lang.org/overviews/collections-2.13/performance-characteristics.html)).
-- Keep type signatures legible — name complex types, avoid gratuitous higher-kinded gymnastics.
+- Keep type signatures legible: name complex types, avoid gratuitous higher-kinded gymnastics.
 
 ## Verification
 

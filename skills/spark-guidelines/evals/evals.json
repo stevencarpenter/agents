@@ -3,7 +3,7 @@
   "evals": [
     {
       "id": 0,
-      "prompt": "Migrate the legacy Scala Structured Streaming job in evals/files/LegacyFleetAggregator.scala to Spark 4. Preserve the intended behavior — per-orderId state accumulates delivery events and one row is emitted when an order reaches DELIVERED (the legacy job never clears state after emitting; fixing that defect is in scope). Save outputs/MigratedFleetAggregator.scala and outputs/migration_notes.md covering everything an operator must know before deploying the migrated job over the existing one.",
+      "prompt": "Migrate the legacy Scala Structured Streaming job in evals/files/LegacyFleetAggregator.scala to Spark 4. Preserve the intended behavior: per-orderId state accumulates delivery events and one row is emitted when an order reaches DELIVERED (the legacy job never clears state after emitting; fixing that defect is in scope). Save outputs/MigratedFleetAggregator.scala and outputs/migration_notes.md covering everything an operator must know before deploying the migrated job over the existing one.",
       "expected_output": "Spark 4 StatefulProcessor with ListState, checkpoint migration warning, Avro encoding guidance.",
       "files": ["evals/files/LegacyFleetAggregator.scala"],
       "expectations": [

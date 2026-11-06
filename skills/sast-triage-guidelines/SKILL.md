@@ -10,7 +10,7 @@ Rubric for running static analyzers and converting noisy output into trustworthy
 ## Source Of Truth
 
 - Existing scanner rules and scope first; choose an additional ruleset only for a coverage gap relevant to the requested audit.
-- The repo's existing lint/SAST config — run it first, it encodes accepted suppressions
+- The repo's existing lint/SAST config: run it first, it encodes accepted suppressions
 
 ## Tool Selection By Stack
 
@@ -18,16 +18,16 @@ Rubric for running static analyzers and converting noisy output into trustworthy
 - Python: `bandit -r .`, `ruff check --select S .`
 - Go: `gosec ./...`, `govulncheck ./...` (call-graph reachability, not just imports)
 - Rust: `cargo audit`; clippy correctness lints already gate in most repos here
-- TypeScript/JS: `npm audit` is dependency-only — pair with semgrep `p/javascript` + `p/react`
+- TypeScript/JS: `npm audit` is dependency-only: pair with semgrep `p/javascript` + `p/react`
 - Infra: `trivy config .`, `checkov -d .` for Terraform, `hadolint` for Dockerfiles
 
 ## Triage Protocol
 
 1. **Dedupe** by (rule, file, line) before reading anything.
-2. **Verify reachability** — is the flagged sink reachable from attacker-controlled input? Read the actual code path; scanner dataflow is best-effort.
-3. **Falsify** — try to construct the reason the finding is wrong (sanitizer upstream, framework default, test-only code). A falsified finding is recorded as dismissed-with-reason, not silently dropped.
+2. **Verify reachability**: is the flagged sink reachable from attacker-controlled input? Read the actual code path; scanner dataflow is best-effort.
+3. **Falsify**: try to construct the reason the finding is wrong (sanitizer upstream, framework default, test-only code). A falsified finding is recorded as dismissed-with-reason, not silently dropped.
 4. **Rank** by exploitability in this deployment, not by the scanner's generic severity. A SQLi in a dead admin route ranks below a reflected XSS on the login page.
-5. **Group** repeated instances of one weakness class into a single finding with a file list — never paste 40 near-identical rows.
+5. **Group** repeated instances of one weakness class into a single finding with a file list. Never paste 40 near-identical rows.
 
 ## Custom Rules
 

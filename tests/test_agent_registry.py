@@ -130,7 +130,6 @@ Review code with adversarial attention to behavior.
 
             self.assertNotIn("\r", agent.body)
             self.assertEqual(agent.metadata["name"], "crlf-agent")
-            # Normalized body emits clean TOML.
             import tomllib
 
             self.assertNotIn("\r", tomllib.loads(emit_codex_agent(agent))["developer_instructions"])
@@ -151,12 +150,10 @@ Review code with adversarial attention to behavior.
             self.assertIn('description = "Use when reviewing code changes for correctness risks."', rendered)
             self.assertIn("developer_instructions = '''", rendered)
             self.assertIn("Review carefully.", rendered)
-            # Codex TOML must NOT carry markdown frontmatter or Claude-only keys.
             self.assertNotIn("---", rendered)
             self.assertNotIn("tools", rendered)
             self.assertNotIn("color", rendered)
             self.assertNotIn("x-derived-from", rendered)
-            # Unknown aliases are omitted so Codex inherits the session model.
             self.assertNotIn("model", rendered)
 
     def test_emit_codex_translates_haiku_and_enforces_read_only_sandbox(self) -> None:
@@ -476,7 +473,6 @@ Review code with adversarial attention to behavior.
         root = Path(__file__).resolve().parents[1]
         agents = {agent.name for agent in validate_agent_tree(root / "agents")}
 
-        # Each expert language ships an implementer + reviewer pair.
         expected = {
             f"{lang}-{role}"
             for lang in ("scala", "java", "kotlin", "swift", "terraform")
@@ -604,6 +600,69 @@ Review code with adversarial attention to behavior.
         } - skills
         self.assertEqual(missing, set(), f"missing guideline skills: {missing}")
 
+    def test_game_language_families_exist(self) -> None:
+        """C++, C, Lua, and Unreal 5.8 families at the Rust family's depth: one shared
+        rubric with an eval suite, plus narrow agents per operating mode."""
+        root = Path(__file__).resolve().parents[1]
+        agents = {agent.name for agent in validate_agent_tree(root / "agents")}
+        skills = {skill.name for skill in validate_skill_tree(root / "skills")}
+
+        families = {
+            "cpp": {
+                "implementer", "idiom-reviewer", "api-designer", "memory-safety-auditor",
+                "concurrency-reviewer", "performance-profiler", "test-strategist", "build-auditor",
+            },
+            "c": {
+                "implementer", "idiom-reviewer", "abi-designer", "memory-safety-auditor",
+                "performance-profiler", "test-strategist", "build-auditor",
+            },
+            "lua": {
+                "implementer", "idiom-reviewer", "api-designer", "embedding-auditor",
+                "performance-profiler", "test-strategist",
+            },
+            "unreal": {
+                "implementer", "reviewer", "gameplay-architect", "render-specialist",
+                "physics-specialist", "editor-automation", "performance-profiler", "build-auditor",
+            },
+        }
+        for prefix, roles in families.items():
+            expected = {f"{prefix}-{role}" for role in roles}
+            self.assertEqual(expected - agents, set(), f"missing {prefix} agents: {expected - agents}")
+            skill = f"{prefix}-guidelines"
+            self.assertIn(skill, skills)
+            evals = root / "skills" / skill / "evals" / "evals.json"
+            self.assertTrue(evals.is_file(), f"{skill} needs an eval suite like rust-guidelines")
+
+        for agent in validate_agent_tree(root / "agents"):
+            prefix = agent.name.split("-", 1)[0]
+            if prefix in families and agent.name.split("-", 1)[1] in families[prefix]:
+                refs = {n.strip() for n in agent.metadata.get("skills", "").split(",")}
+                self.assertIn(f"{prefix}-guidelines", refs, agent.name)
+                if prefix == "unreal":
+                    self.assertIn("cpp-guidelines", refs, agent.name)
+
+    def test_reverse_engineering_agents_and_skills_exist(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        agents = {agent.name: agent for agent in validate_agent_tree(root / "agents")}
+        skills = {skill.name for skill in validate_skill_tree(root / "skills")}
+
+        expected = {
+            "rea-binary-analyst",
+            "game-data-format-analyst",
+            "re-findings-auditor",
+            "re-findings-porter",
+            "physics-model-reconstructor",
+            "graphics-pipeline-reconstructor",
+        }
+        self.assertEqual(expected - set(agents), set(), f"missing RE agents: {expected - set(agents)}")
+        self.assertLessEqual({"reverse-engineering-guidelines", "re-provenance-guidelines"}, skills)
+        for name in expected:
+            refs = {n.strip() for n in agents[name].metadata.get("skills", "").split(",")}
+            # Every RE agent carries the label vocabulary; the analysts also carry the REA playbook.
+            self.assertIn("re-provenance-guidelines", refs, name)
+            self.assertIn("reverse-engineering-guidelines", refs, name)
+        self.assertEqual(agents["re-findings-auditor"].metadata.get("x-registry-permission"), "read-only")
+
     def test_tool_priority_skill_exists(self) -> None:
         root = Path(__file__).resolve().parents[1]
         skills = {skill.name for skill in validate_skill_tree(root / "skills")}
@@ -625,7 +684,7 @@ Review code with adversarial attention to behavior.
                 self.assertEqual(agent.metadata.get("x-allow-tools-allowlist"), "true")
 
     def test_mechanical_agents_skip_tool_priority(self) -> None:
-        """Mechanical leaf agents must NOT inline tool-priority — it is dead weight
+        """Mechanical leaf agents must NOT inline tool-priority: it is dead weight
         (unreachable under their MCP allowlist) or contradictory (Explore is a leaf
         worker but tool-priority tells agents to spawn teams). This pins that carve-out
         so the rubric is never silently re-added to a pure pass-through agent."""
@@ -684,10 +743,8 @@ Review code with adversarial attention to behavior.
             self.assertIn("Write well.", composed.body)
             self.assertIn("# Shared rubric: doc-rubric", composed.body)
             self.assertIn("Lead with the why.", composed.body)
-            # The inlined rubric reaches the emitted Claude agent...
             rendered = emit_claude_agent(composed)
             self.assertIn("Lead with the why.", rendered)
-            # ...and the Codex agent body too.
             import tomllib
 
             parsed = tomllib.loads(emit_codex_agent(composed))

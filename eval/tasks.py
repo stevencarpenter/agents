@@ -3,12 +3,12 @@
 Three domains form a deliberate gradient of expected wiring effect, so the A/B is
 interpretable:
 
-- **technical-writer** — lean body; wiring inlines the WHOLE Diátaxis rubric.
+- **technical-writer**: lean body; wiring inlines the WHOLE Diátaxis rubric.
   Expect the largest wired↑ delta (mode discipline, no mode-bleed).
-- **data-engineer** — medium body; wiring adds the deeper 2026 rubric (Iceberg
+- **data-engineer**: medium body; wiring adds the deeper 2026 rubric (Iceberg
   REST catalog, point-in-time joins, VACUUM-vs-retention, drift taxonomy).
   Expect a moderate delta.
-- **slide-designer** — its body ALREADY contains the storyline/action-title
+- **slide-designer**: its body ALREADY contains the storyline/action-title
   rubric; wiring only adds `diagramming-guidelines`. Acts as a near-zero-delta
   CONTROL: if it shows a big delta, suspect judge noise.
 
@@ -20,17 +20,15 @@ from __future__ import annotations
 
 TASKS: dict[str, list[str]] = {
     "technical-writer": [
-        # how-to (incident, task-oriented)
         "Write a how-to guide for rotating a compromised API key in a small "
         "Node.js + PostgreSQL web service on a single VM, with zero downtime. "
         "Audience: a mid-level engineer responding to an incident.",
-        # tutorial (learning-oriented — must not bleed into reference/explanation)
+        # tutorial (learning-oriented, must not bleed into reference/explanation)
         "Write a beginner tutorial that gets someone new to GraphQL to their "
         "first working GraphQL subscription using a tiny Node.js server.",
-        # explanation (understanding-oriented — must not become a how-to)
+        # explanation (understanding-oriented, must not become a how-to)
         "Write a conceptual explainer: why a team might choose an event-sourced "
         "architecture over CRUD, with the trade-offs and when NOT to use it.",
-        # how-to (config task)
         "Write a how-to guide for adding structured JSON logging to a Python "
         "FastAPI service and shipping the logs to a rotating file.",
         # release notes (tests mode discipline: not a tutorial, not reference)

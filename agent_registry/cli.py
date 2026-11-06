@@ -22,20 +22,7 @@ _MANIFEST = ".installed-by-agent-registry.json"
 
 
 def _load_agents(agents_dir: str, skills_dir: str) -> list[Agent]:
-    """Load + validate agents, inlining any shared skills they opt into.
-
-    Agents that declare a ``skills:`` frontmatter field get those skills' bodies
-    inlined into their prompt (see ``compose_agent_with_skills``), so every
-    emit/install target ships a self-contained agent. Raises if an agent
-    references a skill that does not exist.
-
-    Args:
-        agents_dir: Path to the agent tree (``agents/`` by default).
-        skills_dir: Path to the skill tree (``skills/`` by default).
-
-    Returns:
-        The validated agents with shared skills inlined.
-    """
+    """Load and validate agents with their skills inlined; raises on an unknown skill."""
     agents = validate_agent_tree(Path(agents_dir))
     skills_by_name = {s.name: s for s in validate_skill_tree(Path(skills_dir))}
     return [compose_agent_with_skills(a, skills_by_name) for a in agents]
@@ -64,8 +51,7 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    # Check every requested target before writing any output or installing any
-    # agent. In particular, install --target all must not partially install.
+    # Validate every target before any write, so `install --target all` cannot half-install.
     if args.command != "validate":
         agents = _load_agents(args.agents_dir, args.skills_dir)
         targets = (
@@ -78,14 +64,8 @@ def main() -> int:
                 validate_isolated_read_only(agent, target)
 
     if args.command == "validate":
-        agents = validate_agent_tree(Path(args.agents_dir))
+        agents = _load_agents(args.agents_dir, args.skills_dir)
         skills = validate_skill_tree(Path(args.skills_dir))
-        skills_by_name = {s.name: s for s in skills}
-        # Fail loudly on dangling `skills:` references so CI/`just check` catch them.
-        for agent in agents:
-            compose_agent_with_skills(agent, skills_by_name)
-        # And on skill-body "apply `X`" instructions not satisfied by every
-        # consuming agent's skills: field (inlining closure).
         validate_skill_closure(agents, skills)
         print(f"validated {len(agents)} agents and {len(skills)} skills")
         return 0
@@ -139,11 +119,6 @@ def main() -> int:
                 emit_copilot_instructions(agents), encoding="utf-8"
             )
             print(f"installed {len(agents)} agents → ~/.config/github-copilot/global-agents-instructions.md")
-            # The github-copilot dir is only partially chezmoi-managed; warn only
-            # if chezmoi actually tracks THIS file (any prefix/.tmpl variant).
-            cm_src = home / ".local" / "share" / "chezmoi" / "dot_config" / "github-copilot"
-            if cm_src.exists() and any(cm_src.glob("*global-agents-instructions.md*")):
-                print("  note: chezmoi also tracks this file — manage it there so `chezmoi apply` doesn't overwrite it")
 
         if "cursor" in targets:
             files = {f"{a.name}{CURSOR_EXT}": emit_cursor_agent(a) for a in agents}

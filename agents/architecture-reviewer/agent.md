@@ -16,7 +16,7 @@ What to evaluate:
 
 - **Fit**: Does this design meet the measured workload and failure requirements? Prefer existing components and simple sequential code until capacity, concurrency, or durability requirements justify more machinery.
 - **Boundaries**: Are the module/service boundaries drawn at natural seams (by domain concept, by rate of change, by team ownership) or by implementation convenience?
-- **Data model**: Is the primary data structure the right one? Arrays vs maps, normalized vs denormalized, relational vs document — the wrong choice here is expensive to fix.
+- **Data model**: Is the primary data structure the right one? Arrays vs maps, normalized vs denormalized, relational vs document. The wrong choice here is expensive to fix.
 - **API shape**: Is the public interface minimal and stable? Will callers need to know implementation details to use it correctly?
 - **Failure modes**: What happens when a dependency is slow, returns an error, or returns stale data? Is that handled at the boundary or does it propagate?
 - **Observability**: Can you tell from logs/metrics/traces whether the system is healthy and where time is spent?

@@ -32,10 +32,8 @@ _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
 # follows. Keep this set to actual built-in names being overridden, not a
 # general escape hatch from the naming convention.
 _BUILTIN_OVERRIDE_NAMES = {"Explore"}
-# Control characters other than tab (\x09) and newline (\x0a). These are illegal
-# in TOML strings, so an agent body containing one would emit a .toml file Codex
-# cannot parse. Reject at validation rather than letting an emitter produce
-# corrupt output. (\r is normalized to \n on load, so it never reaches here.)
+# Control characters other than tab and newline are illegal in TOML strings.
+# \r is normalized to \n on load.
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 _SECRET_PATTERNS = [
     re.compile(r"sk-ant-api\d{2}-[A-Za-z0-9_-]{24,}"),
@@ -95,41 +93,20 @@ def validate_skill_tree(root: Path) -> list[Skill]:
 
 
 def agent_skill_refs(agent: Agent) -> list[str]:
-    """Return the shared-skill names an agent opts into via its `skills:` field.
-
-    Args:
-        agent: The agent whose frontmatter may carry a comma-separated `skills`
-            field (e.g. ``skills: technical-writing-guidelines, diagramming-guidelines``).
-
-    Returns:
-        The referenced skill names in declared order, empty when none.
-    """
+    """Skill names from the agent's comma-separated `skills:` field, in declared order."""
     raw = agent.metadata.get("skills", "")
     return [name.strip() for name in raw.split(",") if name.strip()]
 
 
-# A skill body saying "apply `X`" / "follow `X`" is an inline instruction: the
-# named rubric must travel with any agent that inlines the referring skill,
-# because skills are composed at emit time and cannot be loaded at runtime.
-# The verb window is sentence-bounded ([^.`]) so prose that merely *mentions*
-# a skill (routing advice naming agents) is not treated as an instruction.
+# "apply `X`" or "follow `X`" in a skill body means X must be inlined too.
+# The window is sentence-bounded ([^.`]) so a mere mention is not an instruction.
 _SKILL_APPLY_REF_RE = re.compile(
     r"(?i)\b(?:apply(?:ing)?|follow(?:ing|s)?)\b[^.`]{0,60}`([a-z0-9-]+)`"
 )
 
 
 def skill_body_refs(skill: Skill, known_names: set[str]) -> list[str]:
-    """Return other skills this skill's body instructs the reader to apply.
-
-    Args:
-        skill: The skill whose body to scan.
-        known_names: All registered skill names; matches outside this set are
-            ignored (backticked identifiers that aren't skills).
-
-    Returns:
-        Sorted unique names of skills referenced with apply/follow phrasing,
-        excluding the skill itself.
-    """
+    """Other known skills this skill's body instructs the reader to apply, sorted."""
     hits = {
         name
         for name in _SKILL_APPLY_REF_RE.findall(skill.body)
@@ -139,16 +116,9 @@ def skill_body_refs(skill: Skill, known_names: set[str]) -> list[str]:
 
 
 def validate_skill_closure(agents: list[Agent], skills: list[Skill]) -> None:
-    """Enforce the inlining-closure invariant across agents and skills.
+    """An agent inlining a skill must also list the skills that skill says to apply.
 
-    Skills are inlined at emit time, not loaded at runtime, so a skill body
-    that says "apply `X-guidelines`" is dead text in the built agent unless
-    every agent inlining the referring skill also lists X in its ``skills:``
-    field.
-
-    Raises:
-        AgentValidationError: Naming the agent, the referring skill, and the
-            missing skills when the invariant is violated.
+    Skills are inlined at emit time, so an unlisted "apply `X`" is dead text in the built agent.
     """
     known_names = {s.name for s in skills}
     required = {s.name: set(skill_body_refs(s, known_names)) for s in skills}
@@ -161,32 +131,15 @@ def validate_skill_closure(agents: list[Agent], skills: list[Skill]) -> None:
                 raise AgentValidationError(
                     f"{agent.path}: inlines skill '{name}', whose body instructs "
                     f"applying {sorted(missing)}, but the agent's skills: field "
-                    f"does not include them — add them or reword the skill's "
+                    f"does not include them. Add them or reword the skill's "
                     f"reference into routing advice"
                 )
 
 
 def compose_agent_with_skills(agent: Agent, skills_by_name: dict[str, Skill]) -> Agent:
-    """Inline an agent's referenced shared skills into its body.
+    """Append each listed skill's body so the rubric travels with the agent.
 
-    Agents opt in with a ``skills:`` frontmatter field. Each named skill's body
-    is appended to the agent body under a delimited appendix, so the rendered
-    prompt is self-contained on every emit target — the rubric travels with the
-    agent rather than depending on the host loading a separate skill at runtime.
-    The ``skills`` key is not an emit passthrough key, so it never appears in
-    generated output.
-
-    Args:
-        agent: The agent to compose.
-        skills_by_name: Map of skill name to ``Skill`` (e.g. from
-            ``validate_skill_tree``).
-
-    Returns:
-        A new ``Agent`` with the inlined body, or the original agent unchanged
-        when it references no skills.
-
-    Raises:
-        AgentValidationError: If the agent references a skill that does not exist.
+    Emit targets cannot load skills at runtime. Raises on an unknown skill.
     """
     names = agent_skill_refs(agent)
     if not names:

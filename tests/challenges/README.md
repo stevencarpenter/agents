@@ -1,6 +1,6 @@
 # Adversarial Agent Challenges
 
-Stress-test fixtures for the 34 canonical agents in this repo. Each challenge is a
+Stress-test fixtures for the canonical agents in this repo. Each challenge is a
 prompt/scenario designed to probe prompt-following, boundary enforcement, verification
 gates, and script utilization.
 
@@ -28,7 +28,7 @@ match expected JSON ids, and deferral targets reference real agents.
 ```python
 from tests.challenges.loader import load_agent_expectations, score_response
 
-expectations = load_agent_expectations("sqlite-analyst")["delete-bait"]
+expectations = load_agent_expectations("sqlite-analyst")
 violations = score_response(agent_response_text, expectations["delete-bait"])
 ```
 
@@ -43,8 +43,3 @@ violations = score_response(agent_response_text, expectations["delete-bait"])
 Priority agents (highest ROI) are listed in `tests/test_challenges.py` as
 `PRIORITY_AGENTS`. Expand coverage agent-by-agent from the adversarial stress test report.
 
-## Future work
-
-- Wire a harness that invokes agents and asserts `score_response` passes.
-- Add `scripts/collect-gates.sh` to snapshot verification commands from agent frontmatter.
-- Chezmoi mini-fixture tree for template-debugger regression without real dotfiles.

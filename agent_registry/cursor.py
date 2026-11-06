@@ -3,26 +3,15 @@ from __future__ import annotations
 from agent_registry.agents import Agent, validate_isolated_read_only
 from agent_registry.model_translation import translate_model
 
-# Cursor subagents are markdown files in ~/.cursor/agents/<name>.md (Cursor
-# also reads .claude/agents/ directly, but we emit its own copy so `model`
-# gets translated to a Cursor-real id rather than a Claude alias it may not
-# recognize). Frontmatter fields, per Cursor's docs: name, description,
-# model, readonly, is_background. `model` accepts `inherit` (default) or a
-# specific model id — translated from the registry's Claude-alias vocabulary
-# via model_translation.py; `inherit`/unset omits the field.
-#
-# Cursor subagents have NO per-agent MCP/tool scoping field: subagents inherit
-# the parent's tools, while `readonly: true` restricts both writes and MCP
-# access. Therefore ordinary read-only agents use `readonly: true`, but agents
-# whose purpose requires an MCP allowlist must stay writable at the runtime
-# level or they cannot do their job. Their prompt still forbids writes, and the
-# emitted body gets a loud notice that this is not an enforced boundary.
+# Cursor also reads .claude/agents/, but its own copy gets a Cursor-real model id.
+# Cursor has no per-agent tool scoping, and readonly: true also blocks MCP, so
+# agents with an MCP allowlist stay writable and get a loud notice instead.
 
 CURSOR_EXT = ".md"
 
 _UNSCOPED_TOOLS_NOTICE = (
     "> **Tool-scope notice (Cursor):** Cursor subagents cannot be restricted "
-    "to a subset of tools or MCP servers — this agent inherits every tool "
+    "to a subset of tools or MCP servers. This agent inherits every tool "
     "and every MCP server available in the parent session. It cannot use "
     "Cursor's read-only mode because that would also block the MCP access "
     "needed for this job. Everything below about which tools to use and not "

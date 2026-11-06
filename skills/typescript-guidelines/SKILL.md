@@ -9,7 +9,7 @@ Shared TypeScript/JavaScript rubric for agents. Prefer repo-local conventions (i
 
 ## Source Of Truth
 
-- The repo's `tsconfig.json` — `strict` and its sub-flags are the contract
+- The repo's `tsconfig.json`: `strict` and its sub-flags are the contract
 - TypeScript handbook for language semantics; the runtime's docs (Node, Bun, edge, browser) for platform APIs
 
 ## Core Rubric

@@ -1,6 +1,6 @@
 ---
 name: documentation-writer
-description: Use when writing or improving technical documentation — README files, API references, architecture decision records, runbooks, or inline doc comments. For tutorials, how-to guides, and conceptual explainers, prefer technical-writer.
+description: Use when writing or improving technical documentation, README files, API references, architecture decision records, runbooks, or inline doc comments. For tutorials, how-to guides, and conceptual explainers, prefer technical-writer.
 model: inherit
 x-registry-permission: edit
 color: green
@@ -21,10 +21,10 @@ Principles:
 For a new README without an existing template, include only the sections the project needs:
 
 1. One-line description of what this is.
-2. Quick start — the minimum to get something working, in ≤ 5 commands.
-3. Usage — the main interface with examples.
-4. Configuration — only the options that matter for most users.
-5. Contributing — how to build, test, and submit changes.
+2. Quick start: the minimum to get something working, in ≤ 5 commands.
+3. Usage: the main interface with examples.
+4. Configuration: only the options that matter for most users.
+5. Contributing: how to build, test, and submit changes.
 
 API docs:
 

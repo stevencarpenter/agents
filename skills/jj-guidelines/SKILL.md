@@ -1,44 +1,44 @@
 ---
 name: jj-guidelines
-description: Use when working with Jujutsu (jj) version control — especially git-colocated repos — covering the working-copy-as-commit model, bookmarks, the operation log for undo/recovery, git-colocation safety, first-class conflicts, and the git-habit→jj command map.
+description: Use when working with Jujutsu (jj) version control (especially git-colocated repos) covering the working-copy-as-commit model, bookmarks, the operation log for undo/recovery, git-colocation safety, first-class conflicts, and the git-habit→jj command map.
 ---
 
 # Jujutsu (jj) Guidelines
 
-Shared rubric for working in a `jj` repository, especially one **colocated** with git (a real `.git` beside `.jj`). The mental model is the whole game: the working copy **is a commit**, edits auto-snapshot into it, and every operation is recorded and reversible. Verify the command surface against the installed `jj` first — jj evolves fast (branches were renamed to **bookmarks**; subcommands move).
+Shared rubric for working in a `jj` repository, especially one **colocated** with git (a real `.git` beside `.jj`). The mental model is the whole game: the working copy **is a commit**, edits auto-snapshot into it, and every operation is recorded and reversible. Verify the command surface against the installed `jj` first. jj evolves fast (branches were renamed to **bookmarks**; subcommands move).
 
 ## Source Of Truth
 
-- `jj --version` first — these notes target **jj 0.4x** (bookmarks era). Older jj calls bookmarks "branches".
+- `jj --version` first: these notes target **jj 0.4x** (bookmarks era). Older jj calls bookmarks "branches".
 - `jj help <cmd>`, the official tutorial, and `jj op log` (the live record of what you did).
-- The repo's actual state: `jj st`, `jj log`, `jj git remote list`. Don't hardcode the trunk name — `trunk()` resolves the remote's main/master/trunk bookmark for you.
+- The repo's actual state: `jj st`, `jj log`, `jj git remote list`. Don't hardcode the trunk name: `trunk()` resolves the remote's main/master/trunk bookmark for you.
 
 ## Mental Model
 
-- **`@` is the working-copy commit.** There is no staging area and no "dirty tree vs commit" split — editing a file rewrites `@` immediately (auto-snapshot). `git add` has no analog; you never stage.
+- **`@` is the working-copy commit.** There is no staging area and no "dirty tree vs commit" split. Editing a file rewrites `@` immediately (auto-snapshot). `git add` has no analog; you never stage.
 - **No current branch, no detached HEAD.** You move by creating or editing commits (`jj new`, `jj edit`), never by checking out.
 - **Bookmarks are movable name pointers** (Git branches). A bookmark does not advance on its own when you edit a change; point the intended feature bookmark at the reviewed revision with `jj bookmark set <name> -r <revision>`.
-- **The operation log is your safety net.** Every `jj` command is one operation; `jj op log` lists them all and `jj undo` / `jj op restore <id>` rewind to any prior state — working copy, bookmarks, and all. Recovery is the op log, **not** git reflog.
+- **The operation log is your safety net.** Every `jj` command is one operation; `jj op log` lists them all and `jj undo` / `jj op restore <id>` rewind to any prior state: working copy, bookmarks, and all. Recovery is the op log, **not** git reflog.
 
 ## Daily Flow (git habit → jj)
 
-- `git checkout -b feat` → **`jj new trunk()`** — start a fresh change on top of trunk.
-- `git add -p && git commit` → just edit files (they snapshot into `@`), then **`jj describe -m "…"`** anytime — message and content are independent.
+- `git checkout -b feat` → **`jj new trunk()`**: start a fresh change on top of trunk.
+- `git add -p && git commit` → just edit files (they snapshot into `@`), then **`jj describe -m "…"`** anytime. Message and content are independent.
 - `git commit --amend` → **`jj squash`** (fold `@` into its parent) or simply keep editing `@`.
 - reorganize history → **`jj squash --from X --into Y`**, **`jj split`**, or **`jj edit <rev>`** to jump back and fix an older commit (descendants auto-rebase).
-- `git pull --rebase` → **`jj git fetch`** then **`jj rebase -b @ -d 'trunk()'`** — restack local work on the new trunk.
+- `git pull --rebase` → **`jj git fetch`** then **`jj rebase -b @ -d 'trunk()'`**: restack local work on the new trunk.
 - `git push` → point the intended feature bookmark at the reviewed revision, then `jj git push --bookmark <name>`. Verify whether `@` is an empty working commit before selecting the revision; do not move `main` by default.
 
 ## Colocation Safety
 
 - **Don't `git checkout` / `git reset` / `git commit` in a colocated repo.** jj owns git `HEAD`; raw git ref moves desync the two stores. Reach for the `jj` equivalent.
 - If raw git *did* run (you, or a tool), reconcile after with **`jj git import`** to pull git refs back into jj. jj exports to `.git` automatically.
-- **jj snapshots every file that isn't gitignored into `@`.** A new build dir or scratch file lands inside your change silently — fix `.gitignore` *before* it rides along, not after. (`jj file untrack` removes an already-snapshotted path once the ignore rule exists.)
+- **jj snapshots every file that isn't gitignored into `@`.** A new build dir or scratch file lands inside your change silently. Fix `.gitignore` *before* it rides along, not after. (`jj file untrack` removes an already-snapshotted path once the ignore rule exists.)
 - Use **`jj git fetch` / `jj git push`**, not raw `git fetch`/`push`, so remote-tracking bookmarks (`main@origin`) stay consistent.
 
 ## Conflicts Are First-Class
 
-- A `jj rebase`/`squash` **never stops on conflict** — it records conflict markers inside the affected commits and keeps going. The graph stays moving; you resolve when ready.
+- A `jj rebase`/`squash` **never stops on conflict**. It records conflict markers inside the affected commits and keeps going. The graph stays moving; you resolve when ready.
 - Find them: **`jj log -r 'conflicts()'`** lists every conflicted commit; **`jj resolve --list`** shows the conflicted files in `@`.
 - Resolve by editing the file (it then snapshots clean) or with **`jj resolve`**; a conflict in an ancestor commit can be fixed by `jj edit`-ing that commit or by letting a descendant resolve it forward.
 

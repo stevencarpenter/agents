@@ -1,0 +1,72 @@
+{
+  "skill_name": "lua-guidelines",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Review the game scripting module in evals/files/inventory.lua (Lua 5.4) as a senior Lua reviewer. Deliver outputs/review.md with severity-ranked findings (correctness first, style last), each with line evidence, why the current shape is risky, and the idiomatic direction. Then deliver outputs/inventory_fixed.lua applying the fixes.",
+      "expected_output": "Findings covering implicit globals, a shared table used as both list and map, # on a table with holes, swallowed errors in pcall, unchecked io.open and load results, load of save data without a sandbox, string building in a loop, and float equality; fixed code returns a module table with locals, tracks count explicitly, propagates errors, and builds strings with table.concat.",
+      "files": ["evals/files/inventory.lua"],
+      "expectations": [
+        "Flags the global functions and tables (inventory, items, add_item, remove_item, and the rest) as implicit globals; fix uses local declarations and a module table M that is returned",
+        "Flags items being used as both an array of names and a map from name to count, so items[name] and items[i] collide and #items is wrong; fix separates the list from the map or tracks an explicit count",
+        "Flags remove_item setting items[i] = nil inside a numeric loop, which creates holes so that #items in item_count and in the loop is undefined; fix uses table.remove or an explicit counter",
+        "Flags use_item: pcall result is discarded so errors are swallowed, and items[name].heal indexes a number; fix handles or re-raises the error, preferably with error(table) or a code, and corrects the data shape",
+        "Flags load_save: io.open result is not checked for nil, pcall(load, data) ignores both ok and a nil chunk, and the second pcall result is also unchecked",
+        "Flags load of save-file text as code execution of untrusted input; fix uses a data format parser or load(data, name, 't', {}) with an empty environment and size limit",
+        "Flags describe_all building a string with .. in a loop and relying on pairs order; fix uses a table of parts with table.concat and sorts keys if stable output is needed",
+        "Flags ratio comparing a float result with ==; fix uses a tolerance or integer arithmetic, and notes division by zero yields inf or NaN rather than an error for floats",
+        "review.md presents findings in severity order: correctness items (globals, holes, swallowed errors, load of untrusted text) before style items, and names the Lua version assumed"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Design the scripting API described in evals/files/modding_api_brief.md. Deliver outputs/mod_api.lua (module skeleton with public functions, validation, and doc comments; internals may be stubs) and outputs/api_notes.md explaining the shape, the sandbox and resource limits story, the hot reload story, and how API versioning, new fields, and an event rename land without breaking existing mods.",
+      "expected_output": "A module-pattern API with validated data-definition tables, opaque entity handles, an allowlist sandbox, instruction and memory limits, a reload plan that unregisters handlers and migrates state, an explicit api_version with deprecation aliases, and dependency-ordered loading.",
+      "files": ["evals/files/modding_api_brief.md"],
+      "expectations": [
+        "Returns a module table with no globals; public surface is a small set of functions such as items.define, events.on, and entity accessors, and internal state is held in locals",
+        "items.define and similar functions validate the definition table at load time: required fields, types, ranges, and unknown keys are rejected with an error naming the mod, the definition id, and the field path, raised with error(msg, 2) or a structured error table",
+        "Entities are exposed as opaque handles (id plus generation or a userdata with a metatable), not raw pointers, and stale handles fail with a clear error instead of undefined behavior",
+        "Sandbox story is an allowlist environment table passed to load(chunk, name, 't', env); os, io, debug, package, dofile, loadfile, and arbitrary require are absent; a blocklist-only approach is rejected explicitly",
+        "Resource limits are concrete: a lua_sethook count hook (or equivalent) for the on_tick instruction budget, a custom allocator for a memory cap, and a statement that LuaJIT count hooks do not fire inside compiled traces so untrusted code needs jit.off or process isolation",
+        "Event callbacks run under pcall or xpcall with a traceback handler; one failing mod handler is logged with the mod name and does not stop other handlers or the tick",
+        "Hot reload story names clearing package.loaded, unregistering the old module's event handlers, keeping persistent state in a table that survives reload, and a versioned state migration function",
+        "Versioning story is concrete: a declared api_version checked at load, additive fields ignored or defaulted, the renamed event kept as a deprecated alias with a warning for a stated period, and dependency-ordered loading with cycle detection",
+        "api_notes.md justifies the shape with misuse-resistance arguments, such as what a bad mod can and cannot do, rather than restating the function list"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Audit evals/files/binding.c (Lua 5.4 C API, embedded in a C++ engine on macOS and Linux) for stack, argument, lifetime, and sandboxing defects. Deliver outputs/audit.md naming each defect with line evidence and the violated invariant, and outputs/binding_fixed.c with a corrected version. Say how you would verify the fix.",
+      "expected_output": "Audit finding missing argument validation, a null entity wrapped in userdata, unchecked userdata type, a __gc that destroys engine-owned memory, an unbounded push without lua_checkstack, an unprotected lua_call from an engine callback on a possibly different state, a registry ref that is never released, unprotected loadstring of arbitrary code, and no __index on the metatable; fix uses luaL_check*, handle ids, lua_pcall with traceback, and luaL_unref.",
+      "files": ["evals/files/binding.c"],
+      "expectations": [
+        "Flags l_get_entity: lua_tointeger without luaL_checkinteger accepts non-numbers as 0, and engine_find may return NULL which is wrapped in userdata without a check; fix validates the argument and returns nil or raises an error",
+        "Flags l_entity_hp using lua_touserdata without luaL_checkudata, so any userdata or a wrong type is dereferenced; also notes the metatable has no __index set to itself or a method table, so hp is not reachable as a method",
+        "Flags l_entity_gc calling engine_destroy on an engine-owned Entity: the Lua GC then frees memory the engine still owns, and the pointer can dangle if the engine destroys it first; fix uses a handle id with a validity lookup and does not free in __gc",
+        "Flags l_list_names pushing n values with no lua_checkstack and with n taken from the script, plus a NULL deref when engine_find returns NULL; fix calls luaL_checkstack and bounds n, or returns a table",
+        "Flags damage_trampoline using lua_call (unprotected) on a global g_L: an error longjmps through engine C++ frames, and g_L may be a coroutine state that is suspended or collected; fix uses lua_pcall with a message handler that adds a traceback and anchors the main state",
+        "Flags l_set_damage_cb overwriting g_damage_ref without luaL_unref (registry leak) and not checking that argument 1 is a function",
+        "Flags l_run_script ignoring the luaL_loadstring return code (a failed load leaves an error string where a function is expected) and calling lua_call on untrusted text with no environment, no 't' mode, and no instruction hook; fix checks the status, uses lua_pcall, and runs in a sandbox environment with limits",
+        "Notes the engine callback may fire on another thread and that a lua_State is not thread safe; fix serializes access or queues events to the Lua thread",
+        "audit.md names verification: a build with AddressSanitizer and UBSan, a test that asserts lua_gettop is unchanged across each binding call, and a loop that creates and collects many Entity userdata to detect leaks and double destroy"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Profile the per-frame hot path in evals/files/particles.lua (LuaJIT 2.1, 60 frames per second, about 5000 particles). Deliver outputs/profile.md with a hypothesis list ranked by expected impact, the evidence you would collect for each (with exact commands), and the tradeoffs, and outputs/particles_fixed.lua applying the changes that are justified without measurement or marked as pending measurement.",
+      "expected_output": "Findings covering per-frame table churn in update (a new table for pos and a new table per surviving particle), string concatenation in a loop in label, pairs on an array in nearest, repeated string.format in render, and sqrt where squared distance suffices; fixed code updates in place with swap-remove or compaction, uses table.concat, ipairs or numeric for, and cached locals; evidence plan uses luajit -jv and -jp and collectgarbage count.",
+      "files": ["evals/files/particles.lua"],
+      "expectations": [
+        "Flags update allocating a new alive table every frame plus a pos table and a new table per surviving particle, producing garbage proportional to particle count; fix mutates particles in place and compacts survivors with a write index, or swap-removes",
+        "Flags label building a string with .. inside a loop (quadratic copying and many short-lived strings); fix collects parts in a table and calls table.concat once, or removes per-frame string building if the result is not needed every frame",
+        "Flags nearest using pairs on an array-like table, which is a trace-unfriendly and unordered iteration on LuaJIT; fix uses a numeric for loop with #particles hoisted into a local",
+        "Flags nearest computing math.sqrt per particle; fix compares squared distance and avoids the global lookup by caching math functions in locals",
+        "Flags render calling string.format and math.floor per particle per frame; fix removes the format from the hot path, caches the formatted label, or moves it behind a debug flag, and caches math.floor in a local",
+        "Evidence plan names concrete tools: luajit -jv to list trace aborts and NYI, luajit -jp for a sampling profile, and collectgarbage('count') deltas per frame to measure garbage; states a baseline, a workload size, and a pass criterion",
+        "Discusses LuaJIT specifics: string.format and pairs behavior in traces, using jit.off for a cold path if a trace aborts repeatedly, and table.new or ffi arrays for numeric particle data only if profiling shows the table layout is the bottleneck",
+        "Does not claim speedups without measurement; ranks hypotheses as expected impact and marks any change not backed by evidence as pending measurement"
+      ]
+    }
+  ]
+}

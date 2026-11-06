@@ -1,4 +1,4 @@
-# Spec: `loadConfig` — typed runtime-config loader
+# Spec: `loadConfig`: typed runtime-config loader
 
 A module that fetches JSON config from `/config.json` at startup and hands the app a
 fully-typed, validated config object. Target: browser, `strict` tsconfig with
@@ -16,12 +16,12 @@ fully-typed, validated config object. Target: browser, `strict` tsconfig with
 
 ## Behavior
 
-- `loadConfig(fetchImpl?)` returns a `Result`-shaped value — the caller must be able to
+- `loadConfig(fetchImpl?)` returns a `Result`-shaped value: the caller must be able to
   distinguish, without try/catch: network failure, non-2xx response, malformed JSON,
   and schema-invalid config (which field, why). Never throw across the module boundary;
   never return `undefined` on failure.
 - The raw `JSON.parse` output must be treated as `unknown` and narrowed by an explicit
-  validation function — no `as Config` casts, no external validation library.
+  validation function: no `as Config` casts, no external validation library.
 - All exported functions carry explicit return types.
 
 ## Deliverables

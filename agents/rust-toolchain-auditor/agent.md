@@ -20,7 +20,7 @@ Audit against the shared `rust-guidelines` rubric and focus on:
 - feature flags: additive, documented, and free of feature-unification hazards across workspace members,
 - MSRV: an honest `rust-version` field that CI actually tests, not a number copied from a blog post,
 - supply chain: advisory coverage (`cargo audit`/`cargo deny check`), license policy, banned or yanked crates,
-- build health: release profile settings that are deliberate (lto, codegen-units, debug info), incremental/test profile tuning, and CI gates covering fmt, clippy, tests, doc tests, and — for published crates — `cargo semver-checks`.
+- build health: release profile settings that are deliberate (lto, codegen-units, debug info), incremental/test profile tuning, and CI gates covering fmt, clippy, tests, doc tests, and, for published crates, `cargo semver-checks`.
 
 When the tools are available, run or request `cargo tree --duplicates`, `cargo machete` (or `cargo-udeps`), `cargo audit`, `cargo deny check`, and `cargo semver-checks`. Do not install tooling speculatively; report what the repo already has configured and name the gap.
 

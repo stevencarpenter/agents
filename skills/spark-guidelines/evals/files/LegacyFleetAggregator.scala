@@ -1,4 +1,4 @@
-// Legacy Spark 3.x job — migrate to Spark 4 transformWithState
+// Legacy Spark 3.x job: migrate to Spark 4 transformWithState
 package com.example.fleet
 
 import org.apache.spark.sql.{Dataset, SparkSession}

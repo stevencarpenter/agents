@@ -1,6 +1,6 @@
 ---
 name: swift-guidelines
-description: Use when writing or reviewing idiomatic Swift — value types, optionals, protocol-oriented design, error handling, and structured concurrency.
+description: Use when writing or reviewing idiomatic Swift (value types, optionals, protocol-oriented design, error handling, and structured concurrency).
 ---
 
 # Swift Guidelines

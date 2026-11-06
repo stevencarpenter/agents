@@ -379,7 +379,6 @@ class SqlAndXmlStripTest(PositionContractTest):
 
 
 # (file name, source, text that must survive, text that must be removed).
-# Each row pins one comment, docstring, or literal style of a major language.
 STYLE_CASES: list[tuple[str, str, list[str], list[str]]] = [
     # Python: single-quoted and prefixed docstrings, implicit concatenation,
     # line continuations, and comments that are really directives.
@@ -401,7 +400,6 @@ STYLE_CASES: list[tuple[str, str, list[str], list[str]]] = [
         ["gone"],
     ),
     ("a.pyi", 'def f() -> int:\n    """Stub doc."""\n', [], ["Stub doc"]),
-    # JavaScript and TypeScript.
     ("a.mjs", "export const x = 1; // gone\n", ["export const x = 1;"], ["gone"]),
     (
         "a.tsx",
@@ -458,7 +456,6 @@ STYLE_CASES: list[tuple[str, str, list[str], list[str]]] = [
         ["// keep"],
         ["Crate doc", "Item doc"],
     ),
-    # Stylesheets and JSON with comments.
     (
         "a.css",
         "a { background: url(http://x/y.png); } /* gone */\n",
@@ -471,7 +468,6 @@ STYLE_CASES: list[tuple[str, str, list[str], list[str]]] = [
         ['"a": "http://x"'],
         ["gone"],
     ),
-    # Shells.
     (
         "a.sh",
         "#!/bin/bash\ncat <<EOF\n# keep\nEOF\necho it\\'s # gone\ncat <<-'X'\n\t# keep2\n\tX\n",
@@ -507,7 +503,6 @@ STYLE_CASES: list[tuple[str, str, list[str], list[str]]] = [
         ['"a--b"', "'it''s -- keep2'", "$$-- keep3$$", "/* keep4 */ $q$;"],
         ["gone"],
     ),
-    # Config formats.
     ("a.yaml", "msg: don't # gone\nq: 'a # keep'\n", ["don't", "'a # keep'"], ["gone"]),
     ("a.toml", "a = 1# gone\ns = '''\n# keep\n'''\n", ["# keep"], ["gone"]),
     ("setup.cfg", "[x]\n; gone\n# gone2\nvalue = a # keep\n", ["a # keep"], ["gone"]),

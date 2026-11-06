@@ -1,17 +1,17 @@
 ---
 name: spark-scala-guidelines
-description: Use when writing or reviewing idiomatic Scala Spark 4 code — Dataset API and Encoders, case-class schemas, transformWithState StatefulProcessor, typed aggregations, Catalyst-friendly Column transforms, and sbt/Maven Spark module layout. Trigger whenever Scala Spark, Spark SQL in Scala, or Dataset-based pipelines are in scope even if the user only says "Scala ETL on Spark."
+description: Use when writing or reviewing idiomatic Scala Spark 4 code (Dataset API and Encoders, case-class schemas, transformWithState StatefulProcessor, typed aggregations, Catalyst-friendly Column transforms, and sbt/Maven Spark module layout). Trigger whenever Scala Spark, Spark SQL in Scala, or Dataset-based pipelines are in scope even if the user only says "Scala ETL on Spark."
 ---
 
 # Spark Scala Guidelines
 
-Language-specific Spark 4 rubric for Scala agents. Always apply `spark-guidelines` first for engine-level pipeline design; use this skill for Scala idioms. General Scala style still applies — immutability-first, exhaustive matching over sealed ADTs, no `null` or `Await.result` in domain code; for substantial non-Spark Scala modules, defer to the scala-implementer or scala-reviewer agents, which carry the full `scala-guidelines` rubric.
+Language-specific Spark 4 rubric for Scala agents. Always apply `spark-guidelines` first for engine-level pipeline design; use this skill for Scala idioms. General Scala style still applies: immutability-first, exhaustive matching over sealed ADTs, no `null` or `Await.result` in domain code; for substantial non-Spark Scala modules, defer to the scala-implementer or scala-reviewer agents, which carry the full `scala-guidelines` rubric.
 
 ## Source Of Truth
 
 - Spark Scala API docs: https://spark.apache.org/docs/latest/api/scala/
 - Structured Streaming `transformWithState` Scala examples in the official guide
-- The repo's `build.sbt`/`build.mill` — Spark version, Scala version (2.12 vs 2.13 vs 3.x), and shading rules
+- The repo's `build.sbt`/`build.mill`: Spark version, Scala version (2.12 vs 2.13 vs 3.x), and shading rules
 
 ## API Choice
 
@@ -19,14 +19,14 @@ Language-specific Spark 4 rubric for Scala agents. Always apply `spark-guideline
   - The element type is stable and encoded with a case class + `Encoders.product`
   - You need compile-time type safety on map/filter operations that would be error-prone as string column names
   - You are building a reusable library API consumed by other Scala modules
-- Do not use Dataset for pipelines that are primarily SQL or PySpark-portable — the encoding overhead and version coupling rarely pay off.
+- Do not use Dataset for pipelines that are primarily SQL or PySpark-portable. The encoding overhead and version coupling rarely pay off.
 - **Never use RDD** in new Spark 4 pipeline code unless interfacing with legacy libraries that have no DataFrame equivalent.
 
 ## Idiomatic Transforms
 
 - Express transforms as **Column expressions** and `select`/`withColumn` chains. Reserve Scala UDFs for logic that cannot be expressed in Catalyst (complex parsing, external library calls).
 - When a UDF is necessary, define it as a **named function** with an explicit return type and register with `udf`. Keep UDFs pure and side-effect free.
-- Prefer **`transform`** on DataFrame for reusable pipeline steps — a function `DataFrame => DataFrame` composes cleanly and reads as a pipeline stage.
+- Prefer **`transform`** on DataFrame for reusable pipeline steps: a function `DataFrame => DataFrame` composes cleanly and reads as a pipeline stage.
 - Use **`na.fill` / `na.drop`** and built-in functions (`regexp_extract`, `from_json`, `explode`, `aggregate`) before reaching for UDFs.
 
 ## Schemas & Types
@@ -42,7 +42,7 @@ Language-specific Spark 4 rubric for Scala agents. Always apply `spark-guideline
   - `init` for state handle setup (`getValueState`, `getListState`, `getMapState`)
   - `handleInputRows` for per-batch logic
   - `close` for cleanup
-- Set **`timeMode`** explicitly — `TimeMode.None()`, `TimeMode.ProcessingTime()`, or `TimeMode.EventTime()` — to match the business requirement.
+- Set **`timeMode`** explicitly (`TimeMode.None()`, `TimeMode.ProcessingTime()`, or `TimeMode.EventTime()`) to match the business requirement.
 - Create state handles and TTL configuration in `init`. Register per-key timers while handling input or expired timers; timer registration in `init` is unsupported ([lifecycle guide](https://spark.apache.org/docs/latest/streaming/structured-streaming-transform-with-state.html)).
 - For state schema evolution, set `spark.sql.streaming.stateStore.encodingFormat` to `avro` and evolve case classes additively.
 - Follow `spark-guidelines` operator migration checklist when switching from `flatMapGroupsWithState` to `transformWithState`.
@@ -51,7 +51,7 @@ Language-specific Spark 4 rubric for Scala agents. Always apply `spark-guideline
 
 - Use **`groupByKey` + `mapGroups` / `transformWithState`** for per-key stateful logic; avoid `groupBy` + UDF when built-in aggregations suffice.
 - Typed **`Aggregator`** implementations for custom aggregate functions that must be reusable and Catalyst-serializable.
-- Window functions via **`Window.partitionBy(...).orderBy(...)`** import — do not reimplement ranking with self-joins.
+- Window functions via **`Window.partitionBy(...).orderBy(...)`** import. Do not reimplement ranking with self-joins.
 
 ## CDC Dedup & MERGE
 
@@ -64,15 +64,15 @@ Follow `spark-guidelines` MERGE tie-break policy. Idiomatic forms:
 
 - Keep orchestration separate from transform logic in functions. Extract a `transforms` package only when its size or reuse warrants one.
 - Configure `SparkSession` once; pass `SparkSession` explicitly to transform functions rather than implicit globals.
-- Match the repo's effect system if present (e.g. `IO` for orchestration), but keep Spark actions (`count`, `write`) at the outermost edge — Spark manages its own execution model internally.
+- Match the repo's effect system if present (e.g. `IO` for orchestration), but keep Spark actions (`count`, `write`) at the outermost edge. Spark manages its own execution model internally.
 
 ## Anti-Patterns
 
 - Unbounded driver materialization through `collect` or accumulating `toLocalIterator` results. Check row size and bounds for `take(n)`; it does not collect the full dataset.
 - Shared mutable state or nondeterministic side effects inside UDFs or StatefulProcessors; local mutation can be appropriate inside an operator's lifecycle.
-- `implicits._` wildcard in library code — import only the encoders you need
+- `implicits._` wildcard in library code: import only the encoders you need
 - Driver-side `parallelize` of large in-memory collections
-- Exception-driven control flow in UDFs — return `Option`/`Either` columns or filter invalid rows at silver
+- Exception-driven control flow in UDFs: return `Option`/`Either` columns or filter invalid rows at silver
 
 ## Verification
 

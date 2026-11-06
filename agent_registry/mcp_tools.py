@@ -7,7 +7,6 @@ from dataclasses import dataclass
 class McpAllowlist:
     """An agent's `tools:` allowlist, split into MCP and non-MCP entries."""
 
-    # Non-MCP tool names verbatim (e.g. "Read").
     plain_tools: tuple[str, ...]
     # server name -> None means every tool from that server (`mcp__server__*`
     # or the bare server-level form `mcp__server`); a set means only those
@@ -21,12 +20,6 @@ def parse_tools_field(tools: str) -> McpAllowlist:
     Recognizes the three Claude Code MCP token shapes: `mcp__server` and
     `mcp__server__*` (both mean "every tool from this server"), and
     `mcp__server__tool_name` (one specific tool).
-
-    Args:
-        tools: The raw comma-separated `tools:` frontmatter value.
-
-    Returns:
-        The parsed allowlist. Empty when `tools` is blank.
     """
     plain: list[str] = []
     servers: dict[str, frozenset[str] | None] = {}

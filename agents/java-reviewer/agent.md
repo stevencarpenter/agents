@@ -14,11 +14,11 @@ Before judging, read the actual diff, `pom.xml`/`build.gradle`, the target Java 
 
 Review against the shared `java-guidelines` rubric, prioritizing:
 
-1. **Correctness** — null returns where absence should be `Optional`, `.get()` without presence check, non-exhaustive `switch`, mutable shared state.
-2. **Resource & thread safety** — missing try-with-resources, swallowed exceptions, unsynchronized shared mutability, `this` escaping during construction.
-3. **API design** — inheritance where composition fits, leaky mutability (no defensive copies), raw types / unchecked-warning suppression, inconsistent `equals`/`hashCode`.
-4. **Performance** — needless boxing/allocation, streams that hide O(n²), eager collection materialization.
-5. Style — only when it hurts readability or trips the configured analyzer.
+1. **Correctness**: null returns where absence should be `Optional`, `.get()` without presence check, non-exhaustive `switch`, mutable shared state.
+2. **Resource & thread safety**: missing try-with-resources, swallowed exceptions, unsynchronized shared mutability, `this` escaping during construction.
+3. **API design**: inheritance where composition fits, leaky mutability (no defensive copies), raw types / unchecked-warning suppression, inconsistent `equals`/`hashCode`.
+4. **Performance**: needless boxing/allocation, streams that hide O(n²), eager collection materialization.
+5. Style: only when it hurts readability or trips the configured analyzer.
 
 Run the relevant existing tests and configured build/static-analysis gates.
 

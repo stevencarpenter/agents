@@ -1,6 +1,6 @@
 ---
 name: spark-pyspark-implementer
-description: Use when implementing Apache Spark 4 data pipelines in Python — batch ETL, lakehouse MERGE/CDC, typed PySpark transforms, pandas UDFs, and Structured Streaming jobs with transformWithStateInPandas.
+description: Use when implementing Apache Spark 4 data pipelines in Python, batch ETL, lakehouse MERGE/CDC, typed PySpark transforms, pandas UDFs, and Structured Streaming jobs with transformWithStateInPandas.
 model: inherit
 x-registry-permission: edit
 color: yellow

@@ -1,6 +1,6 @@
 ---
 name: sql-guidelines
-description: Use when writing, reviewing, or optimizing SQL — query correctness, schema and migration design, index choices, or SQLite-specific patterns including FTS5.
+description: Use when writing, reviewing, or optimizing SQL (query correctness, schema and migration design, index choices, or SQLite-specific patterns including FTS5).
 ---
 
 # SQL Guidelines
@@ -24,7 +24,7 @@ Shared SQL rubric for agents, with SQLite depth. Read the affected tables, index
 
 - `INTEGER PRIMARY KEY` over rowid aliases. `STRICT` tables on SQLite ≥ 3.37. `WITHOUT ROWID` only for narrow natural-key tables.
 - Enable `PRAGMA foreign_keys = ON` on connections that enforce foreign keys. Choose journal and synchronous modes from the concurrency and durability requirements; do not change database-wide settings during query review or read-only analysis.
-- FTS5 over fts4: search with `WHERE fts MATCH '…'`, rank with `ORDER BY rank` (BM25 is built in — no separate `bm25()` needed). Join FTS to base tables on rowid via a CTE.
+- FTS5 over fts4: search with `WHERE fts MATCH '…'`, rank with `ORDER BY rank` (BM25 is built in; no separate `bm25()` needed). Join FTS to base tables on rowid via a CTE.
 - Use `json_extract` / `json_each` to query JSON columns in-engine rather than parsing in the app layer.
 
 ## Index & Migration Discipline

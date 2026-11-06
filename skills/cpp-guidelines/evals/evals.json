@@ -1,0 +1,80 @@
+{
+  "skill_name": "cpp-guidelines",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Review the library code in evals/files/inventory.cpp as a senior C++20 reviewer. Deliver outputs/review.md with severity-ranked findings (memory safety and undefined behaviour first, style last), each with line evidence, the violated invariant, and the safer direction. Then deliver outputs/inventory_fixed.cpp applying the fixes.",
+      "expected_output": "Findings covering the strcpy buffer overflow, the string_view returned from a temporary, the out-of-bounds write in parseCounts, signed overflow in totalQuantity, a leaked allocation, uninitialized members, the rule-of-five gap on a raw-owning class, macro misuse, and list mutation during iteration; fixed code uses std::string, containers or unique_ptr, a span or value return, checked arithmetic, and no macros.",
+      "files": ["evals/files/inventory.cpp"],
+      "expectations": [
+        "Flags strcpy(it->name, name) into a fixed char[MAX_NAME] buffer as an unbounded copy and buffer overflow; fix uses std::string for the name",
+        "Flags cheapestName returning std::string_view constructed from a temporary std::string as a dangling view (undefined behaviour on use); fix returns std::string or a view of storage the object owns",
+        "Flags parseCounts allocating 4 ints but writing 8 as an out-of-bounds heap write, and the malloc plus C-style cast as non-RAII; fix returns std::vector<int> or std::array",
+        "Flags totalQuantity multiplying quantity by 1000000 into an int as signed overflow, which is undefined behaviour; fix uses a wider type or checked arithmetic",
+        "Flags the Inventory class as owning raw Item pointers with a user-written destructor but no copy or move operations (rule of five violation: copy causes double free); fix uses std::vector or std::unique_ptr nodes and the rule of zero, or deletes copy explicitly",
+        "Flags the uninitialized count member (read in add via count++ before any write) and the constructor assignment instead of member initializers",
+        "Flags SQUARE(x) as a macro with unparenthesized expansion (SQUARE(n + 1) evaluates to n + 1 * n + 1) and MAX_NAME as a macro constant; fix uses constexpr",
+        "Flags lowStock holding Item* in a result vector and then calling remove on those same items, which deletes them and leaves dangling pointers in the returned vector",
+        "Flags load for missing error handling: unchecked find(',') returning npos, atoi without error detection, and no failure result when the file cannot be opened; fix returns an error in line with a stated policy (std::expected or a domain error type)",
+        "Flags using namespace std at file scope in a header-style file and the missing [[nodiscard]] and const on query methods (find, totalQuantity, cheapestName)",
+        "review.md presents memory-safety and undefined-behaviour findings before API-shape and style findings"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Design the public API described in evals/files/rate_limiter_brief.md. Deliver outputs/ratelimit.hpp (public types, factories, doc comments; internals may be declared only) and outputs/api_notes.md explaining the shape, the error policy, the C API, and the extension story for new algorithms and a metrics hook.",
+      "expected_output": "Strong unit types, a validated std::expected factory taking an options struct, a Decision type distinguishing allowed, denied with retry_after, and invalid request, shared ownership expressed deliberately, a noexcept non-allocating hot path, an injectable clock, and an opaque-handle extern \"C\" API with no exceptions crossing it.",
+      "files": ["evals/files/rate_limiter_brief.md"],
+      "expectations": [
+        "Uses strong types or std::chrono durations for tokens, rates, and time instead of bare int or double parameters, and says which mix-ups this prevents",
+        "Construction is fallible and validated through a factory returning std::expected<Limiter, Error> (or an equivalent non-throwing result) with a domain error enum; invalid configuration such as zero rate is rejected, not clamped",
+        "Options use a named-field struct (designated initializers as in the consumer snippet) or builder; the constructor is not a positional list of many same-typed arguments",
+        "try_acquire is declared noexcept, [[nodiscard]], and returns a Decision type that separates allowed, denied with retry_after, and invalid request; the notes state that it does not allocate",
+        "Shared ownership is explicit: the factory returns std::shared_ptr or the notes explain the lifetime rule that keeps a limiter alive while handlers use it; raw pointers are non-owning only",
+        "Clock injection is a concept-constrained template parameter or a small abstract interface, and the notes state the cost trade-off (virtual call or template instantiation) on the hot path",
+        "Extension story is concrete: algorithms behind a common interface or concept, options struct and enums that can grow without breaking source compatibility, a metrics hook as an optional callback or observer, and a statement of what changes the ABI",
+        "C API uses an opaque handle (struct forward declaration), plain-old-data types, create and destroy functions with documented ownership, status codes instead of exceptions, a catch-all at each entry point, and static_assert layout checks that keep the hand-written header in sync",
+        "api_notes.md justifies the shape with misuse-resistance arguments rather than restating the type list"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Audit evals/files/worker_pool.cpp for concurrency and shutdown correctness. The pool is shared by many threads and the metrics callback is user supplied. Deliver outputs/audit.md naming each defect with line evidence, the violated invariant, and the safer direction, and outputs/worker_pool_fixed.cpp with a corrected version. Say how you would verify the fix.",
+      "expected_output": "Audit finding the data race on stopping_ and unsynchronized active_ and idle(), detached threads outliving the pool, the condition variable wait without a predicate (lost wakeup and spurious wakeup), the user callback invoked under the lock, an unhandled exception from a job, relaxed ordering used without justification, the blocking fetch under the cache lock, and busy-wait polling; fix uses std::jthread with stop_token, a predicate wait, and a verification plan using TSan.",
+      "files": ["evals/files/worker_pool.cpp"],
+      "expectations": [
+        "Flags bool stopping_ as a plain bool read by workers and written by the destructor without synchronization, a data race and undefined behaviour; fix uses std::stop_token or an atomic flag or guards it with the mutex",
+        "Flags the destructor detaching threads, which leaves workers running against destroyed members (use after free); fix joins, preferably through std::jthread",
+        "Flags cv_.wait(lock) without a predicate: lost wakeup if shutdown is signaled before the wait, and spurious wakeup handling by the empty-queue check is accidental; fix waits with a predicate or condition_variable_any with a stop_token",
+        "Flags the metrics_ callback being invoked while mu_ is held as a deadlock and latency risk if the callback blocks or re-enters submit; fix copies the size under the lock and calls after release",
+        "Flags active_ as a plain int modified outside the lock in run and read in idle without the lock; idle also reads queue_ without the lock; fix makes the state consistent under one mutex or uses atomics",
+        "Flags job() with no exception handling: an escaping exception from a std::thread body calls std::terminate, and active_ is not decremented on that path; fix catches at the job boundary and decrements via RAII",
+        "Flags completed_.fetch_add with memory_order_relaxed as acceptable for a pure counter only if no other data depends on it, and notes that waitForIdle relies on other state; requires a stated reason or seq_cst default",
+        "Flags waitForIdle sleep polling as busy waiting; fix uses a condition variable signaled when the pool goes idle",
+        "Flags Cache::get calling slowFetch (a blocking network call) while holding the mutex, which serializes all callers; fix releases the lock around the fetch and handles duplicate fetch races deliberately",
+        "audit.md names TSan (and ASan or UBSan where relevant) and a stress test with many submitters and a shutdown race as verification, and does not propose combining TSan with ASan"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Audit the build and test setup in evals/files/CMakeLists.txt and evals/files/geom_tests.cpp as a C++ build auditor and test strategist. Deliver outputs/audit.md with severity-ranked findings (each with file evidence and the fix direction), outputs/CMakeLists_fixed.txt applying the build fixes, and outputs/test_plan.md for the tests. Close with the smallest CI gate set that prevents recurrence.",
+      "expected_output": "Findings covering a C++17 flag against a C++20 policy, global CMAKE_CXX_FLAGS and directory-level include and link settings instead of targets, file(GLOB) sources, an unpinned FetchContent branch, missing enable_testing and add_test so ctest finds nothing, no warnings or sanitizer options, no compile_commands.json, plus weak, brittle, sleeping, disabled, and floating-point-exact tests.",
+      "files": ["evals/files/CMakeLists.txt", "evals/files/geom_tests.cpp"],
+      "expectations": [
+        "Flags the hard-coded -std=c++17 in CMAKE_CXX_FLAGS and the very old cmake_minimum_required; fix sets target_compile_features(... cxx_std_20) or CMAKE_CXX_STANDARD with CMAKE_CXX_STANDARD_REQUIRED, and a modern minimum version",
+        "Flags global include_directories, link_directories, and CMAKE_CXX_FLAGS as directory-wide state; fix uses target-scoped target_include_directories, target_link_libraries with PUBLIC/PRIVATE, and imported targets or find_package for vendorcore",
+        "Flags file(GLOB SOURCES ...) as not re-running when files are added; fix lists sources explicitly or uses CONFIGURE_DEPENDS with a stated trade-off",
+        "Flags FetchContent GIT_TAG master as an unpinned, non-reproducible dependency; fix pins a release tag or commit hash, and mentions a package manager such as vcpkg or Conan only if the repo uses one",
+        "Flags the missing enable_testing() and add_test()/gtest_discover_tests, so ctest runs zero tests; fix wires tests into ctest",
+        "Flags the absence of warning flags (-Wall -Wextra -Wpedantic, warnings as errors in CI), a sanitizer option (ASan and UBSan, and a separate TSan job), CMAKE_EXPORT_COMPILE_COMMANDS for clang-tidy, and CMakePresets.json; fix adds them without installing tooling speculatively",
+        "Flags -O3 forced for every build type; fix leaves optimization to CMAKE_BUILD_TYPE and presets",
+        "Flags AreaWorks as nearly assertion-free (prints and checks area > 0) and AreaWorksAgain as duplicate coverage that survives most regressions",
+        "Flags DebugString as brittle coupling to formatting, and EmptyInputThrows as coupling to message text and a try/catch with FAIL instead of EXPECT_THROW with a typed exception",
+        "Flags ParsesAsync sleep_for(2s) as wall-clock synchronization that slows the suite and does not prove ordering, since join already synchronizes; also flags that p is written in one thread and the default-constructed state is unspecified",
+        "Flags DISABLED_HugeInput as untested behaviour with no reason or owner, and FloatEquality as exact floating-point comparison that should use EXPECT_DOUBLE_EQ or EXPECT_NEAR",
+        "Identifies missing coverage: malformed input, degenerate polygons (collinear points, fewer than 3 vertices), and boundary values; the test plan uses GoogleTest as already present and does not introduce another framework",
+        "audit.md closes with CI gates: configure and build with warnings as errors, ctest, an ASan plus UBSan job, clang-format check, and clang-tidy, using the repo's own configuration where present"
+      ]
+    }
+  ]
+}

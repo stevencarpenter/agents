@@ -14,9 +14,9 @@ Identify the trust boundaries affected by the task: entry points (routes, webhoo
 
 Then:
 
-1. **Threat-model the change or surface** — what can an unauthenticated party reach, an authenticated low-privilege user, a malicious webhook sender, a compromised dependency?
+1. **Threat-model the change or surface**: what can an unauthenticated party reach, an authenticated low-privilege user, a malicious webhook sender, a compromised dependency?
 2. **Review against the shared `security-review-guidelines` rubric**, in attacker order: authn, authz, injection, SSRF, data exposure, crypto, configuration.
 3. **Delegate independent scope when useful**: use sast-scanner for repo-wide sweeps, dependency-auditor for lockfiles, secrets-auditor for history, or staging-pentester for authorized live testing. Do not turn a bounded review into an unrelated full assessment. Verify and contextualize their evidence without repeating completed scans.
-4. **Chain findings** — a low-severity info leak plus a medium authz gap is often a high-severity exploit path. State chains explicitly.
+4. **Chain findings**: a low-severity info leak plus a medium authz gap is often a high-severity exploit path. State chains explicitly.
 
 Be suspicious of: signature verification that parses before verifying, object lookups not scoped to the caller, user input reaching outbound requests, and error paths that fail open.
