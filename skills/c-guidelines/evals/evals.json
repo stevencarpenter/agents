@@ -62,7 +62,7 @@
       "expectations": [
         "Flags that no C standard is set; fix sets C_STANDARD 17 (or 23 if the repo targets it) with C_STANDARD_REQUIRED and C_EXTENSIONS OFF, via set_target_properties or target_compile_features",
         "Flags that no warning flags are enabled and recommends -Wall -Wextra -Wconversion -Wshadow with -Werror in CI, applied per target (target_compile_options) rather than through the global CMAKE_C_FLAGS",
-        "Flags the hard-coded -g -O0 in CMAKE_C_FLAGS as overriding the build type, so release builds are unoptimized and debug flags are not selectable; fix uses CMAKE_BUILD_TYPE and per-config flags",
+        "Flags the hard-coded -g -O0 in CMAKE_C_FLAGS as unconditional global flags that apply to every configuration and leak -g into release; does not claim release is unoptimized, since per-config flags come later and -O3 wins; fix drops them and relies on CMAKE_BUILD_TYPE or per-config flags",
         "Flags that tests are run by hand: no enable_testing() or add_test(), so ctest runs nothing and CI cannot gate on tests; fix registers stackq_test with add_test",
         "Flags the absence of any sanitizer configuration and adds an opt-in option for -fsanitize=address,undefined (compile and link flags) and notes that a thread sanitizer job needs a separate build",
         "Flags weak tests in test_stackq.c: test_push_pop only prints and asserts n > 0 without checking the bytes popped; test_push_pop_again duplicates it; the return codes of stackq_push and stackq_pop are ignored in the first two tests; stackq_destroy is not called in the first two tests (leaks that LeakSanitizer would report)",

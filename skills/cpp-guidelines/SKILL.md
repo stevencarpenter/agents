@@ -33,7 +33,7 @@ Target the language standard the build sets (`CMAKE_CXX_STANDARD` or `-std=`). D
 - Casts: use `static_cast` and friends with a reason. No C-style casts. `reinterpret_cast` needs a stated layout invariant.
 - Memory: no raw `new` or `delete`, no `malloc` in C++ code outside a wrapper. Use `std::make_unique` and `std::make_shared`.
 - Headers: each header is self-contained and has include guards or `#pragma once` as the repo does. Include what you use. Forward-declare when it avoids a heavy include. Keep `using namespace` out of headers.
-- Undefined behaviour classes to check every time: dangling lifetime, strict aliasing, signed overflow, uninitialized reads, out-of-bounds access, ODR violations, data races, and use after move.
+- Undefined behaviour classes to check every time: dangling lifetime, strict aliasing, signed overflow, uninitialized reads, out-of-bounds access, ODR violations, and data races.
 - ABI and FFI: expose C boundaries as `extern "C"` with plain-old-data types. Mirror layouts with `static_assert` on `sizeof` and `offsetof`. Keep hand-written C headers in sync with the C++ definition. Catch every exception at the boundary. For Rust interop, match `#[repr(C)]` layouts and document who frees each allocation.
 - Threading: prefer `std::jthread` with `std::stop_token`. Use atomics with an explicit memory order and a stated reason for anything weaker than `seq_cst`. Do not hold a lock across a blocking call or a callback into unknown code.
 - Performance: measure first. Then fix data layout, hidden copies, and allocations. Pass by `const&` or view, move on sink parameters, and `reserve` when the size is known.
@@ -85,7 +85,7 @@ Push back when a change or suggestion hits these traps:
 - **`shared_ptr` from `this`**: calling `shared_ptr<T>(this)` double-owns the object. Use `enable_shared_from_this` or redesign ownership.
 - **Signed overflow or unchecked narrowing**: signed overflow is UB, and narrowing hides truncation. Use checked arithmetic, unsigned types for bit work, or a range check before the cast.
 - **ODR and header drift**: two definitions of an inline function or struct differ across translation units, or a C header no longer matches the C++ layout. Add `static_assert` layout checks and one source for each definition.
-- **Moved-from use**: reading an object after `std::move` relies on an unspecified state. Reassign it or do not touch it.
+- **Moved-from use**: a moved-from object is valid but its value is unspecified. Flag code that assumes the old value or calls a member with a precondition on it. Assignment, `clear()`, `empty()`, and destruction are defined and not defects.
 - **Iterator invalidation**: `push_back`, `erase`, or `insert` while iterating. Collect changes first or use the erase-remove idiom or `std::erase_if`.
 
 ## Output Contract

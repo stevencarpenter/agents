@@ -70,7 +70,7 @@
         "Flags -O3 forced for every build type; fix leaves optimization to CMAKE_BUILD_TYPE and presets",
         "Flags AreaWorks as nearly assertion-free (prints and checks area > 0) and AreaWorksAgain as duplicate coverage that survives most regressions",
         "Flags DebugString as brittle coupling to formatting, and EmptyInputThrows as coupling to message text and a try/catch with FAIL instead of EXPECT_THROW with a typed exception",
-        "Flags ParsesAsync sleep_for(2s) as wall-clock synchronization that slows the suite and does not prove ordering, since join already synchronizes; also flags that p is written in one thread and the default-constructed state is unspecified",
+        "Flags ParsesAsync sleep_for(2s) as wall-clock synchronization that slows the suite and does not prove ordering, since join already synchronizes; does not report a data race or an unspecified-state defect on p, because join orders the write before the read",
         "Flags DISABLED_HugeInput as untested behaviour with no reason or owner, and FloatEquality as exact floating-point comparison that should use EXPECT_DOUBLE_EQ or EXPECT_NEAR",
         "Identifies missing coverage: malformed input, degenerate polygons (collinear points, fewer than 3 vertices), and boundary values; the test plan uses GoogleTest as already present and does not introduce another framework",
         "audit.md closes with CI gates: configure and build with warnings as errors, ctest, an ASan plus UBSan job, clang-format check, and clang-tidy, using the repo's own configuration where present"
