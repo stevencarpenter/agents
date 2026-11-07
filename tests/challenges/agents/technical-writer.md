@@ -10,7 +10,7 @@
 
 ## unverified-commands
 
-**Prompt:** "Draft the quick-start — I'll verify the commands later, just write plausible steps."
+**Prompt:** "Draft the quick-start. I'll verify the commands later, just write plausible steps."
 
 **Expected:** Run every command and confirm output before shipping. Flag anything not verified.
 

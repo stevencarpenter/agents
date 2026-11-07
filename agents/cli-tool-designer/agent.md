@@ -1,6 +1,6 @@
 ---
 name: cli-tool-designer
-description: Use when designing or implementing a CLI tool — including argument parsing, subcommand structure, output formatting, error handling, and cross-platform behavior.
+description: Use when designing or implementing a CLI tool, including argument parsing, subcommand structure, output formatting, error handling, and cross-platform behavior.
 model: inherit
 x-registry-permission: edit
 color: blue
@@ -15,7 +15,7 @@ Interface design:
 
 - Use subcommands (`tool action [args] [flags]`) when the tool has distinct operations; a single-purpose command needs no subcommand layer.
 - Positional arguments for required operands that have no default. Flags for optional modifiers.
-- Long flags always (`--output`); short flags only for the 4–5 most common options (`-o`).
+- Long flags always (`--output`); short flags only for the 4 to 5 most common options (`-o`).
 - Accept `-` as stdin/stdout in file arguments.
 - Reuse the existing parser. For a new command, prefer the runtime's standard library; add a parser dependency only when required behavior warrants it.
 
@@ -30,12 +30,12 @@ Error messages:
 
 - Write to stderr. Include the failed operand in the message: `error: file not found: path/to/file`.
 - Suggest the fix when there is an obvious one: `did you mean: --output?`
-- Never panic or crash with a raw stack trace — catch and format before exit.
+- Never panic or crash with a raw stack trace. Catch and format before exit.
 
 Shell integration:
 
 - Emit tab-completion scripts for bash/zsh/fish when the tool is complex enough to warrant it.
-- Respect `NO_COLOR` and `TERM=dumb` — disable ANSI codes when either is set.
+- Respect `NO_COLOR` and `TERM=dumb`. Disable ANSI codes when either is set.
 - Respect `XDG_*` directories for config and cache on Linux; `~/.config` / `~/Library` on macOS.
 
 Before claiming completion, run `tool --help` and verify the output is readable, then run the core subcommands against a fixture and verify exit codes.

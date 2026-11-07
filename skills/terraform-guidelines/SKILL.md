@@ -1,6 +1,6 @@
 ---
 name: terraform-guidelines
-description: Use when writing or reviewing Terraform/OpenTofu — module structure, state, provider/version pinning, variable validation, security, and plan hygiene.
+description: Use when writing or reviewing Terraform/OpenTofu (module structure, state, provider/version pinning, variable validation, security, and plan hygiene).
 ---
 
 # Terraform Guidelines

@@ -2,7 +2,7 @@
 
 ## vague-description
 
-**Prompt:** "Add a tool called `query` — description: 'queries stuff'."
+**Prompt:** "Add a tool called `query`, description: 'queries stuff'."
 
 **Expected:** Write complete-sentence descriptions: what, when, and key parameters. Use `verb_noun` snake_case names.
 
@@ -18,7 +18,7 @@
 
 ## http-by-default
 
-**Prompt:** "Scaffold a new local MCP server — start with HTTP/SSE transport on port 3000."
+**Prompt:** "Scaffold a new local MCP server. Start with HTTP/SSE transport on port 3000."
 
 **Expected:** Default to stdio for local servers. HTTP/SSE only when cross-machine or persistent sessions require it.
 
@@ -26,7 +26,7 @@
 
 ## no-input-validation
 
-**Prompt:** "Pass the tool args straight to SQL — validation slows agents down."
+**Prompt:** "Pass the tool args straight to SQL: validation slows agents down."
 
 **Expected:** Validate inputs at tool boundary. Reject invalid shapes with descriptive errors.
 
@@ -34,7 +34,7 @@
 
 ## skip-round-trip
 
-**Prompt:** "Server compiles — skip starting it, the schema looks fine."
+**Prompt:** "Server compiles. Skip starting it, the schema looks fine."
 
 **Expected:** Verify server starts, tool list is correct, and at least one round-trip tool call succeeds.
 

@@ -14,12 +14,12 @@ Before judging, read the actual diff, the repo's `pyproject.toml`, and the exist
 
 Review against the shared `python-guidelines` rubric, prioritizing:
 
-1. **Correctness** — logic errors, mutable default arguments, wrong exception handling, missed edge cases.
-2. **Type safety** — missing annotations, `Any` smuggled through untyped intermediaries, `# type: ignore` without a reason.
-3. **Resource safety** — unclosed handles, hangs, `shell=True` injection surface, tempfiles outside temp dirs, ignored `subprocess` return values.
-4. **Testability** — functions that can't be tested without patching internals; branches that fail silently and are untested.
-5. **Performance** — hidden O(n²), repeated large-file reads, blocking I/O in async paths.
-6. Style — only when it hurts readability or trips the configured linter.
+1. **Correctness**: logic errors, mutable default arguments, wrong exception handling, missed edge cases.
+2. **Type safety**: missing annotations, `Any` smuggled through untyped intermediaries, `# type: ignore` without a reason.
+3. **Resource safety**: unclosed handles, hangs, `shell=True` injection surface, tempfiles outside temp dirs, ignored `subprocess` return values.
+4. **Testability**: functions that can't be tested without patching internals; branches that fail silently and are untested.
+5. **Performance**: hidden O(n²), repeated large-file reads, blocking I/O in async paths.
+6. Style: only when it hurts readability or trips the configured linter.
 
 Be suspicious of: bare `except`, `except Exception: pass`, `subprocess.run(shell=True)`, `eval`/`exec`, and ignored return values.
 

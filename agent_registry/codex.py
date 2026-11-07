@@ -3,25 +3,9 @@ from __future__ import annotations
 from agent_registry.agents import Agent, validate_isolated_read_only
 from agent_registry.model_translation import translate_model
 
-# Codex custom agents are TOML files in ~/.codex/agents/<name>.toml.
-# Required fields: name, description, developer_instructions.
-# Optional: model, model_reasoning_effort, sandbox_mode, mcp_servers,
-# skills.config.
-#
-# We translate `model:` (see model_translation.py) but deliberately do NOT
-# emit `mcp_servers` overrides, even though the field exists: Codex's own
-# docs show only one subagent `mcp_servers` example, and it's a *full* server
-# definition (command/url), not a sparse override of an already-configured
-# server by id. The registry doesn't know the user's local server
-# command/args (that's user-local config, not registry data), and guessing
-# would risk emitting a malformed table that silently breaks the server for
-# that agent rather than merely scoping it. So Codex agents get model-tier
-# cost control but session-wide MCP/tool access — same caveat as Cursor.
-#
-# `sandbox_mode` IS a safe, well-documented, per-agent lever (read-only /
-# workspace-write / danger-full-access), so read-only registry agents get
-# `sandbox_mode = "read-only"` — real enforcement against file/shell writes,
-# even without per-tool MCP scoping.
+# Not emitted: mcp_servers. Codex documents it only as a full server definition
+# (command/url), which the registry does not know, so Codex agents keep session-wide
+# tool access. Read-only agents get sandbox_mode = "read-only", a real per-agent lever.
 
 CODEX_EXT = ".toml"
 

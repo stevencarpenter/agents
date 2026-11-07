@@ -1,4 +1,4 @@
-// Problematic streaming job — driver OOM after ~6 hours
+// Problematic streaming job: driver OOM after ~6 hours
 package com.example.sessions
 
 import org.apache.spark.sql.{Dataset, SparkSession}
@@ -27,7 +27,7 @@ object StreamingSessionAggregator {
       .select(from_json(col("value").cast("string"), schema).as("data"))
       .select("data.*")
       .as[PageView]
-    // NOTE: no watermark defined — processing all events as they arrive
+    // NOTE: no watermark defined: processing all events as they arrive
 
     val sessionMetrics = views
       .groupByKey(_.sessionId)

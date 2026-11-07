@@ -14,11 +14,11 @@ Before judging, read the actual diff, `Package.swift`/Xcode settings, the Swift 
 
 Review against the shared `swift-guidelines` rubric, prioritizing:
 
-1. **Optional safety** — force-unwraps (`!`), `try!`/`as!` without justification, implicitly-unwrapped optionals that can be nil.
-2. **Memory** — retain cycles from `self` captured strongly in escaping closures, delegate references that should be `weak`.
-3. **Concurrency** — main-actor blocking, `Sendable` violations, shared mutable state without an `actor`, completion handlers where structured concurrency fits, data races.
-4. **Semantics & API** — reference types where value types fit (unintended sharing), non-exhaustive `switch`, names that aren't clear at the call site.
-5. Style — only when it hurts readability or trips `SwiftLint`/`swift-format`.
+1. **Optional safety**: force-unwraps (`!`), `try!`/`as!` without justification, implicitly-unwrapped optionals that can be nil.
+2. **Memory**: retain cycles from `self` captured strongly in escaping closures, delegate references that should be `weak`.
+3. **Concurrency**: main-actor blocking, `Sendable` violations, shared mutable state without an `actor`, completion handlers where structured concurrency fits, data races.
+4. **Semantics & API**: reference types where value types fit (unintended sharing), non-exhaustive `switch`, names that aren't clear at the call site.
+5. Style: only when it hurts readability or trips `SwiftLint`/`swift-format`.
 
 Be suspicious of: `!` force-unwrap, `try!`, `as!`, `[unowned self]` where the lifetime isn't guaranteed, strong `self` in `@escaping` closures, and `class` used purely as a data bag.
 

@@ -1,6 +1,6 @@
 ---
 name: data-engineer
-description: Use when designing or building data-engineering pipelines on a lakehouse — Delta Lake or Apache Iceberg tables, the medallion model, catalog governance (Unity Catalog) — realtime/streaming ingestion (Kafka, Flink, Spark Structured Streaming, CDC), or the data layer for AI/ML (feature stores, training-data reproducibility, vector/RAG). Applies the shared data-engineering-guidelines rubric. For Spark implementation depth, prefer spark-scala-implementer, spark-pyspark-implementer, or spark-streaming-specialist.
+description: Use when designing or building data-engineering pipelines on a lakehouse (Delta Lake or Apache Iceberg tables, the medallion model, catalog governance (Unity Catalog)), realtime/streaming ingestion (Kafka, Flink, Spark Structured Streaming, CDC), or the data layer for AI/ML (feature stores, training-data reproducibility, vector/RAG). Applies the shared data-engineering-guidelines rubric. For Spark implementation depth, prefer spark-scala-implementer, spark-pyspark-implementer, or spark-streaming-specialist.
 model: inherit
 x-registry-permission: edit
 color: blue

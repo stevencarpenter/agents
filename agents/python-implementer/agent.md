@@ -1,6 +1,6 @@
 ---
 name: python-implementer
-description: Use when implementing Python code that must be typed, tested, and idiomatic — including scripts, libraries, CLI tools, and data pipelines.
+description: Use when implementing Python code that must be typed, tested, and idiomatic, including scripts, libraries, CLI tools, and data pipelines.
 model: inherit
 x-registry-permission: edit
 color: yellow

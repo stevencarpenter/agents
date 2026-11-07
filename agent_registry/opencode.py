@@ -4,27 +4,9 @@ from agent_registry.agents import Agent, validate_isolated_read_only
 from agent_registry.mcp_tools import parse_tools_field
 from agent_registry.model_translation import translate_model
 
-# OpenCode native agents are markdown files in ~/.config/opencode/agents/<name>.md.
-# The filename is the agent name (so `name` is NOT in the frontmatter).
-# Frontmatter: description, mode, model, permission (edit/bash allow|deny,
-# plus per-tool/per-MCP-server wildcard keys). The body is the system prompt.
-#
-# mode is `all` (not `subagent`) so each agent both shows up in OpenCode's
-# `/agents` switcher (selectable as a primary) AND stays invocable as a
-# subagent via @mention / delegation. `subagent`-mode agents are hidden from
-# the switcher, which is what made them look "missing" there.
-#
-# `model` is translated from the registry's Claude-alias vocabulary via
-# model_translation.py; `inherit`/unset omits the field (OpenCode's own
-# documented default).
-#
-# When an agent opts into a reviewed Claude `tools:` MCP allowlist
-# (x-allow-tools-allowlist: true), that's translated into OpenCode's
-# `permission` map using its documented wildcard-against-tool-name matching:
-# `"server_*": "allow"` for a whole-server grant, `"server_tool": "allow"`
-# for a specific tool. OpenCode enables tools by default and applies matching
-# rules in order, with the last match winning, so `"*": deny` must precede
-# every explicit grant for this to be a real allowlist.
+# The filename is the agent name, so `name` is not in the frontmatter.
+# mode: all keeps agents visible in the /agents switcher and invocable as subagents.
+# permission rules are last-match-wins, so `"*": deny` must precede every grant.
 
 _CLAUDE_TO_OPENCODE_TOOL = {
     "Bash": "bash",

@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from agent_registry.agents import Agent, validate_isolated_read_only
 
-# Claude Code agent.md format is close to the registry source format, but
-# `tools` is an allowlist there. Do not emit it unless an agent explicitly
-# opts into a reviewed allowlist; ordinary agents should inherit parent
-# MCP/plugin tools.
+# `tools` is an allowlist in Claude Code: emit it only when the agent opts in,
+# so every other agent inherits the parent's MCP and plugin tools.
 _PASSTHROUGH_KEYS = ("name", "description", "model", "tools", "disallowedTools", "color")
 
 

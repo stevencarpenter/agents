@@ -8,7 +8,6 @@ import json
 import os
 import re
 import sys
-import tomllib
 from pathlib import Path
 
 AGENTS_REPO = Path(__file__).resolve().parents[2]
@@ -16,24 +15,22 @@ HOME = Path(os.environ.get("HOME_OVERRIDE", str(Path.home())))
 INSTALLED_AGENTS_DIR = Path(os.environ.get("CLAUDE_AGENTS_DIR", str(HOME / ".claude" / "agents")))
 INSTALLED_SKILLS_DIR = Path(os.environ.get("CLAUDE_SKILLS_DIR", str(HOME / ".claude" / "skills")))
 CLAUDE_JSON = Path(os.environ.get("CLAUDE_JSON", str(HOME / ".claude.json")))
-CHEZMOI_SRC = Path(os.environ.get("CHEZMOI_SRC", str(HOME / ".local" / "share" / "chezmoi")))
-MACHINES_TOML = CHEZMOI_SRC / ".chezmoidata" / "machines.toml"
-SKILLS_MASTER = CHEZMOI_SRC / "dot_config" / "skills" / "skills-master.json"
-SKILLS_MACHINE_DIR = CHEZMOI_SRC / "dot_config" / "skills" / "machine"
+# dfm links the skills manifest and this host's identity overlay here from ~/.dotfiles.
+SKILLS_CONFIG_DIR = Path(os.environ.get("SKILLS_CONFIG_DIR", str(HOME / ".config" / "skills")))
+SKILLS_MASTER = SKILLS_CONFIG_DIR / "skills-master.json"
+SKILLS_MACHINE_DIR = SKILLS_CONFIG_DIR / "machine"
 OVERLAY_MD = Path(__file__).parent / "routing-overlay.md"
 
 FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 
-# Skill families already covered by a routing-overlay disambiguation rule —
-# repeating them in the cross-family section would be the inventory-dump
-# mistake again, just one level down. Kept as an explicit reviewable list
-# rather than fuzzy overlap detection, so a human notices when a NEW family
-# needs the same judgment call.
+# Families the overlay already disambiguates. An explicit list, so a new family forces a review.
 SKIP_SKILL_FAMILIES = {
     "spark-guidelines",
     "spark-pyspark-guidelines",
     "spark-scala-guidelines",
     "data-engineering-guidelines",
+    # unreal-* agents also inline cpp-guidelines; overlay rule 8 covers that split.
+    "cpp-guidelines",
 }
 
 
@@ -80,11 +77,9 @@ def load_installed_skill_names() -> set[str]:
 
 
 def load_declared_personal_skill_names(machine: str) -> set[str] | None:
-    """Skills the personal skills-master.json manifest declares for THIS
-    machine, after applying its overlay and dropping ``false``-disabled
-    entries. Returns None (not "not applicable") when the manifest isn't
-    reachable at all, so callers can distinguish "no chezmoi here" from
-    "manifest declares zero skills".
+    """Skills the manifest declares for this machine after its overlay.
+
+    None when the manifest is unreachable, which is not the same as zero skills.
     """
     if not SKILLS_MASTER.is_file():
         return None
@@ -100,38 +95,23 @@ def load_declared_personal_skill_names(machine: str) -> set[str] | None:
         except (OSError, json.JSONDecodeError):
             overlay = {}
         skills = skills | overlay.get("skills", {})
-    # .tmpl overlays (personal.json.tmpl etc.) aren't renderable without
-    # `chezmoi execute-template`; skip them rather than mis-parsing Go
-    # template syntax as plain JSON. This under-counts on machines whose
-    # overlay is template-gated, which is a known, stated limitation.
     return {name for name, cfg in skills.items() if cfg is not False}
 
 
-def load_machines() -> dict:
-    if not MACHINES_TOML.is_file():
-        return {}
-    try:
-        return tomllib.loads(MACHINES_TOML.read_text(encoding="utf-8")).get("machines", {})
-    except (OSError, tomllib.TOMLDecodeError):
-        return {}
+def current_identity() -> str | None:
+    """The dfm identity (personal, work, lab) of this host.
 
-
-def current_machine_key(machines: dict) -> str | None:
-    try:
-        import subprocess
-
-        out = subprocess.run(
-            ["chezmoi", "data", "--format", "json"], capture_output=True, text=True, timeout=5
-        )
-        if out.returncode == 0:
-            data = json.loads(out.stdout)
-            key = data.get("machine")
-            if key in machines:
-                return key
-    except Exception:
-        pass
-    # Best-effort fallback so this still runs on a box without chezmoi.
-    return next(iter(machines), None)
+    ``DFM_IDENTITY`` is the same seam the dotfiles sync scripts honour. Without
+    it, the identity module links exactly one overlay into the machine dir, so
+    its stem is the identity. Anything else (no overlay, several) is unknown.
+    """
+    env = os.environ.get("DFM_IDENTITY")
+    if env:
+        return env
+    if not SKILLS_MACHINE_DIR.is_dir():
+        return None
+    overlays = [p.stem for p in SKILLS_MACHINE_DIR.glob("*.json")]
+    return overlays[0] if len(overlays) == 1 else None
 
 
 def live_mcp_servers() -> dict[str, str]:
@@ -153,12 +133,7 @@ def live_mcp_servers() -> dict[str, str]:
 
 
 def _is_obvious_pair(names: list[str]) -> bool:
-    """True when two implementer/reviewer names share a base.
-
-    That pairing is already obvious from reading the two agent names side by
-    side in the harness's own injected list — restating it here would be
-    the inventory-dump mistake the pairing table was cut for.
-    """
+    """Implementer/reviewer pairs are obvious from the harness's own agent list; skip them."""
     return (
         len(names) == 2
         and all(name.endswith(("-implementer", "-reviewer")) for name in names)
@@ -184,8 +159,7 @@ def render() -> str:
     canonical_agents = load_canonical_agents()
     installed_agent_names = load_installed_agent_names()
     installed_skill_names = load_installed_skill_names()
-    machines = load_machines()
-    machine = current_machine_key(machines)
+    machine = current_identity()
     declared_personal_skills = load_declared_personal_skill_names(machine or "")
     mcp_servers = live_mcp_servers()
 
@@ -214,8 +188,8 @@ def render() -> str:
             lines.append("- no agents installed here (agents capability likely off, or never synced)")
         elif missing:
             lines.append(
-                f"- STALE: {len(missing)} agent(s) in the repo aren't installed here yet — "
-                f"don't route to them until the next sync: {', '.join(missing)}"
+                f"- STALE: {len(missing)} agent(s) in the repo aren't installed here yet. "
+                f"Don't route to them until the next sync: {', '.join(missing)}"
             )
         else:
             lines.append(f"- in sync: all {len(canonical_names)} canonical agents installed")
@@ -228,8 +202,8 @@ def render() -> str:
         if missing_skills:
             lines.append("### Personal skills manifest vs installed")
             lines.append(
-                f"- declared but not installed here (last sync may have failed or is pending "
-                f"`chezmoi apply`): {', '.join(missing_skills)}"
+                f"- declared but not installed here (last skills sync may have failed or is "
+                f"pending `scripts/hooks-sync.sh` in dotfiles): {', '.join(missing_skills)}"
             )
             lines.append("")
 
@@ -238,17 +212,6 @@ def render() -> str:
         for name, desc in sorted(mcp_servers.items()):
             lines.append(f"- {name}: {desc}")
         lines.append("")
-
-    if machines:
-        off = [m for m, caps in machines.items() if not caps.get("agents", False)]
-        if off:
-            lines.append("### Per-machine capability deltas")
-            lines.append(
-                f"- agents capability OFF on: {', '.join(sorted(off))} — none of the "
-                f"{len(canonical_agents)} custom agents exist there; expect generic "
-                f"Read/Edit/Bash + code-reviewer instead"
-            )
-            lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
 

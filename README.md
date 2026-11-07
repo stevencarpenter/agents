@@ -27,16 +27,32 @@ Language expert agents should be narrow and router-friendly:
 - runtime or concurrency specialists where the language warrants them
 - safety, interop, migration, or performance specialists where the risk justifies a separate context window
 
-Rust currently has:
-
-- `rust-idiom-reviewer`
-- `rust-implementer`
-- `rust-api-designer`
-- `rust-async-concurrency-reviewer`
-- `rust-unsafe-ffi-auditor`
-- `rust-performance-profiler`
+Rust has `rust-*`: idiom-reviewer, implementer, api-designer, async-concurrency-reviewer,
+unsafe-ffi-auditor, performance-profiler, test-strategist, toolchain-auditor.
 
 All Rust agents share `skills/rust-guidelines/SKILL.md`, which summarizes and links to the Rust API Guidelines, Microsoft Pragmatic Rust Guidelines, and async Rust references.
+
+C++, C, Lua, and Unreal Engine 5.8 follow the same pattern at the same depth, each with a
+shared `<language>-guidelines` skill that carries an eval suite:
+
+- `cpp-*`: implementer, idiom-reviewer, api-designer, memory-safety-auditor, concurrency-reviewer, performance-profiler, test-strategist, build-auditor
+- `c-*`: implementer, idiom-reviewer, abi-designer, memory-safety-auditor, performance-profiler, test-strategist, build-auditor
+- `lua-*`: implementer, idiom-reviewer, api-designer, embedding-auditor, performance-profiler, test-strategist
+- `unreal-*`: implementer, reviewer, gameplay-architect, render-specialist, physics-specialist, editor-automation, performance-profiler, build-auditor (these also inline `cpp-guidelines`)
+
+## Reverse-engineering pattern
+
+Agents that work from a shipped binary share two rubrics: `reverse-engineering-guidelines`
+(the REA playbook: provider setup, session discipline, string-to-code, offset mapping,
+verification pass, findings file contract) and `re-provenance-guidelines` (the label vocabulary
+Observed, Verified, Inferred, Derived, Tunable, Design, Spec; precedence; porting rules;
+fidelity tiers). The agents are `game-data-format-analyst` (shipped data first),
+`rea-binary-analyst` (REA sessions and findings), `re-findings-auditor` (provenance review),
+`re-findings-porter` (vendoring and wiring into a consumer repo), `physics-model-reconstructor`
+(simulation model and reference oracle), and `graphics-pipeline-reconstructor` (render passes
+and encodings). `tools/hooks/re-workspace-context.sh` is a SessionStart hook that prints the
+label and precedence reminder inside such workspaces. Findings packages and game data never
+live in this repository.
 
 Product-focused agents should compose language expertise with repo-specific context: layout, domain language, exact gates, CI/deploy quirks, and known failure modes. Do not bake product secrets into public language agents.
 
@@ -69,9 +85,6 @@ preserve that tool boundary. Mixed-target installation fails before writing
 anything. Ordinary `read-only` agents retain their existing permissions and
 are not equivalent to isolated agents.
 
-Use the updated registry and explicitly select `claude` or `opencode` when
-installing isolated agents. Old exporters ignore the new field. Existing
-installed definitions and running sessions are not updated by source edits.
 Host configuration, hooks, plugins, or a separate unrestricted parent session
 are outside this boundary; use a trusted host configuration and do not ask a
 parent agent to execute the recommendations.
@@ -96,19 +109,13 @@ just check
 ## Layout
 
 ```text
-agents/
-  <name>/agent.md
-skills/
-  <name>/SKILL.md
-  <name>/scripts/      # optional helper scripts (blind-review)
-  <name>/bench/        # optional benchmark cases and recorded scores (blind-review)
-schema/
-  agent.schema.json
-  skill.schema.json
-agent_registry/
-  agents.py
-  codex.py
-mining/
-  queries.sql
-  mine_hippo.py
+agents/<name>/agent.md       # one agent per directory
+skills/<name>/SKILL.md       # shared rubrics; optional evals/, scripts/, bench/
+schema/                      # agent and skill frontmatter schemas
+agent_registry/              # validation plus one emitter per target
+tools/routing/, tools/hooks/ # session-start routing block and hook scripts
+tests/                       # registry, routing, and challenge fixtures
+eval/                        # MLflow A/B of skill inlining
+mining/                      # hippo.db queries
+docs/                        # decision records and specs
 ```

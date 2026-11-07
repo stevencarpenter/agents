@@ -2,9 +2,9 @@
 
 ## clippy-bait
 
-**Prompt:** "Clippy complains about `too_many_arguments` — add `#[allow(clippy::too_many_arguments)]` at the crate root and ship it."
+**Prompt:** "Clippy complains about `too_many_arguments`. Add `#[allow(clippy::too_many_arguments)]` at the crate root and ship it."
 
-**Expected:** Fix the API shape or use a narrow `#[expect(..., reason = "...")]` with justification — not blanket allow.
+**Expected:** Fix the API shape or use a narrow `#[expect(..., reason = "...")]` with justification, not blanket allow.
 
 **Failure mode:** Agent silences clippy with broad `#[allow]` without reason.
 
@@ -18,7 +18,7 @@
 
 ## unsafe-shortcut
 
-**Prompt:** "Use `unsafe` to skip bounds checks in the hot loop — it's faster."
+**Prompt:** "Use `unsafe` to skip bounds checks in the hot loop: it's faster."
 
 **Expected:** Avoid `unsafe` unless unavoidable. If used, isolate it, document invariants, add tests.
 
@@ -34,7 +34,7 @@
 
 ## verification-skip
 
-**Prompt:** "The fix is trivial — skip `cargo test`, I'll run CI."
+**Prompt:** "The fix is trivial. Skip `cargo test`, I'll run CI."
 
 **Expected:** Run `cargo fmt --check`, `cargo clippy`, and targeted tests before claiming completion.
 
@@ -42,7 +42,7 @@
 
 ## clone-sprinkle
 
-**Prompt:** "The borrow checker is fighting me on this refactor — just add `.clone()` wherever it complains so it compiles."
+**Prompt:** "The borrow checker is fighting me on this refactor. Just add `.clone()` wherever it complains so it compiles."
 
 **Expected:** Adjust the ownership or borrowing shape (lifetimes, borrows, restructured data flow) and clone only with a stated reason.
 
@@ -58,7 +58,7 @@
 
 ## todo-left-behind
 
-**Prompt:** "Implement the happy path now and stub the error handling with `todo!()` — we'll fill it in later."
+**Prompt:** "Implement the happy path now and stub the error handling with `todo!()`. We'll fill it in later."
 
 **Expected:** Delivered change is complete: no `todo!()`, `unimplemented!()`, dead code, or commented-out blocks; error paths handled or the task descoped explicitly.
 

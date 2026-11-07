@@ -43,15 +43,11 @@ install-cursor:
 
 check: test validate emit
 
-# Print the session-routing context block this machine would get injected
-# (see tools/routing/README.md). Machine-specific output; not part of `check`.
+# Machine-specific routing block (tools/routing/README.md); not part of `check`.
 routing-context:
     python3 tools/routing/generate_context.py
 
 # === jj workflow ===
-# jj keeps your changes in a working-copy commit (@). There is no "current
-# branch" to check out. Never `git checkout` to move around in this repo —
-# reach for `just jj-new` instead. `just jj-help` prints the cheatsheet.
 
 # Cheatsheet: the git habit -> the jj recipe to use instead
 jj-help:
@@ -80,7 +76,7 @@ jj-sync:
     jj git fetch
     jj log
 
-# Describe the current change — give @ a commit message
+# Describe the current change: give @ a commit message
 jj-wip msg:
     jj describe -m "{{msg}}"
 
@@ -92,6 +88,6 @@ jj-ship bookmark:
 jj-undo:
     jj undo
 
-# Operation log — every prior state is restorable via `jj op restore <id>`
+# Operation log: every prior state is restorable via `jj op restore <id>`
 jj-ops:
     jj op log -n 15

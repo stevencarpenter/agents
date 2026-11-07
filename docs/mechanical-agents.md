@@ -16,10 +16,10 @@ These agents run on `haiku` and are invoked frequently, so every line of their
 prompt is paid on every call. Two things were inflating that cost:
 
 1. **A force-inlined rubric they can't use.** Every agent was required to inline
-   the shared `tool-priority` skill (~24 lines). That rubric tells an agent to
+   the shared `tool-priority` skill (18 lines). That rubric tells an agent to
    prefer IDEA/LSP/codegraph, use `Bash` for gates, and split work across
    sub-teams. But the five ops agents carry a hard `tools:` MCP allowlist that
-   **excludes all of those tools** — so the advice is unreachable. On `Explore`
+   **excludes all of those tools**, so the advice is unreachable. On `Explore`
    it is worse than unreachable: the rubric says *"use specialized agents or
    teams,"* which directly contradicts `Explore`'s own brief (*"you are a leaf
    worker: don't spawn further subagents"*).
@@ -37,8 +37,8 @@ leaf agents. A mechanical agent:
 
 - **Does not inline `tool-priority`.** The rubric is dead weight (unreachable
   under the MCP allowlist) or contradictory (`Explore`), so it is dropped.
-- **Ends its brief with a hard output contract** — e.g. `Output: … No preamble`
-  — so the model returns a bare data payload, not prose.
+- **Ends its brief with a hard output contract**: e.g. `Output: … No preamble`,
+  so the model returns a bare data payload, not prose.
 
 ### Why a marker, not a predicate
 
@@ -57,7 +57,7 @@ Minimization stops at the point where cutting text invites expensive mistakes:
   `railway-read` still refuses mutations, `linear-ops` still refuses to guess
   IDs. On a cheap model, one bad mutating call or invented query costs far more
   than the tokens those lines occupy.
-- **`Explore` keeps one judgment line** — *prefer codegraph/LSP semantic search
+- **`Explore` keeps one judgment line**: *prefer codegraph/LSP semantic search
   over raw `rg` when the repo is indexed*. That single choice is `Explore`'s only
   real value over the caller running grep directly; minimizing it away would make
   the agent strictly worse than the tool it wraps. The five ops agents are true
@@ -70,22 +70,10 @@ Minimization stops at the point where cutting text invites expensive mistakes:
 - **Emit:** the marker is not in the Claude emitter's `_PASSTHROUGH_KEYS`, so it
   never leaks into emitted output; it is a build-time signal only.
 - **Enforcement (tests):**
-  - `test_mechanical_agents_skip_tool_priority` — a mechanical agent must **not**
+  - `test_mechanical_agents_skip_tool_priority`: a mechanical agent must **not**
     inline `tool-priority`, in source or in the emitted body. This pins the
     carve-out so the rubric can't silently creep back onto a pass-through agent.
   - `test_real_agents_use_tool_priority_and_no_unreviewed_tools_allowlists` and
-    `test_real_claude_emits_inherited_tools_shape` — the universal
+    `test_real_claude_emits_inherited_tools_shape`: the universal
     `tool-priority` invariant still holds for every **non**-mechanical agent.
 
-## Result
-
-Emitted prompt (what the model receives) per invocation:
-
-| Agent | Before | After |
-|---|---|---|
-| `Explore` | 43 lines | 17 |
-| `docs-lookup` / `grafana-read` / `hippo-query` / `linear-ops` / `railway-read` | brief + ~24-line rubric | 15–17, rubric gone |
-
-Roughly a 60% cut in prompt size on the highest-frequency, lowest-judgment
-agents, with zero capability loss on the pure pass-throughs and one judgment
-line preserved on `Explore`.

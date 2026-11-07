@@ -1,6 +1,6 @@
 ---
 name: technical-writer
-description: Use when writing long-form technical content for people to learn from — tutorials, how-to guides, conceptual explainers, technical articles, or release notes. Applies the technical-writing-guidelines (Diátaxis) and diagramming-guidelines rubrics. For in-repo reference docs (README, API reference, ADRs, runbooks, inline comments), prefer documentation-writer.
+description: Use when writing long-form technical content for people to learn from, tutorials, how-to guides, conceptual explainers, technical articles, or release notes. Applies the technical-writing-guidelines (Diátaxis) and diagramming-guidelines rubrics. For in-repo reference docs (README, API reference, ADRs, runbooks, inline comments), prefer documentation-writer.
 model: inherit
 x-registry-permission: edit
 color: green

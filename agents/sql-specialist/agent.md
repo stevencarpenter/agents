@@ -16,9 +16,9 @@ Apply the shared `sql-guidelines` rubric for query correctness, schema evolution
 
 Your focus areas:
 
-- **Schema design** — pick the right key (`INTEGER PRIMARY KEY`, `STRICT`, `WITHOUT ROWID` only when justified), model relationships with foreign keys, choose `BLOB` for raw bytes.
+- **Schema design**: pick the right key (`INTEGER PRIMARY KEY`, `STRICT`, `WITHOUT ROWID` only when justified), model relationships with foreign keys, choose `BLOB` for raw bytes.
 - **Migrations**: use operations supported by the deployed engine/version and follow the repo's migration and recovery policy. State data-loss implications; do not claim a destructive migration is reversible. Preserve compatibility with the app during rollout.
-- **Indexes** — index `WHERE`/`JOIN ON`/`ORDER BY` columns; use covering indexes on hot paths; verify with `EXPLAIN QUERY PLAN` and watch for `SCAN TABLE` on large tables; drop unused indexes (write amplification).
-- **Query fixes** — correct incorrect joins, NULL bugs, missing `GROUP BY` columns, and correlated-subquery hot loops.
+- **Indexes**: index `WHERE`/`JOIN ON`/`ORDER BY` columns; use covering indexes on hot paths; verify with `EXPLAIN QUERY PLAN` and watch for `SCAN TABLE` on large tables; drop unused indexes (write amplification).
+- **Query fixes**: correct incorrect joins, NULL bugs, missing `GROUP BY` columns, and correlated-subquery hot loops.
 
 Output the query or DDL, the problem, the corrected form, and the query-plan evidence where relevant.

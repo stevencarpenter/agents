@@ -1,7 +1,7 @@
-# Brief: `retry` — public crate API for retrying fallible operations
+# Brief: `retry`: public crate API for retrying fallible operations
 
 We are publishing a small crate. Design the public API surface (no full implementation
-of the timing internals required — `todo!()` bodies are fine where marked).
+of the timing internals required: `todo!()` bodies are fine where marked).
 
 ## Requirements
 

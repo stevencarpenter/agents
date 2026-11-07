@@ -1,6 +1,6 @@
 ---
 name: java-guidelines
-description: Use when writing or reviewing idiomatic Java — immutability, records, Optional, generics, error handling, and concurrency.
+description: Use when writing or reviewing idiomatic Java (immutability, records, Optional, generics, error handling, and concurrency).
 ---
 
 # Java Guidelines
@@ -15,13 +15,13 @@ Shared Java rubric for agents. Prefer repo-local conventions (build tool, Java v
 ## Core Rubric
 
 - Immutability first: `record` for data carriers (Java 16+), `final` fields, defensive copies of mutable inputs. Make classes immutable unless there's a reason not to.
-- `Optional` as a return type for "might be absent" — never as a field or parameter, never `.get()` without `isPresent`/`orElse`.
+- `Optional` as a return type for "might be absent", never as a field or parameter, never `.get()` without `isPresent`/`orElse`.
 - Use existing interfaces at API boundaries; add a new interface only for a real contract or interchangeable implementations. Prefer composition over inheritance; design and document for inheritance or forbid it (`final`/sealed).
 - `sealed` classes/interfaces for ADTs (Java 17+) with exhaustive `switch` patterns.
 - Generics: no raw types, no unchecked-warning suppression without a `@SuppressWarnings` justified by comment; use bounded wildcards (PECS) for flexible APIs.
 - `equals`/`hashCode` together and consistent; `toString` for debuggable types.
 - Resources via try-with-resources; never swallow exceptions; throw specific types; don't use exceptions for control flow.
-- Streams where they clarify, loops where they're plainer — don't force a one-liner stream that hides intent or allocates needlessly.
+- Streams where they clarify, loops where they're plainer. Don't force a one-liner stream that hides intent or allocates needlessly.
 - Concurrency: prefer `java.util.concurrent` and immutable shared state over `synchronized` hand-rolling; document thread-safety; avoid leaking `this` during construction.
 
 ## Verification

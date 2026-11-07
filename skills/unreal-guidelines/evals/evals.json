@@ -1,0 +1,73 @@
+{
+  "skill_name": "unreal-guidelines",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Review evals/files/SnowSledActor.h and evals/files/SnowSledActor.cpp as a senior Unreal Engine 5.8 reviewer. Deliver outputs/review.md with severity-ranked findings (crashes and races first, style last), each with line evidence, why the current shape is risky, and the Unreal-idiomatic direction. Then deliver outputs/SnowSledActor_fixed.h and outputs/SnowSledActor_fixed.cpp applying the fixes.",
+      "expected_output": "Findings covering missing UPROPERTY on UObject pointers, GetWorld() and SpawnActor in the constructor, a background task that captures this and reads a component off the game thread, an infinite worker loop with no shutdown, per-frame dynamic material creation, TActorIterator and LoadObject in hot paths, newtons applied to a centimetre physics engine, and Tick-based force application on an async physics project; the fix uses UPROPERTY and TObjectPtr or TWeakObjectPtr, BeginPlay spawn, game-thread data handoff, a cached material instance, centimetre conversion, and AsyncPhysicsTick.",
+      "files": ["evals/files/SnowSledActor.h", "evals/files/SnowSledActor.cpp"],
+      "expectations": [
+        "Flags the raw UObject pointers in the header (Body is UPROPERTY but Others and TrailHelper are not, and Others holds actors in a TArray without UPROPERTY) as GC hazards; fix uses UPROPERTY with TObjectPtr or TWeakObjectPtr, and does not use AddToRoot",
+        "Flags GetWorld()->SpawnActor in the constructor as invalid (no world during CDO construction); fix moves the spawn to BeginPlay or PostInitializeComponents",
+        "Flags the AsyncTask lambda that captures this and calls Body->GetForwardVector() on a background thread as UObject access off the game thread; fix computes on the game thread or copies plain data under the lock",
+        "Flags the infinite for(;;) loop with Sleep inside the task as having no shutdown path through EndPlay and holding the lock across Sleep; fix adds a cancellation flag or removes the thread, and takes the lock only around the data copy",
+        "Flags CreateDynamicMaterialInstance called every Tick as per-frame allocation; fix creates the MaterialInstanceDynamic once in BeginPlay and caches it in a UPROPERTY",
+        "Flags the force comment 'newtons' with AddForce(Force * DeltaTime) as a unit and step error: Chaos uses centimetres so newtons need a factor of 100, and the force should not scale by DeltaTime when applied through the fixed async physics step",
+        "Flags the TActorIterator loop in BeginPlay and the LoadObject by string path in Tick; fix uses a subsystem or registration list and a TSoftObjectPtr or a cached asset reference",
+        "Flags UE_LOG at Log verbosity every frame and the non-b boolean name Boosting; fix renames to bBoosting. Does not report PendingThrust, Boosting, or TrailHelper as uninitialized, since Unreal zeroes UObject memory before the constructor runs",
+        "review.md orders findings by severity: crashes and races (GC, off-thread UObject access, constructor world access) before cost items (per-frame allocation, lookups, logging) with naming and style last"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Audit evals/files/SnowGame.Build.cs and evals/files/SnowGame.uproject as an Unreal build auditor for a UE 5.8 project that builds on macOS and Linux only and links a Rust staticlib. Deliver outputs/audit.md with severity-ranked findings (each with file evidence and the fix direction), outputs/SnowGame.Build.fixed.cs, and outputs/SnowGame.fixed.uproject. Close with the smallest CI gate set that prevents recurrence.",
+      "expected_output": "Findings covering NoPCHs and the old C++ standard, public dependencies that should be private, a runtime module depending on the editor-only UnrealEd module, absolute user paths in include and library settings, a debug Rust library for all configurations, a Windows branch and Windows target platform on a macOS and Linux project, enabled exceptions, an unresolvable plugin, and missing MACOSX_DEPLOYMENT_TARGET handling; the fix uses ModuleDirectory-relative paths, config-aware library selection, and private dependencies.",
+      "files": ["evals/files/SnowGame.Build.cs", "evals/files/SnowGame.uproject"],
+      "expectations": [
+        "Flags PCHUsage = NoPCHs and CppStandard Cpp14; fix sets UseExplicitOrSharedPCHs and CppStandardVersion.Cpp20 to match the project standard",
+        "Flags UnrealEd in the dependency list of a Runtime module as an editor-only dependency that breaks packaged and game builds; fix removes it or moves it behind Target.bBuildEditor in a separate Editor module",
+        "Flags Slate, SlateCore, RenderCore, RHI, Niagara, and similar modules listed as public when their types do not appear in public headers; fix moves them to PrivateDependencyModuleNames and says the decision depends on the public header contents",
+        "Flags the absolute /Users/dev paths for PublicIncludePaths and PublicAdditionalLibraries as machine-specific; fix uses ModuleDirectory or PluginDirectory relative paths",
+        "Flags linking target/debug/libsnow_sim.a for all configurations; fix chooses the release or debug staticlib by Target.Configuration or documents a single release build, and notes MACOSX_DEPLOYMENT_TARGET must match Engine/Config/Mac/Mac_SDK.json when the Rust library is built",
+        "Flags the Win64 branch and the Windows entry in TargetPlatforms as unneeded for a macOS and Linux project; fix removes them or limits TargetPlatforms to Mac and Linux, and does not recommend Visual Studio",
+        "Flags bEnableExceptions = true as unnecessary and in conflict with the no-exceptions-across-FFI rule; fix removes it",
+        "Flags SomeMissingPlugin as an enabled plugin that does not resolve; notes that PythonScriptPlugin, EditorScriptingUtilities, and ModelContextProtocol are editor-side tooling that a shipped game should not depend on, and that ModelContextProtocol is Experimental in 5.8",
+        "audit.md closes with a minimal CI gate set: a UBT build of the editor and game targets with the repo flags, clang-format, and a check that rejects absolute paths and CRLF in tracked files"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Design the gameplay subsystem described in evals/files/foreign_sim_brief.md for UE 5.8. Deliver outputs/design.md covering class list, ownership, threading, unit conversion, lifecycle, and the authority rule, plus outputs/SnowSimSubsystem.h (header sketch with UE macros, doc comments on semantics) and outputs/test_plan.md. Name the checks you would run.",
+      "expected_output": "A UWorldSubsystem (or UGameInstanceSubsystem with a stated reason) that is the sole owner of the SnowSim handle, created in Initialize and destroyed in Deinitialize, with a lock around every FFI call, a fixed-step coupling to the async physics tick, a newtons to centimetre-unit conversion at one point, double buffered snapshots for the render side, status code handling with no exceptions, and an automation test plan.",
+      "files": ["evals/files/foreign_sim_brief.md"],
+      "expectations": [
+        "Chooses a single owner for the SnowSim* handle: a UWorldSubsystem (or UGameInstanceSubsystem with a justification for level travel), creating the handle in Initialize and destroying it in Deinitialize, with the handle never copied and a null check after snow_sim_create status",
+        "Serializes every FFI call with one FCriticalSection (or documents a single-thread contract) because snow_sim_step is not thread safe, and keeps the critical section short",
+        "Couples the step to the physics step: advances the simulation from the AsyncPhysicsTickActor or Chaos async callback at the fixed 1/60 s, passes a constant dt rather than frame DeltaTime, and does not step in Tick",
+        "Places the newtons conversion at one named point and states the Chaos unit rule (centimetres, newtons times 100 for forces); does not scatter factors across call sites",
+        "Moves impulses from sled actors to the subsystem through a queue or lock-protected buffer drained at the step, and moves height data to the game thread through a snapshot copy (read_heights copies) or double buffer; no UObject is touched off the game thread",
+        "Handles failure without exceptions: checks every int32_t status, logs snow_sim_last_error through a UE_LOG category, and does not let a panic cross the boundary (the Rust side catches)",
+        "Specifies Build.cs wiring: PublicAdditionalLibraries for the staticlib, PublicIncludePaths for the C header, extern \"C\" in the header, and MACOSX_DEPLOYMENT_TARGET matching Mac_SDK.json",
+        "States the authority rule: only the server (HasAuthority) steps the simulation and replicated state is derived, while treating multiplayer as out of scope",
+        "test_plan.md names concrete checks: an IMPLEMENT_SIMPLE_AUTOMATION_TEST for create and destroy once, a headless -game check that reads a PASS or FAIL line from the log (not the exit code), and a PIE stop and travel test for the single free"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Review evals/files/SnowHeightUpload.h and evals/files/SnowHeightUpload.cpp as an Unreal rendering and performance reviewer on UE 5.8. The plane is Nanite-tessellated and displaced by the uploaded texture, and Niagara spawns snow throw effects. Deliver outputs/review.md with severity-ranked findings (each with line evidence, the thread or cost problem, and the fix direction), outputs/SnowHeightUpload_fixed.cpp, and a measurement plan naming the Unreal tools and stat commands you would use.",
+      "expected_output": "Findings covering a stack buffer freed before the render thread reads it, a leaked FUpdateTextureRegion2D, an unsynchronized sim-thread write into Heights, a full 16 MB copy and upload every frame, a new dynamic material every frame, Niagara systems spawned every frame, FName built from strings per frame, a render command capturing this and touching a UObject, and missing UPROPERTY on UObject members; the plan uses Unreal Insights, stat unit, stat gpu, and ProfileGPU.",
+      "files": ["evals/files/SnowHeightUpload.h", "evals/files/SnowHeightUpload.cpp"],
+      "expectations": [
+        "Flags that UpdateTextureRegions reads Local after the function returns: the TArray goes out of scope before the render thread copies it; fix owns the buffer until the cleanup callback (heap copy freed in the callback) or uses a persistent buffer with a fence",
+        "Flags the new FUpdateTextureRegion2D as leaked unless the update's cleanup callback frees it; fix passes a cleanup lambda that deletes both region and data",
+        "Flags Heights written by the sim thread with no lock and copied by value on the game thread as a data race; fix adds a lock or double buffer, or swaps a completed snapshot",
+        "Flags the full 1024 x 1024 PF_A32B32G32R32F upload (16 MiB) every frame as a bandwidth cost; fix uploads only the dirty region, lowers precision or channel count if the data allows, or throttles, and the plan measures the upload before and after",
+        "Flags UMaterialInstanceDynamic::Create plus SetMaterial every frame as a leak-prone allocation; fix creates the MID once and updates parameters only",
+        "Flags SpawnSystemAtLocation every frame per throw point as spawning Niagara components continuously; fix spawns once, caches the UNiagaraComponent, and sets user parameters with SetVariableFloat on a cached FName (not FString::Printf per frame)",
+        "Flags the ENQUEUE_RENDER_COMMAND lambda that captures this and calls HeightTexture->GetName() as UObject access on the render thread; fix captures plain values only",
+        "Flags missing UPROPERTY on HeightTexture, SnowMaterial, PlaneMesh, and SnowThrowSystem as GC hazards; does not report LastUploadBytes as uninitialized, since Unreal zeroes UObject memory before the constructor runs",
+        "Measurement plan names Unreal Insights (CPU and GPU traces), stat unit to find the limiting thread, stat gpu or ProfileGPU for Nanite and displacement cost, and a trace on a non-editor build configuration; does not claim a speedup without a measurement"
+      ]
+    }
+  ]
+}

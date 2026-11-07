@@ -5,9 +5,9 @@ into an agent (the `skills:` frontmatter wiring) actually improve output? We
 build BOTH variants straight from the registry source so the comparison is
 faithful:
 
-- **wired**   = ``compose_agent_with_skills(agent, skills).body`` — the exact
+- **wired**   = ``compose_agent_with_skills(agent, skills).body``: the exact
                prompt that gets emitted/deployed (lean body + inlined rubric).
-- **unwired** = ``agent.body`` — the lean body only, i.e. the pre-wiring state
+- **unwired** = ``agent.body``: the lean body only, i.e. the pre-wiring state
                where the rubric reference is a dangling pointer.
 
 A predict function calls the Anthropic API with the variant's body as the system
@@ -34,10 +34,8 @@ from agent_registry.agents import (  # noqa: E402  (after sys.path insert)
     validate_skill_tree,
 )
 
-# Default model the agents run under. Override with EVAL_AGENT_MODEL.
-# NOTE: verify this id is one your ANTHROPIC_API_KEY can call. The deployed
-# agents use `model: inherit` (Claude Code's session model, Opus); Sonnet is the
-# cheaper default here. Bump to an Opus id for max fidelity to real use.
+# Default model under test; override with EVAL_AGENT_MODEL. Sonnet is cheaper than
+# the Opus session model that deployed agents inherit.
 DEFAULT_AGENT_MODEL = os.environ.get("EVAL_AGENT_MODEL", "claude-sonnet-4-6")
 
 # Applied equally to BOTH variants so it cannot bias the A/B: the API call has no
@@ -128,7 +126,7 @@ def make_predict_fn(variant: str, model: str = DEFAULT_AGENT_MODEL):
     """Build an MLflow predict_fn for a variant.
 
     The returned function's signature is ``(task, agent)`` to match the dataset
-    input keys — MLflow calls ``predict_fn(**inputs)``.
+    input keys: MLflow calls ``predict_fn(**inputs)``.
 
     Args:
         variant: ``"wired"`` or ``"unwired"``.

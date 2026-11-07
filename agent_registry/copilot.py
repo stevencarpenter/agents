@@ -4,11 +4,7 @@ from agent_registry.agents import Agent, validate_isolated_read_only
 
 
 def emit_copilot_instructions(agents: list[Agent]) -> str:
-    """Emit a global agents instruction file for GitHub Copilot.
-
-    Copilot doesn't have native subagents, so this writes a consolidated
-    reference that describes each specialist agent and when to suggest it.
-    """
+    """Copilot has no subagents, so emit one reference file of agent names and triggers."""
     for agent in agents:
         validate_isolated_read_only(agent, "copilot")
     lines = [

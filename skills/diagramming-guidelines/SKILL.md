@@ -25,11 +25,11 @@ Use a diagram when it explains relationships or behavior more clearly than prose
 
 Match the diagram to the intent; one concept per board:
 
-- **Flowchart** — a process or decision path.
-- **Sequence** — interaction between actors over time.
-- **Architecture / system** — components and their dependencies.
-- **ERD** — a data model and its relationships.
-- **State** — a lifecycle and its transitions.
+- **Flowchart**: a process or decision path.
+- **Sequence**: interaction between actors over time.
+- **Architecture / system**: components and their dependencies.
+- **ERD**: a data model and its relationships.
+- **State**: a lifecycle and its transitions.
 
 Split a diagram only when combining views obscures the relationship the reader needs to understand.
 

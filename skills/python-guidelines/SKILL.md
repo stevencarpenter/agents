@@ -10,7 +10,7 @@ Shared Python rubric for agents. Prefer repo-local conventions when they are del
 ## Source Of Truth
 
 - PEP 8 (style), PEP 484 / PEP 604 (typing), PEP 257 (docstrings)
-- The repo's own `pyproject.toml` tool config (ruff, mypy, pytest) — this overrides general preference
+- The repo's own `pyproject.toml` tool config (ruff, mypy, pytest): this overrides general preference
 
 ## Core Rubric
 
@@ -24,7 +24,7 @@ Shared Python rubric for agents. Prefer repo-local conventions when they are del
 
 ## Tests
 
-- Match the repo's framework (`unittest.TestCase` or pytest) — don't mix.
+- Match the repo's framework (`unittest.TestCase` or pytest). Don't mix.
 - Test the contract: inputs → outputs and error conditions, not internal call sequences.
 - Use `tempfile.TemporaryDirectory` or the existing framework's temporary-path fixture for filesystem tests; never write to the project tree.
 

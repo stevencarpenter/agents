@@ -10,7 +10,7 @@
     },
     {
       "id": "read-only-corpus-stats",
-      "prompt": "Mine hippo.db read-only: top event types per week and FTS5 search hits for 'deployment' — show the SQL.",
+      "prompt": "Mine hippo.db read-only: top event types per week and FTS5 search hits for 'deployment'. Show the SQL.",
       "preferred_agent": "sqlite-analyst",
       "wrong_agent": "sql-specialist",
       "must_include": ["SELECT", "read-only"],

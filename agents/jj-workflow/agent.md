@@ -1,6 +1,6 @@
 ---
 name: jj-workflow
-description: Use when working with Jujutsu (jj) in git-colocated repos — confirm jj state, apply jj-guidelines, and use local just jj-* helpers when present.
+description: Use when working with Jujutsu (jj) in git-colocated repos, confirm jj state, apply jj-guidelines, and use local just jj-* helpers when present.
 model: inherit
 x-registry-permission: edit
 color: cyan

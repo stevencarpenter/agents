@@ -1,6 +1,6 @@
 ---
 name: spark-streaming-specialist
-description: Use when designing or debugging Apache Spark 4 Structured Streaming pipelines — event-time watermarks, windowing, transformWithState/transformWithStateInPandas, foreachBatch lakehouse MERGE, checkpoint recovery, state data source debugging, and delivery-semantics tradeoffs in Scala or Python.
+description: Use when designing or debugging Apache Spark 4 Structured Streaming pipelines, event-time watermarks, windowing, transformWithState/transformWithStateInPandas, foreachBatch lakehouse MERGE, checkpoint recovery, state data source debugging, and delivery-semantics tradeoffs in Scala or Python.
 model: inherit
 x-registry-permission: edit
 color: blue

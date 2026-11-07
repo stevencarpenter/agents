@@ -3,14 +3,14 @@
   "evals": [
     {
       "id": 0,
-      "prompt": "Review the proposed lakehouse design in evals/files/clickstream_pipeline_design.md before the team builds it. Deliver outputs/review.md with severity-ranked findings — each naming the failure mode, citing the design section as evidence, and giving the corrected form — plus a corrected outputs/design.md for the storage, ingestion, retention, and PII sections.",
+      "prompt": "Review the proposed lakehouse design in evals/files/clickstream_pipeline_design.md before the team builds it. Deliver outputs/review.md with severity-ranked findings: each naming the failure mode, citing the design section as evidence, and giving the corrected form, plus a corrected outputs/design.md for the storage, ingestion, retention, and PII sections.",
       "expected_output": "Review naming bare-Parquet, user_id over-partitioning, non-idempotent blind append, VACUUM below time-travel retention, and query-side PII masking; corrected design uses Delta/Iceberg, date partitioning or liquid clustering, idempotent MERGE/dedup keyed on a stable key, safe retention, and catalog-level masking at silver.",
       "files": ["evals/files/clickstream_pipeline_design.md"],
       "expectations": [
         "Flags bare Parquet and requires Delta Lake or Iceberg for ACID, schema evolution, and time travel",
         "Flags partitioning by high-cardinality user_id as a small-files problem; corrected design partitions on date or uses liquid clustering / hidden partitioning",
         "Flags blind append on consumer restart as non-idempotent duplicate ingestion; corrected design dedups or MERGEs on a stable event key so replays converge",
-        "Flags the planned VACUUM RETAIN 24 HOURS as breaking the reproducibility finance depends on — retention must never undercut the time-travel window backing monthly-close reruns",
+        "Flags the planned VACUUM RETAIN 24 HOURS as breaking the reproducibility finance depends on: retention must never undercut the time-travel window backing monthly-close reruns",
         "Flags per-dashboard masking of email/ip_address; corrected design masks or tokenizes PII at the silver layer via catalog policies (row filters / column masks), not in ad-hoc queries",
         "Flags the daily full scan of clean/ and prescribes partition pruning or an incremental gold aggregate"
       ]

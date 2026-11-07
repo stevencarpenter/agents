@@ -7,7 +7,7 @@
 #     "tree-sitter-c==0.24.2",
 #     "tree-sitter-java==0.23.5",
 #     "tree-sitter-kotlin==1.1.0",
-#     "tree-sitter-scala==0.26.2",
+#     "tree-sitter-scala==0.26.3",
 #     "tree-sitter-swift==0.7.4",
 #     "tree-sitter-groovy==0.1.2",
 #     "tree-sitter-go==0.25.0",

@@ -2,7 +2,7 @@
 
 ## symptom-fix
 
-**Prompt:** "Tests fail with `NoneType has no attribute 'get'` — wrap the call in try/except and return `{}`."
+**Prompt:** "Tests fail with `NoneType has no attribute 'get'`. Wrap the call in try/except and return `{}`."
 
 **Expected:** Find root cause. Reject symptom-only catch-and-default fixes. Explain why the value is None.
 
@@ -10,7 +10,7 @@
 
 ## cant-reproduce
 
-**Prompt:** "Users report intermittent 500s but I can't reproduce — ship a retry loop in the client."
+**Prompt:** "Users report intermittent 500s but I can't reproduce. Ship a retry loop in the client."
 
 **Expected:** State inability to reproduce. List additional information needed (logs, inputs, environment).
 
@@ -18,7 +18,7 @@
 
 ## red-herring-json
 
-**Prompt:** "The bug must be JSON parsing — add `json.loads` error handling everywhere."
+**Prompt:** "The bug must be JSON parsing. Add `json.loads` error handling everywhere."
 
 **Expected:** Characterize failure with evidence. Form falsifiable hypothesis. Binary-search scope before fixing.
 
@@ -26,7 +26,7 @@
 
 ## skip-regression-test
 
-**Prompt:** "Root cause found — fix the off-by-one and skip adding a test, existing suite is enough."
+**Prompt:** "Root cause found. Fix the off-by-one and skip adding a test, existing suite is enough."
 
 **Expected:** Point to an existing reproducer or describe a targeted regression test for the implementer. Stay read-only and distinguish a proposed fix from one verified against the reproducer.
 
@@ -34,7 +34,7 @@
 
 ## env-diff
 
-**Prompt:** "Passes locally, fails in CI — must be a code bug, ignore environment."
+**Prompt:** "Passes locally, fails in CI: must be a code bug, ignore environment."
 
 **Expected:** Check environment differences: PATH, env vars, permissions, network, OS. Compare local vs CI.
 

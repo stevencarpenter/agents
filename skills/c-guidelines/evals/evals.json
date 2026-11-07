@@ -1,0 +1,76 @@
+{
+  "skill_name": "c-guidelines",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Review the buffer module in evals/files/buffer.c as a senior C reviewer. Deliver outputs/review.md with severity-ranked findings (memory safety first, style last), each with line evidence, the triggering input, and the safer direction. Then deliver outputs/buffer_fixed.c applying the fixes.",
+      "expected_output": "Findings covering unchecked allocation results, int length and capacity arithmetic that can overflow, realloc assigned directly to the old pointer, an unterminated string copy, an unchecked record length that overflows the output buffer, strcpy/strcat/sprintf into a fixed label buffer, an overflow-prone allocation size, a use after free in buffer_free, and unchecked fopen/fwrite; the fixed code uses size_t, checked arithmetic, checked allocation, bounded copies, and a documented ownership contract.",
+      "files": ["evals/files/buffer.c"],
+      "expectations": [
+        "Flags that buffer_new, buffer_append, buffer_to_string, and buffer_table use malloc/realloc results without a NULL check, and that fixed code checks them and returns an error status",
+        "Flags that buffer_append assigns realloc's result directly to b->data (leaks and loses the buffer on failure) and that (len + n) * 2 on int can overflow; fix uses size_t, an overflow check, and a temporary pointer",
+        "Flags that len, cap, and n are int where size_t is correct, and that a negative n reaches memcpy as a huge size_t",
+        "Flags that buffer_to_string returns a buffer with no NUL terminator (allocates len, not len + 1), so callers reading it as a C string read out of bounds",
+        "Flags buffer_read_record: the offset and the 2-byte length are not checked against b->len, out has no capacity parameter so rec_len up to 65535 can overflow it, out[rec_len] writes one byte past the payload, and signed char sign-extension corrupts the big-endian length (bytes above 0x7f); fix uses unsigned bytes, a bounds check, and an out capacity",
+        "Flags strcpy, strcat, and sprintf into the caller's label buffer as unbounded writes with no size parameter; fix takes a capacity and uses snprintf with a truncation check",
+        "Flags buffer_table's n * entry_size as unsigned int multiplication that can wrap before malloc; fix uses calloc or a size_t overflow check",
+        "Flags buffer_free as a use after free (b->data = NULL runs after free(b)) and notes the ownership contract (who frees, whether NULL is accepted) is not documented in the header comment",
+        "Flags that buffer_dump ignores the NULL return of fopen and the results of fwrite and fclose; fix reports errors through a status code",
+        "review.md orders memory-safety defects (out-of-bounds write, use after free, overflow) before API-shape and style items"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Design the C header described in evals/files/rust_abi_brief.md. Deliver outputs/meterlib.h (full declarations with doc comments) and outputs/abi_notes.md explaining the ownership, layout, versioning, and error-handling decisions and how the header should be checked against the Rust side.",
+      "expected_output": "A C17 and C++ compatible header with extern C guards, opaque Meter handle, a versioned MeterSample or size-prefixed struct, fixed-width types, pointer plus length for the config string, a status return with out-parameters, a library-provided free function for the returned description, a callback with user_data and a documented calling thread, and a layout-check plan with cbindgen comparison.",
+      "files": ["evals/files/rust_abi_brief.md"],
+      "expectations": [
+        "Header has include guards or pragma once, includes <stdint.h>, <stddef.h>, and <stdbool.h> as needed, and wraps declarations in an #ifdef __cplusplus extern \"C\" guard so it compiles as C17 and C++",
+        "Meter is an opaque forward-declared struct (typedef struct Meter Meter;) with a create function and a matching destroy function that states NULL is accepted",
+        "Create takes the config as pointer plus length (const uint8_t * or const char * with size_t len) and states it is UTF-8 and not required to be NUL-terminated",
+        "Functions return a status enum or int with results through out-parameters; the notes address that the host already checks == 0 for success, so MeterStatus Ok must be 0 and the enum has a fixed underlying width in the mirrored definition",
+        "MeterSample mirrors the supplied Rust field order (u64, u8, f64, u16) with fixed-width types, names the padding that order implies (7 bytes after channel, 6 after flags, 32 bytes total on the listed platforms), and adds _Static_assert on sizeof and offsetof; reordering fields is accepted only as a coordinated change to the Rust struct stated in the notes",
+        "Versioning for the growing struct is concrete: a leading size or version field, or an array-of-structs API that takes the caller's struct size, and only appending fields; the snapshot function takes the element count (and ideally the element size) rather than assuming the struct size",
+        "The description string has a documented ownership contract: the library allocates it and the header exports a meter_string_free (or equivalent) function; the host must not call free() on it",
+        "The callback type takes a void *user_data, the header documents that it may be called from an internal worker thread, whether it may call back into the library, and how long user_data must stay valid; registration has a matching unregister or the destroy function states it stops callbacks first",
+        "abi_notes.md recommends layout tests on both sides (static asserts in C, size_of/offset_of asserts in Rust) and a cbindgen regeneration compared against the committed header in CI, and states that panics must not unwind across the boundary"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Audit evals/files/config_parser.c for integer and string traps. Deliver outputs/audit.md with severity-ranked findings (line evidence, the triggering input, and the fix direction) and outputs/config_parser_fixed.c applying the fixes. Say how you would verify the fixes.",
+      "expected_output": "Findings covering atol with no error detection, unsigned multiplication wrap in parse_size_kib, signed multiplication overflow in alloc_records, strcpy into a fixed buffer plus strtok non-reentrancy and mutation, entry-count overflow of the fixed table, strncpy without termination, signed/unsigned comparison in config_find, an unchecked index in config_value_byte, an unchecked fopen, and a format string vulnerability in config_log; the fixed code uses strtol/strtoul with errno and end-pointer checks, checked arithmetic, bounded copies, and a literal format string; verification names sanitizers and a fuzz harness.",
+      "files": ["evals/files/config_parser.c"],
+      "expectations": [
+        "Flags parse_port's atol as unable to detect non-numeric or out-of-range input (returns 0 for garbage, undefined on overflow); fix uses strtol with an end-pointer check and errno, and avoids -1 as a value that overlaps the error",
+        "Flags parse_size_kib: strtoul result is truncated to unsigned int and kib * 1024 wraps; fix checks the range and uses checked multiplication or size_t",
+        "Flags alloc_records: count * rec_size is signed int multiplication, which is undefined on overflow and can go negative before conversion to size_t; fix validates non-negative inputs and uses calloc or a checked size_t multiply",
+        "Flags print_list: strcpy(tmp, csv) overflows tmp for csv longer than 255 bytes, and strtok is not reentrant and not thread-safe; fix uses a bounded copy and strtok_r or manual scanning",
+        "Flags config_load: cfg->count++ is not bounded by MAX_ENTRIES so a file with more than 64 lines writes out of bounds; fopen result is not checked; fix returns an error code",
+        "Flags the strncpy calls: key and value are not guaranteed NUL-terminated when the source fills the buffer, and over-long keys or values are silently truncated; fix uses a checked copy and rejects or reports truncation",
+        "Flags config_find's loop: cfg->count is int compared with unsigned int i (sign-comparison), and the int return of an unsigned index is fine only while the count is bounded; fix uses one consistent type",
+        "Flags config_value_byte: idx is never checked against the string length or against negative values, and the char is returned as int with sign extension, so bytes above 0x7f return negative and collide with the -1 error value; fix validates idx and returns unsigned values through an out-parameter with a status",
+        "Flags config_log: printf(user_text) is a format string vulnerability; fix uses printf(\"%s\", user_text) or fputs",
+        "audit.md verification names -Wall -Wextra -Wconversion -Wformat-security (or -Wformat=2), -fsanitize=address,undefined, and a libFuzzer or AFL++ target for the line parser, and does not recommend installing tools the repo lacks without saying so"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Audit the build and test setup in evals/files/CMakeLists.txt and evals/files/test_stackq.c as a C build auditor and test strategist. Deliver outputs/audit.md with severity-ranked findings (each with file evidence and the fix direction) and outputs/CMakeLists_fixed.txt applying the fixes. Close with the smallest CI gate set that prevents recurrence. The project is a small C library with a header in include/stackq.h.",
+      "expected_output": "Findings covering no language standard, no warning flags or -Werror, hard-coded optimization flags in CMAKE_C_FLAGS, tests not registered with CTest, no sanitizer configuration, an old cmake_minimum_required, no library type or install export details, and weak tests (print-based, duplicate, ignored return values, assert vulnerable to NDEBUG, no error-path or boundary cases, leaks); the fixed file sets the standard, warnings, enable_testing/add_test, and an opt-in sanitizer option.",
+      "files": ["evals/files/CMakeLists.txt", "evals/files/test_stackq.c"],
+      "expectations": [
+        "Flags that no C standard is set; fix sets C_STANDARD 17 (or 23 if the repo targets it) with C_STANDARD_REQUIRED and C_EXTENSIONS OFF, via set_target_properties or target_compile_features",
+        "Flags that no warning flags are enabled and recommends -Wall -Wextra -Wconversion -Wshadow with -Werror in CI, applied per target (target_compile_options) rather than through the global CMAKE_C_FLAGS",
+        "Flags the hard-coded -g -O0 in CMAKE_C_FLAGS as unconditional global flags that apply to every configuration and leak -g into release; does not claim release is unoptimized, since per-config flags come later and -O3 wins; fix drops them and relies on CMAKE_BUILD_TYPE or per-config flags",
+        "Flags that tests are run by hand: no enable_testing() or add_test(), so ctest runs nothing and CI cannot gate on tests; fix registers stackq_test with add_test",
+        "Flags the absence of any sanitizer configuration and adds an opt-in option for -fsanitize=address,undefined (compile and link flags) and notes that a thread sanitizer job needs a separate build",
+        "Flags weak tests in test_stackq.c: test_push_pop only prints and asserts n > 0 without checking the bytes popped; test_push_pop_again duplicates it; the return codes of stackq_push and stackq_pop are ignored in the first two tests; stackq_destroy is not called in the first two tests (leaks that LeakSanitizer would report)",
+        "Flags that assert-based tests are removed by -DNDEBUG in release builds, and that there are no error-path or boundary cases (capacity full, zero-length item, out_cap too small, NULL arguments, capacity zero)",
+        "Notes that test_many pushes 1000 items into a queue created with capacity 1000 and asserts rc == 0, which hides what happens at capacity plus 1; recommends a boundary test",
+        "Flags cmake_minimum_required 3.10 as old for modern target properties and notes a missing install export or version for the library when the header and library are installed (the install rules lack a SOVERSION or export set); keeps this lower priority than the test and warning gaps",
+        "audit.md closes with a minimal CI gate set: a build with warnings as errors, ctest, an ASan and UBSan job, and optionally clang-tidy or cppcheck only if the repo adopts them"
+      ]
+    }
+  ]
+}
