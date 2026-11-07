@@ -16,7 +16,7 @@ dependencies = [
 [project.optional-dependencies]
 # bedrock judges are native to mlflow (boto3); vertex judges route through LiteLLM,
 # so the vertex extra must also pull litellm for the judge side.
-vertex = ["anthropic[vertex]>=2.3.0", "litellm>=1.106.6"]
+vertex = ["anthropic[vertex]>=2.4.0", "litellm>=1.106.6"]
 bedrock = ["anthropic[bedrock]>=2.3.0"]
 
 # This is a standalone uv project so the agent-registry root stays runtime-dep-free.
