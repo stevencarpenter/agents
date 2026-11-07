@@ -1,6 +1,6 @@
 # Rate limiter library: API brief
 
-A C++20 library, `ratelimit`, used by several services and by one Rust service through a C ABI.
+A C++23 library, `ratelimit`, used by several services and by one Rust service through a C ABI.
 
 ## Requirements
 
@@ -11,7 +11,7 @@ A C++20 library, `ratelimit`, used by several services and by one Rust service t
 - Limiters are shared by many request handlers. Handlers must not be able to destroy a limiter that another handler still uses.
 - Configuration comes from user input (YAML). Bad values (zero rate, negative capacity) must be rejected, not clamped silently.
 - The Rust service links the library through a C API. The C header is hand-written and must stay in sync.
-- The repo builds with C++20. Its documented error policy: no exceptions on the hot path, `std::expected` for fallible construction.
+- The repo builds with C++23. Its documented error policy: no exceptions on the hot path, `std::expected` for fallible construction.
 
 ## Known consumer snippet
 
