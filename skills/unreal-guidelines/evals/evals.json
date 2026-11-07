@@ -14,7 +14,7 @@
         "Flags CreateDynamicMaterialInstance called every Tick as per-frame allocation; fix creates the MaterialInstanceDynamic once in BeginPlay and caches it in a UPROPERTY",
         "Flags the force comment 'newtons' with AddForce(Force * DeltaTime) as a unit and step error: Chaos uses centimetres so newtons need a factor of 100, and the force should not scale by DeltaTime when applied through the fixed async physics step",
         "Flags the TActorIterator loop in BeginPlay and the LoadObject by string path in Tick; fix uses a subsystem or registration list and a TSoftObjectPtr or a cached asset reference",
-        "Flags UE_LOG at Log verbosity every frame, the uninitialized members (PendingThrust, Boosting, TrailHelper) and the non-b boolean name Boosting; fix initializes members and renames to bBoosting",
+        "Flags UE_LOG at Log verbosity every frame and the non-b boolean name Boosting; fix renames to bBoosting. Does not report PendingThrust, Boosting, or TrailHelper as uninitialized, since Unreal zeroes UObject memory before the constructor runs",
         "review.md orders findings by severity: crashes and races (GC, off-thread UObject access, constructor world access) before cost items (per-frame allocation, lookups, logging) with naming and style last"
       ]
     },
@@ -65,7 +65,7 @@
         "Flags UMaterialInstanceDynamic::Create plus SetMaterial every frame as a leak-prone allocation; fix creates the MID once and updates parameters only",
         "Flags SpawnSystemAtLocation every frame per throw point as spawning Niagara components continuously; fix spawns once, caches the UNiagaraComponent, and sets user parameters with SetVariableFloat on a cached FName (not FString::Printf per frame)",
         "Flags the ENQUEUE_RENDER_COMMAND lambda that captures this and calls HeightTexture->GetName() as UObject access on the render thread; fix captures plain values only",
-        "Flags missing UPROPERTY on HeightTexture, SnowMaterial, PlaneMesh, and SnowThrowSystem as GC hazards and the uninitialized LastUploadBytes",
+        "Flags missing UPROPERTY on HeightTexture, SnowMaterial, PlaneMesh, and SnowThrowSystem as GC hazards; does not report LastUploadBytes as uninitialized, since Unreal zeroes UObject memory before the constructor runs",
         "Measurement plan names Unreal Insights (CPU and GPU traces), stat unit to find the limiting thread, stat gpu or ProfileGPU for Nanite and displacement cost, and a trace on a non-editor build configuration; does not claim a speedup without a measurement"
       ]
     }

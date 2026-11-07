@@ -13,7 +13,7 @@ Start by reading the physics settings in `DefaultEngine.ini` and project setting
 
 Use the shared `unreal-guidelines` and `cpp-guidelines` rubrics:
 
-- Chaos runs in centimetres. Convert forces from newtons by 100 and torques to N cm at one named point. Put the unit in the identifier.
+- Chaos runs in centimetres. Convert forces from newtons by 100 and torques from N m by 10,000 (kg cm²/s², not N cm) at one named point. Put the unit in the identifier.
 - With `bTickPhysicsAsync`, apply input in the async physics tick at the fixed step (1/60 s in the user's project). Do not scale by frame `DeltaTime` and do not apply physics forces from `Tick`.
 - Use `AddForceAtLocation` for off-centre forces. Check the body is simulating and the component is registered.
 - Guard data shared between the game thread and the physics thread with a short `FCriticalSection` scope. Copy plain values out, and apply `UObject` changes on the game thread.
