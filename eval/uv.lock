@@ -36,7 +36,7 @@ vertex = [
 requires-dist = [
     { name = "anthropic", specifier = ">=2.3.0" },
     { name = "anthropic", extras = ["bedrock"], marker = "extra == 'bedrock'", specifier = ">=2.3.0" },
-    { name = "anthropic", extras = ["vertex"], marker = "extra == 'vertex'", specifier = ">=2.3.0" },
+    { name = "anthropic", extras = ["vertex"], marker = "extra == 'vertex'", specifier = ">=2.4.0" },
     { name = "litellm", marker = "extra == 'vertex'", specifier = ">=1.106.6" },
     { name = "mlflow", specifier = ">=3.16.0" },
     { name = "pandas", specifier = ">=3.1.0" },
@@ -259,7 +259,7 @@ wheels = [
 
 [[package]]
 name = "anthropic"
-version = "2.6.0"
+version = "2.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -271,9 +271,9 @@ dependencies = [
     { name = "sniffio" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4a/a8/0e50326e4c408f4b4ee3aae4c3bbd60012570b88bc5887effc8542509068/anthropic-2.6.0.tar.gz", hash = "sha256:a38d8698258a4cb33a9bc9d2f0ced1d96b71010870e5ed703807d21021a0da24", size = 1958763, upload-time = "2026-11-05T18:59:09.557Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c8/5b/6c13b126554cfec789ce14a74f2ccfd46382a0eb296ec78ea6b80eeac3b5/anthropic-2.4.0.tar.gz", hash = "sha256:c59cab76049cf581e90e2ee3a20472291029b7a6a1ee2ef32bff2b2a7010fd47", size = 1915809, upload-time = "2026-11-02T19:08:06.047Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/38/0b/705a05ab68558914e725cf1143d7e409fa3bb596c35bca1eceab42402abe/anthropic-2.6.0-py3-none-any.whl", hash = "sha256:4325cdf9346fa29183674b6ee6289ebad5b2b0a935758f7350fa504032da1d9b", size = 2445307, upload-time = "2026-11-05T18:59:11.474Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/5d/e399d9028411ce404d7ddbe6b8060d878b2549ed8cd671a7bb496ae20ffc/anthropic-2.4.0-py3-none-any.whl", hash = "sha256:db2e691364ae2e04083ed9b8deb49f1a6967e9f184f8cbb5afcb3bcda8ab0532", size = 2340848, upload-time = "2026-11-02T19:08:03.822Z" },
 ]
 
 [package.optional-dependencies]
