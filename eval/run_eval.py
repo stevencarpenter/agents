@@ -27,7 +27,7 @@ import mlflow
 import pandas as pd
 
 from agents import make_predict_fn  # eval/agents.py (script dir is on sys.path)
-from scorers import SCORERS, register_all
+from scorers import build_scorers, register_all
 from tasks import TASKS
 
 _OUT = Path(__file__).resolve().parent / "results"
@@ -61,10 +61,6 @@ def main() -> int:
     parser.add_argument("--experiment", default="agent-registry-wiring-ab")
     args = parser.parse_args()
 
-    # Propagate model choices so agents.py / scorers.py pick them up at import-use time.
-    os.environ["EVAL_AGENT_MODEL"] = args.agent_model
-    os.environ["EVAL_JUDGE_MODEL"] = args.judge_model
-
     domains = [d.strip() for d in args.domains.split(",") if d.strip()]
     variants = [v.strip() for v in args.variants.split(",") if v.strip()]
     _OUT.mkdir(parents=True, exist_ok=True)
@@ -74,12 +70,12 @@ def main() -> int:
     print(f"experiment={args.experiment} ({exp_id})  agent_model={args.agent_model}  judge_model={args.judge_model}")
 
     # Register judges if the backend supports it; otherwise use the objects inline.
+    scorers_by_domain = build_scorers(args.judge_model)
     try:
-        scorers_by_domain = register_all(experiment_id=exp_id)
+        scorers_by_domain = register_all(scorers_by_domain, experiment_id=exp_id)
         print("registered judges:", {d: [s.name for s in v] for d, v in scorers_by_domain.items()})
     except Exception as exc:  # noqa: BLE001  # backend may not support registration
         print(f"scorer registration unavailable ({type(exc).__name__}: {exc}); using inline scorer objects")
-        scorers_by_domain = SCORERS
 
     rows: list[dict] = []
     for domain in domains:

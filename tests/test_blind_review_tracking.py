@@ -39,6 +39,7 @@ def load(name: str, path: Path) -> ModuleType:
 
 bench = load("bench", SKILL / "bench/bench.py")
 mechanical_review = load("mechanical_review_t", SKILL / "scripts/mechanical_review.py")
+log_pair = load("log_pair_t", SKILL / "scripts/log_pair.py")
 
 CASE = {
     "id": "t",
@@ -123,6 +124,17 @@ class BenchScoringTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             for case in bench.load_cases():
                 bench.build_units(case, Path(tmp) / case["id"])
+
+    def test_case_id_that_could_leave_the_temp_root_is_refused(self) -> None:
+        """The id names a directory under the bench root; it must not climb out of it."""
+        for bad in ("../../escaped-dir", "..", ".", "a/b", "", "a b"):
+            with self.subTest(case_id=bad), tempfile.TemporaryDirectory() as tmp:
+                (Path(tmp) / "x.json").write_text(json.dumps({"id": bad}))
+                with self.assertRaises(SystemExit):
+                    bench.load_cases(cases_dir=Path(tmp))
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "x.json").write_text(json.dumps({"id": "c1.a_b-C"}))
+            self.assertEqual(bench.load_cases(cases_dir=Path(tmp)), [{"id": "c1.a_b-C"}])
 
 
 GIT = shutil.which("git")
@@ -237,6 +249,47 @@ class AgentEvalTest(unittest.TestCase):
             for bad in ("deadbee", "--all", "no-such-ref"):
                 with self.subTest(rev=bad), self.assertRaises(ValueError):
                     agent_eval.rev_parse(repo, bad)
+
+    def test_read_skips_a_record_cut_inside_a_multibyte_character(self) -> None:
+        """A write cut inside a UTF-8 sequence loses that record only, not the file."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "l.jsonl"
+            agent_eval.append(path, [{"claim": "ok"}])
+            with path.open("ab") as fh:
+                fh.write('{"claim":"\u00e9"}'.encode()[:11])
+            agent_eval.append(path, [{"claim": "later"}])
+            with mock.patch("sys.stderr", new=io.StringIO()) as stderr:
+                records = agent_eval.read(path)
+            self.assertEqual([r["claim"] for r in records], ["ok", "later"])
+            self.assertIn("not JSON; skipped", stderr.getvalue())
+
+    def test_read_splits_at_newline_only(self) -> None:
+        """U+2028, U+2029, and NEL stay unescaped in a record; they must not end it."""
+        claim = "a\u2028b\u2029c\x85d"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "l.jsonl"
+            agent_eval.append(path, [{"claim": claim}])
+            self.assertEqual(agent_eval.read(path), [{"claim": claim}])
+
+
+class LogPairTest(unittest.TestCase):
+    """log_pair.py must append like every other producer, repairing a torn last line."""
+
+    def test_record_after_a_torn_line_is_readable(self) -> None:
+        """A pair appended after an interrupted write must not fuse with the torn text."""
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "pairs.jsonl"
+            log.write_text('{"a": 1, "poc": tr')
+            record = Path(tmp) / "rec.json"
+            record.write_text('{"b": 2}')
+            with (
+                mock.patch.object(log_pair, "LOG", log),
+                mock.patch("sys.stdout", new=io.StringIO()),
+                mock.patch("sys.stderr", new=io.StringIO()),
+            ):
+                self.assertEqual(log_pair.main([str(record)]), 0)
+                records = agent_eval.read(log)
+            self.assertEqual([r["b"] for r in records], [2])
 
 
 class IngestTest(unittest.TestCase):
@@ -650,6 +703,24 @@ class ReviewLogTest(unittest.TestCase):
         self.assertEqual(legacy.read_text(), old)
         self.assertTrue(all(r["schema_version"] == 1 for r in agent_eval.read(self.log.LEDGER)))
 
+    def test_legacy_ledger_is_not_overwritten_by_a_second_move(self) -> None:
+        """A second pre-v1 ledger must stop the command, not replace the kept legacy rows."""
+        old = '{"type": "status", "id": "abc"}\n'
+        legacy = self.log.LEDGER.with_name("l.legacy.jsonl")
+        self.log.LEDGER.write_text(old)
+        legacy.write_text("keep\n")
+        with mock.patch("sys.stderr", new=io.StringIO()), self.assertRaises(SystemExit):
+            self.log.retire_legacy_ledger()
+        self.assertEqual(legacy.read_text(), "keep\n")
+        self.assertEqual(self.log.LEDGER.read_text(), old)
+
+    def test_reconcile_skips_a_finding_whose_file_is_gone(self) -> None:
+        """A deleted or moved file is no evidence either way; it must not crash the command."""
+        self.run_log("log", "--out", str(self.out))
+        (self.repo / "a.py").unlink()
+        self.assertEqual(self.run_log("reconcile"), 0)
+        self.assertEqual(self.records("verdict"), [])
+
     def reconcile_status(self, source: str) -> str:
         """Log the run, rewrite a.py to ``source``, reconcile, and return the status."""
         self.run_log("log", "--out", str(self.out))
@@ -754,6 +825,20 @@ class MechanicalRunTest(unittest.TestCase):
             "input_tokens": 10, "output_tokens": 4,
             "cache_read_tokens": 14, "cache_creation_tokens": 2,
         })
+
+    def test_refuses_symlinked_payloads_and_results(self) -> None:
+        """Writing through either link could overwrite files outside the out dir."""
+        (self.repo / "a").write_text("a\n")
+        commit_all(self.repo, "a")
+        elsewhere = self.tmp / "elsewhere"
+        elsewhere.mkdir()
+        for sub in ("payloads", "results"):
+            with self.subTest(sub=sub):
+                (self.out / sub).symlink_to(elsewhere)
+                with self.assertRaises(SystemExit):
+                    self.main("HEAD")
+                (self.out / sub).unlink()
+        self.review.assert_not_called()
 
 
 class BenchRecordTest(unittest.TestCase):
@@ -950,6 +1035,74 @@ class SandboxTest(unittest.TestCase):
             box.symlink_to(target)
             with mock.patch.object(mechanical_review, "SANDBOX", box), self.assertRaises(SystemExit):
                 mechanical_review.sandbox("repo-x")
+
+    def test_refuses_a_sandbox_owned_by_another_user(self) -> None:
+        """On a shared /tmp another user could pre-create the path."""
+        with tempfile.TemporaryDirectory() as tmp:
+            box = Path(tmp) / "blind-review-sandbox"
+            with (
+                mock.patch.object(mechanical_review, "SANDBOX", box),
+                mock.patch.object(mechanical_review.os, "getuid", return_value=os.getuid() + 1),
+                self.assertRaisesRegex(SystemExit, "not owned"),
+            ):
+                mechanical_review.sandbox("repo-x")
+
+
+class ReviewUnitReplyTest(unittest.TestCase):
+    """A reply counts as a review only when the process and the reply both report success."""
+
+    def review(self, reply: dict, exit_code: int) -> dict:
+        """Run review_unit against a fake reviewer that prints ``reply`` and exits."""
+        code = f"import sys; print({json.dumps(reply)!r}); sys.exit({exit_code})"
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "out"
+            (out / "payloads").mkdir(parents=True)
+            (out / "results").mkdir()
+            unit = Path(tmp) / "f01.py.diff"
+            unit.write_text("file f01.py\n+1|x = 1\n")
+            with (
+                mock.patch.object(mechanical_review, "SANDBOX", Path(tmp) / "box"),
+                mock.patch.object(mechanical_review, "cli_version", return_value="t"),
+            ):
+                return mechanical_review.review_unit(unit, out, [sys.executable, "-c", code], "no-such-repo")
+
+    def test_nonzero_exit_fails_the_review_despite_a_valid_reply(self) -> None:
+        """A crashed process that printed clean output is not a clean file."""
+        result = self.review({"structured_output": {"findings": []}}, 1)
+        self.assertFalse(result["ok"])
+
+    def test_error_reply_fails_the_review(self) -> None:
+        """An exit 0 reply flagged is_error is not a clean file either."""
+        result = self.review({"is_error": True, "structured_output": {"findings": []}}, 0)
+        self.assertFalse(result["ok"])
+
+    def test_clean_reply_is_a_passing_review(self) -> None:
+        """The two failure tests above must not pass for a reviewer that always fails."""
+        self.assertTrue(self.review({"structured_output": {"findings": []}}, 0)["ok"])
+
+
+class FindingShapeTest(unittest.TestCase):
+    """A finding the ledger cannot handle must fail the review, not crash a later command."""
+
+    GOOD = {"side": "+", "line": 2, "severity": "high", "confidence": "high",
+            "category": "security", "claim": "c", "evidence": "e"}
+
+    def parse(self, **changes: object) -> list[dict] | None:
+        """Return the parsed findings for GOOD with ``changes`` applied."""
+        reply = {"structured_output": {"findings": [{**self.GOOD, **changes}]}}
+        return mechanical_review._findings(reply)
+
+    def test_required_text_fields_must_be_strings(self) -> None:
+        """Each required string field rejects null and a number."""
+        for key in ("severity", "confidence", "category", "claim", "evidence"):
+            for bad in (None, 5):
+                with self.subTest(field=key, value=bad):
+                    self.assertIsNone(self.parse(**{key: bad}))
+
+    def test_optional_assumption_may_be_absent(self) -> None:
+        """The schema does not require assumption, so a finding without it is valid."""
+        self.assertEqual(self.parse(), [self.GOOD])
+        self.assertEqual(self.parse(assumption="a"), [{**self.GOOD, "assumption": "a"}])
 
 
 if __name__ == "__main__":

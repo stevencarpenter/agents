@@ -14,6 +14,7 @@ Neither is visible in the output, so every supported language is pinned here.
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -433,6 +434,14 @@ STYLE_CASES: list[tuple[str, str, list[str], list[str]]] = [
     ("a.swift", "/* outer /* inner */ tail */ let y = 1\n", ["let y = 1"], ["outer", "inner", "tail"]),
     ("a.swift", 'let s = """\n  // keep\n  """\n/// Doc.\n', ["// keep"], ["Doc."]),
     ("a.groovy", "def s = 'a // keep' // gone\n", ["'a // keep'"], ["gone"]),
+    # C and C++: raw strings, digit separators, char literals.
+    (
+        "a.cpp",
+        'auto s = R"(a "// keep" b)"; // gone\nint n = 1\'000\'000; // gone2\n',
+        ['R"(a "// keep" b)"', "1'000'000;"],
+        ["gone"],
+    ),
+    ("a.cpp", 'auto s = R"x(a )" // keep)x"; // gone\n', ["// keep"], ["gone"]),
     ("a.c", "char c = '\"'; /* gone */ char d = '/';\n", ["'\"'", "'/'"], ["gone"]),
     # Go: raw strings and build directives.
     (
@@ -688,6 +697,157 @@ class ReviewCaseTest(PositionContractTest):
         out = self.assert_masked("a.rb", "# frozen_string_literal: true\nx = 1\n# frozen_string_literal: true\n")
         self.assertEqual(out.count("frozen"), 1, "a magic comment after code is commentary")
 
+    def test_macro_body_loses_its_comments_in_cpp(self) -> None:
+        """The grammar keeps a macro body as raw text, so its comments need their own parse."""
+        out = self.assert_masked("a.hpp", "#define X 1 // gone\nint x;\n")
+        self.assertIn("#define X 1", out)
+        self.assertNotIn("gone", out)
+
+    def test_macro_body_with_code_after_a_block_comment(self) -> None:
+        """The grammar ends a macro body at `/*` and rejects the text after that comment."""
+        source = (
+            "#define F(x) ((x) /* gone */ + 1)\n"
+            '#define S "/* keep */" /* gone2 */ "t"\n'
+            "int y; // gone3\n"
+        )
+        for name in ("a.c", "a.cpp"):
+            with self.subTest(name=name):
+                out = self.assert_masked(name, source)
+                for kept in ("#define F(x) ((x)", "+ 1)", '#define S "/* keep */"', '"t"', "int y;"):
+                    self.assertIn(kept, out)
+                self.assertNotIn("gone", out)
+
+    def test_extern_c_guard_that_crosses_the_conditionals(self) -> None:
+        """`extern "C" {` and its `}` sit in two `#ifdef __cplusplus` blocks, which the grammar cannot nest."""
+        source = (
+            '#ifdef __cplusplus\nextern "C" { // gone\n#endif\n'
+            "int f(void); /* gone2 */\n"
+            "#ifdef __cplusplus\n} /* gone3 */\n#endif\n"
+        )
+        for name in ("a.h", "a.hpp"):
+            with self.subTest(name=name):
+                out = self.assert_masked(name, source)
+                for kept in ('extern "C" {', "int f(void);", "#ifdef __cplusplus\n}"):
+                    self.assertIn(kept, out)
+                self.assertNotIn("gone", out)
+
+    def test_unreal_reflection_macros(self) -> None:
+        """A reflection macro takes no semicolon, so the grammar rejects the declaration after it."""
+        source = (
+            "UCLASS(Blueprintable) // gone\n"
+            "class AThing : public AActor\n{\n"
+            "\tGENERATED_BODY()\n\npublic:\n"
+            '\tUPROPERTY(EditAnywhere, meta = (DisplayName = "a /* keep */ b") /* gone2 */)\n'
+            "\tfloat Depth = 1.0f; // gone3\n\n"
+            "\tUFUNCTION(BlueprintCallable)\n\tvoid Dig();\n};\n"
+        )
+        for name in ("Thing.h", "Thing.hpp"):  # an Unreal header is C++ in a .h file
+            with self.subTest(name=name):
+                out = self.assert_masked(name, source)
+                for kept in ("UCLASS(Blueprintable)", "GENERATED_BODY()", '"a /* keep */ b"', "void Dig();"):
+                    self.assertIn(kept, out)
+                self.assertNotIn("gone", out)
+
+    def test_unreal_annotations_that_the_grammar_rejects(self) -> None:
+        """Export macros, inline specifiers, and macro calls with no semicolon or with type arguments."""
+        cases = [
+            ("export macro on a class", "class GAME_API AThing : public AActor\n{\n};\n", "class GAME_API AThing"),
+            ("export macro on a function", "GAME_API void Free();\nstatic GAME_API int32 Count();\n", "GAME_API void Free();"),
+            ("export macro on a member", "class A\n{\n\tGAME_API virtual void F();\n};\n", "GAME_API virtual void F();"),
+            ("inline specifier", "class A\n{\n\tFORCEINLINE int G() const { return 1; }\n};\n", "FORCEINLINE int G()"),
+            (
+                "UMETA in an enum",
+                'UENUM(BlueprintType)\nenum class EKind : uint8\n{\n\tA UMETA(DisplayName = "a /* keep */" /* gone2 */),\n\tB,\n};\n',
+                'A UMETA(DisplayName = "a /* keep */"',
+            ),
+            ("UPARAM", "void F(UPARAM(ref) int32& X);\n", "UPARAM(ref) int32& X"),
+            ("UE_DEPRECATED", 'class A\n{\n\tUE_DEPRECATED(5.1, "use G")\n\tvoid F();\n};\n', 'UE_DEPRECATED(5.1, "use G")'),
+            (
+                "delegate with type arguments",
+                "DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDug, float, Depth);\n",
+                "DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDug, float, Depth);",
+            ),
+            ("PURE_VIRTUAL", "class A\n{\n\tvirtual int F() PURE_VIRTUAL(A::F, return 0;);\n};\n", "PURE_VIRTUAL(A::F, return 0;);"),
+            ("module macro with no semicolon", "IMPLEMENT_MODULE(FDefaultModuleImpl, Thing)\n", "IMPLEMENT_MODULE(FDefaultModuleImpl, Thing)"),
+        ]
+        for label, source, kept in cases:
+            with self.subTest(form=label):
+                out = self.assert_masked("Thing.cpp", source + "int Last; // gone\n")
+                self.assertIn(kept, out)
+                self.assertIn("int Last;", out)
+                self.assertNotIn("gone", out)
+
+    def test_construct_inside_a_comment_or_literal_is_data(self) -> None:
+        """Blanking such a span for the parse could move the end of its comment, so it is parsed as written."""
+        guard_open, guard_close = '#ifdef __cplusplus\nextern "C" {\n#endif\n', "#ifdef __cplusplus\n}\n#endif\n"
+        # The `#define` line ends a comment. Blanked, that comment would run on to `gone2 */` over code.
+        out = self.assert_masked(
+            "a.c", guard_open + "/* gone\n#define A 1 */ int y;\nint z; /* gone2 */\n" + guard_close
+        )
+        self.assertIn("int y;\nint z;", out)
+        self.assertNotIn("gone", out)
+        self.assertNotIn("#define A", out)
+        # Only the span that ends the comment goes back to the parser: the macro after it is still a construct.
+        out = self.assert_masked(
+            "a.cpp", "/* gone\n#define A 1 */ int y;\nUCLASS()\nclass B {}; /* gone2 */\n"
+        )
+        self.assertIn("int y;\nUCLASS()\nclass B {};", out)
+        self.assertNotIn("gone", out)
+        # Raw string content that looks like a reflection macro stays as written.
+        source = 'const char* s = R"(\nUPROPERTY(/* keep */)\n)";\nUCLASS()\nclass A {};\n'
+        self.assertEqual(self.assert_masked("a.cpp", source), source)
+        # A string inside a blanked macro body or blanked arguments is read by that span's own parse,
+        # so a macro name in the string must not get a parse of its own.
+        for source in (
+            'UCLASS()\nclass A {};\n#define S "keep UMETA(/* keep */)"\n',
+            'UCLASS()\nclass A\n{\n\tUPROPERTY(meta = (ToolTip = "keep UMETA(/* keep */)"))\n\tint X;\n};\n',
+            'UCLASS()\nclass A {};\n#define MSG TEXT("PURE_VIRTUAL(F, see http://keep)")\n',
+        ):
+            self.assertEqual(self.assert_masked("a.cpp", source), source)
+        # The inner span is still blanked when the outer one goes back to the parser.
+        out = self.assert_masked(
+            "a.cpp", "UCLASS()\nclass A {};\n/* gone\n#define B 1 */ void F(UPARAM(ref) int& X);\nint z; /* gone2 */\n"
+        )
+        self.assertIn("void F(UPARAM(ref) int& X);\nint z;", out)
+        self.assertNotIn("gone", out)
+        # Code that was commented out is a comment like any other.
+        out = self.assert_masked("Thing.h", "UCLASS()\nclass A\n{\n/*\n\tUPROPERTY(EditAnywhere)\n\tfloat Gone;\n*/\n\tint X;\n};\n")
+        self.assertIn("int X;", out)
+        self.assertNotIn("Gone", out)
+        self.assertNotIn("UPROPERTY", out)
+
+    def test_blanked_construct_ends_where_the_compiler_ends_it(self) -> None:
+        """A quote in a comment, or a comment that runs past the line end, must not move the end of a span."""
+        # The quote in the comment opens no string: the call ends at its own `)`, and the later `//` is in a string.
+        source = 'UCLASS()\nclass A\n{\n\tUPROPERTY(X /* gone " */ ) int a = f("a ) ; // keep"); int c;\n};\n'
+        out = self.assert_masked("a.cpp", source)
+        self.assertIn('int a = f("a ) ; // keep"); int c;', out)
+        self.assertNotIn("gone", out)
+        # A block comment carries the macro body on to the next line, where `//` is still inside it.
+        out = self.assert_masked("a.c", "#define A 1 /* gone\n// gone2 */ + x;\nint y; // gone3\n")
+        self.assertIn("+ x;\nint y;", out)
+        self.assertNotIn("gone", out)
+
+    def test_construct_the_patterns_cannot_bound_is_refused(self) -> None:
+        """Where a pattern cannot find the true end of a construct, the file keeps its parse error."""
+        cases = [
+            # The comment never ends.
+            ("a.c", "#define X 1 /* open\nint y;\n"),
+            # A raw string in the arguments can hold any text.
+            ("a.cpp", 'UCLASS()\nclass A\n{\n\tUPROPERTY(meta = (ToolTip = R"(a ) b)"))\n\tint X;\n};\n'),
+            # A macro name inside a string reaches past the call that holds the string, into a comment.
+            (
+                "a.cpp",
+                "UCLASS()\nclass A\n{\n"
+                "\tUPROPERTY(a = \"UMETA(\") int X = g(')', '\"'); int Y; // don't ); int Z;\n};\n",
+            ),
+        ]
+        for name, source in cases:
+            with self.subTest(source=source[:40]):
+                self.assertEqual(
+                    strip_context.strip_source(name, source), (source, "copied-verbatim (parse error)")
+                )
+
     def test_grammar_gaps_are_labeled(self) -> None:
         """Valid code a pinned grammar cannot parse is flagged, never half-stripped."""
         for name, source in PARSE_ERROR_CASES:
@@ -697,7 +857,7 @@ class ReviewCaseTest(PositionContractTest):
     def test_languages_without_a_grammar_are_unknown(self) -> None:
         """No pinned wheel exists for these, so their comments cannot be found."""
         for name in ("a.fish", "a.r", "a.erl", "a.clj", "a.el", "a.sol", "justfile", "a.sass",
-                     "a.php", "a.vue", "a.svelte", "a.hs", "a.cs", "a.cpp", "a.ex", "a.scss"):
+                     "a.php", "a.vue", "a.svelte", "a.hs", "a.cs", "a.ex", "a.scss"):
             with self.subTest(name=name):
                 self.assertEqual(strip_context.strip_source(name, "x # c\n")[1], "copied-verbatim (unknown language)")
 
@@ -786,6 +946,12 @@ class DispatchTest(unittest.TestCase):
         reason = strip_context.validate_strip("a.js", "const x = 1;\n", "const x\n")
         self.assertIsNotNone(reason)
 
+    def test_validation_rejects_python_that_stops_compiling(self) -> None:
+        """A mask-faithful blanking can still break Python, so the output is compiled."""
+        reason = strip_context.validate_strip("a.py", "x = (1)\n", "x = (1 \n")
+        self.assertIn("no longer parses", reason or "")
+        self.assertIsNone(strip_context.validate_strip("a.py", "x = (1\n", "x = (1\n"))
+
     def test_validation_accepts_a_faithful_mask(self) -> None:
         """A correct strip must not be rejected."""
         self.assertIsNone(
@@ -853,6 +1019,90 @@ class DiffOutputTest(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(check.returncode, 0, check.stderr)
+
+    def test_missing_final_newline_gets_git_marker(self) -> None:
+        """Without the marker the next line or file header is glued onto the last line."""
+        diff = strip_context._unified_diff("x = 1\n", "x = 2", "a.py")
+        self.assertEqual(
+            diff, "--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-x = 1\n+x = 2\n\\ No newline at end of file\n"
+        )
+
+    def test_malformed_patch_is_warned_about(self) -> None:
+        """A patch git cannot parse must not reach the reviewer silently."""
+        with tempfile.TemporaryDirectory() as tmp:
+            patch = Path(tmp) / "stripped.diff"
+            patch.write_text("this is not a patch\n")
+            with mock.patch("sys.stderr", new=io.StringIO()) as stderr:
+                strip_context._assert_diff_applies(Path(tmp), patch)
+            self.assertIn("not a well-formed patch", stderr.getvalue())
+            patch.write_text(strip_context._unified_diff("a\n", "b\n", "a.txt"))
+            with mock.patch("sys.stderr", new=io.StringIO()) as stderr:
+                strip_context._assert_diff_applies(Path(tmp), patch)
+            self.assertEqual(stderr.getvalue(), "")
+
+    def test_files_relative_path_climbing_out_is_stored_by_name(self) -> None:
+        """A `..` path lands at OUT/name instead of failing or leaving OUT."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "in" / "a.properties"
+            src.parent.mkdir()
+            src.write_text("# c\nk=v\n")
+            out = Path(tmp) / "out"
+            climbing = os.path.relpath(src)
+            self.assertTrue(climbing.startswith(".."), climbing)
+            strip_context.main(["files", "--out", str(out), climbing])
+            self.assertTrue((out / "a.properties").is_file())
+
+    def test_unknown_language_is_omitted_in_diff_mode(self) -> None:
+        """Files whose comments cannot be stripped, such as untracked keys, are not copied."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, out = Path(tmp) / "repo", Path(tmp) / "out"
+            repo.mkdir()
+            for args in (
+                ("init", "-q", "-b", "main"),
+                ("config", "user.email", "t@example.com"),
+                ("config", "user.name", "t"),
+            ):
+                subprocess.run(["git", "-C", str(repo), *args], check=True)
+            (repo / "a.py").write_text("x = 1\n")
+            (repo / "a.vb").write_text("x = 1\n")
+            subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(repo), "commit", "-qm", "base"], check=True)
+            (repo / "a.py").write_text("x = 2\n")
+            (repo / "a.vb").write_text("x = 2 ' SECRET\n")
+            (repo / "id_ed25519").write_text("PRIVATE KEY\n")
+            strip_context.main(["diff", "--repo", str(repo), "--out", str(out)])
+            manifest = {e["path"]: e["action"] for e in json.loads((out / "manifest.json").read_text())["files"]}
+            self.assertEqual(manifest["a.py"], "stripped")
+            for name in ("a.vb", "id_ed25519"):
+                self.assertEqual(manifest[name], "omitted (copied-verbatim (unknown language))")
+                self.assertFalse((out / "head" / name).exists())
+                self.assertFalse((out / "base" / name).exists())
+            diff = (out / "stripped.diff").read_text()
+            self.assertIn("a.py", diff)
+            for leaked in ("SECRET", "PRIVATE KEY", "a.vb", "id_ed25519"):
+                self.assertNotIn(leaked, diff)
+
+    def test_tree_base_reviews_every_file_as_added(self) -> None:
+        """The empty tree is the base of a whole-repository review; it is a tree, not a commit."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, out = Path(tmp) / "repo", Path(tmp) / "out"
+            repo.mkdir()
+            for args in (
+                ("init", "-q", "-b", "main"),
+                ("config", "user.email", "t@example.com"),
+                ("config", "user.name", "t"),
+            ):
+                subprocess.run(["git", "-C", str(repo), *args], check=True)
+            (repo / "a.py").write_text("x = 1\n")
+            subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(repo), "commit", "-qm", "base"], check=True)
+            empty_tree = subprocess.run(
+                ["git", "-C", str(repo), "hash-object", "-t", "tree", "/dev/null"],
+                check=True, capture_output=True, text=True,
+            ).stdout.strip()
+            strip_context.main(["diff", "--repo", str(repo), "--base", empty_tree, "--out", str(out)])
+            self.assertEqual((out / "head" / "a.py").read_text(), "x = 1\n")
+            self.assertFalse((out / "base" / "a.py").exists())
 
     def test_untracked_file_is_included(self) -> None:
         """A newly added file is part of the change under review."""
@@ -1003,6 +1253,12 @@ class MechanicalModeTest(unittest.TestCase):
             ("a.py", 'f"{allow()}"\n', 'f"{deny()}"\n'),
             ("a.sh", "cat <<EOF\na\n\nb\nEOF\n", "cat <<EOF\na\nb\nEOF\n"),
             ("a.py", 'value = """a\n  \nb"""\n', 'value = """a\n    \nb"""\n'),
+            ("a.c", '#define S "a  b" /* c */ "t"\n', '#define S "a b" /* c */ "t"\n'),
+            (
+                "Thing.h",
+                'UCLASS()\nclass A {\n\tUPROPERTY(meta = (DisplayName = "a  b"))\n\tint X;\n};\n',
+                'UCLASS()\nclass A {\n\tUPROPERTY(meta = (DisplayName = "a b"))\n\tint X;\n};\n',
+            ),
             ("a.html", '<p title="a  b">x</p>\n', '<p title="a b">x</p>\n'),
             ("setup.cfg", "[x]\nvalue = a  b\n", "[x]\nvalue = a b\n"),
             ("a.html", "<pre>deny  all</pre>\n", "<pre>deny all</pre>\n"),
@@ -1301,6 +1557,24 @@ class MechanicalModeTest(unittest.TestCase):
         strip_context.main(["mechanical", "--repo", str(repo), "--out", str(out)])
         self.assertEqual(list((out / "units").iterdir()), [])
         self.assertFalse((out / "results").exists())
+
+    def test_rerun_removes_a_stale_run_json(self) -> None:
+        """A run.json from an earlier revision would give a later `log` the old SHAs."""
+        out = self.run_mechanical({"a.py": "x = 1\n"}, {"a.py": "x = 2\n"})
+        (out / "run.json").write_text('{"base_sha": "old"}')
+        repo = Path(json.loads((out / "manifest.json").read_text())["repo"])
+        strip_context.main(["mechanical", "--repo", str(repo), "--out", str(out)])
+        self.assertFalse((out / "run.json").exists())
+
+    def test_base_that_looks_like_an_option_is_refused_before_git_runs_it(self) -> None:
+        """`--output=PATH` handed to `git diff` would create PATH."""
+        out = self.run_mechanical({"a.py": "x = 1\n"}, {"a.py": "x = 2\n"})
+        repo = Path(json.loads((out / "manifest.json").read_text())["repo"])
+        target = out.parent / "created-by-git"
+        for mode in ("mechanical", "diff"):
+            with self.subTest(mode=mode), self.assertRaises(SystemExit):
+                strip_context.main([mode, "--repo", str(repo), f"--base=--output={target}", "--out", str(out)])
+            self.assertFalse(target.exists())
 
     def test_unchanged_rename_has_no_code_change(self) -> None:
         """A renamed file is compared with its original path, not as all-new."""

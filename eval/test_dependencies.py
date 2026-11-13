@@ -8,8 +8,10 @@ import socket
 import sys
 import tempfile
 import unittest
+from contextlib import ExitStack
 from importlib.metadata import version
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 # Prevent background telemetry and remote model-price refreshes during imports.
@@ -92,7 +94,9 @@ class DependencyTests(unittest.TestCase):
                     self.assertEqual(agents.make_predict_fn(variant)("offline task", "technical-writer"), "offline answer")
 
     def test_mlflow_evaluation_and_csv(self) -> None:
-        registered = scorers.register_all(experiment_id=self.experiment_id)
+        registered = scorers.register_all(
+            scorers.build_scorers(os.environ["EVAL_JUDGE_MODEL"]), experiment_id=self.experiment_id
+        )
         self.assertEqual(sum(map(len, registered.values())), 9)
         self.assertEqual(
             {judge.name for judge in mlflow.genai.scorers.list_scorers(experiment_id=self.experiment_id)},
@@ -116,6 +120,29 @@ class DependencyTests(unittest.TestCase):
         self.assertEqual(json.loads((out / "raw_metrics.json").read_text())[0]["wired"], 5)
         self.assertFalse(mlflow.search_traces(locations=[self.experiment_id]).empty)
 
+    def test_judge_model_flag_reaches_judges(self) -> None:
+        flag = "anthropic:/claude-haiku-5-5"
+        for registration in ("registered", "inline"):
+            seen: list[str] = []
+
+            def evaluate(*, scorers, **_):
+                seen.extend(judge.model for judge in scorers)
+                return SimpleNamespace(metrics={}, tables={})
+
+            with self.subTest(registration=registration), ExitStack() as stack:
+                stack.enter_context(patch.object(mlflow.genai, "evaluate", side_effect=evaluate))
+                stack.enter_context(patch.object(run_eval, "_OUT", Path(self.tmp, registration)))
+                stack.enter_context(patch.object(sys, "argv", [
+                    "run_eval.py", "--domains", "technical-writer", "--limit", "1",
+                    "--experiment", "offline-dependencies", "--judge-model", flag,
+                ]))
+                if registration == "inline":
+                    stack.enter_context(
+                        patch.object(run_eval, "register_all", side_effect=RuntimeError("no backend"))
+                    )
+                self.assertEqual(run_eval.main(), 0)
+                self.assertEqual(set(seen), {flag})
+
     def test_mlflow_anthropic_judge(self) -> None:
         import requests
 
@@ -130,7 +157,7 @@ class DependencyTests(unittest.TestCase):
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "offline"}), patch.object(
             requests.adapters.HTTPAdapter, "send", autospec=True, return_value=response
         ) as send:
-            feedback = scorers.SCORERS["technical-writer"][0](
+            feedback = scorers.build_scorers(os.environ["EVAL_JUDGE_MODEL"])["technical-writer"][0](
                 inputs={"task": "offline task", "agent": "technical-writer"}, outputs="offline answer"
             )
         self.assertIsNone(feedback.error)

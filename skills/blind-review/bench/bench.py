@@ -5,6 +5,7 @@
 #     "tree-sitter==0.25.2",
 #     "tree-sitter-python==0.25.0",
 #     "tree-sitter-c==0.24.2",
+#     "tree-sitter-cpp==0.23.4",
 #     "tree-sitter-java==0.23.5",
 #     "tree-sitter-kotlin==1.1.0",
 #     "tree-sitter-scala==0.26.3",
@@ -74,6 +75,7 @@ import hashlib
 import itertools
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -111,6 +113,10 @@ def load_cases(ids: list[str] | None = None, cases_dir: Path | None = None) -> l
     """Load cases from ``cases_dir`` (default ``cases/``), optionally only the named IDs."""
     paths = sorted((cases_dir or HERE / "cases").glob("*.json"))
     cases = [json.loads(p.read_text()) for p in paths]
+    for c in cases:
+        # The id becomes a directory under the bench temp root.
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", c["id"]) or c["id"] in (".", ".."):
+            raise SystemExit(f"case id {c['id']!r} must match [A-Za-z0-9._-]+ and not be . or ..")
     return [c for c in cases if not ids or c["id"] in ids]
 
 

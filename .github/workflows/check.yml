@@ -34,3 +34,4 @@ jobs:
           uv run python -m agent_registry.cli emit-codex
           uv run python -m agent_registry.cli emit-opencode
           uv run python -m agent_registry.cli emit-copilot
+          uv run python -m agent_registry.cli emit-cursor

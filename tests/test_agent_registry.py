@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -348,6 +349,42 @@ Review code with adversarial attention to behavior.
             path = self.write_agent(Path(tmp), "code-reviewer", self._sample_agent_text("code-reviewer"))
 
             self.assertIn("readonly: true\n", emit_cursor_agent(load_agent(path)))
+
+    # ---- YAML frontmatter values ----
+
+    def _emitted_description(self, rendered: str) -> str:
+        frontmatter = rendered.split("\n---\n", 1)[0]
+        return next(
+            line.removeprefix("description: ")
+            for line in frontmatter.splitlines()
+            if line.startswith("description: ")
+        )
+
+    def test_markdown_emitters_quote_description(self) -> None:
+        description = 'Use when auditing build config: flags, "quotes", café and a # hash.'
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_agent(
+                Path(tmp),
+                "auditor",
+                f"---\nname: auditor\ndescription: {description}\nx-registry-permission: edit\n---\n\nAudit.\n",
+            )
+            agent = load_agent(path)
+            for emit in (emit_claude_agent, emit_cursor_agent, emit_opencode_agent):
+                with self.subTest(emit=emit.__name__):
+                    self.assertEqual(
+                        self._emitted_description(emit(agent)),
+                        json.dumps(description, ensure_ascii=False),
+                    )
+
+    def test_real_markdown_emits_have_yaml_safe_descriptions(self) -> None:
+        # A JSON string is a valid YAML double-quoted scalar, so json.loads proves the round trip.
+        root = Path(__file__).resolve().parents[1]
+        for agent in validate_agent_tree(root / "agents"):
+            for emit in (emit_claude_agent, emit_cursor_agent, emit_opencode_agent):
+                with self.subTest(agent=agent.name, emit=emit.__name__):
+                    value = self._emitted_description(emit(agent))
+                    self.assertTrue(value.startswith('"'), value[:60])
+                    self.assertEqual(json.loads(value), agent.metadata["description"])
 
     def test_install_cursor_uses_full_agent_set(self) -> None:
         from agent_registry.cli import main
@@ -803,7 +840,7 @@ Review code with adversarial attention to behavior.
         agent = self.write_agent(
             tmp,
             "consumer",
-            f"---\nname: consumer\ndescription: Use when testing closure.\nskills: {agent_skills}\n---\n\nBody.\n",
+            f"---\nname: consumer\ndescription: Use when testing closure.\nx-registry-permission: edit\nskills: {agent_skills}\n---\n\nBody.\n",
         )
         return [load_agent(agent)], [_load_skill(base), _load_skill(extra)]
 
@@ -856,6 +893,22 @@ Review code with adversarial attention to behavior.
         agents = validate_agent_tree(root / "agents")
         skills = validate_skill_tree(root / "skills")
         validate_skill_closure(agents, skills)
+
+    def test_install_rejects_skill_closure_violation(self) -> None:
+        from agent_registry.cli import main
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._closure_fixture(root, "base-guidelines")
+            install_home = root / "home"
+            with (
+                patch("sys.argv", ["agent-registry", "install", "--agents-dir", str(root / "agents"), "--skills-dir", str(root / "skills"), "--target", "claude"]),
+                patch.object(Path, "home", return_value=install_home),
+                self.assertRaisesRegex(AgentValidationError, "extra-guidelines"),
+            ):
+                main()
+
+            self.assertFalse(install_home.exists(), "nothing may be installed")
 
     # ---- install sync/prune ----
 

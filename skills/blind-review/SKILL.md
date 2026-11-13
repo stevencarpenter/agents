@@ -47,8 +47,10 @@ arm. This writes `base/`, `head/`, `stripped.diff`, and `manifest.json`
 into the out dir. Line and column numbers are preserved (comments become spaces,
 docstrings become `""`), so stripped findings cite real source locations.
 Check `manifest.json`: files marked `copied-verbatim` were NOT stripped
-(unknown language or parse error): tell the blind reviewer to skip them
-and disclose the gap in the report.
+(parse error or failed validation): tell the blind reviewer to skip them
+and disclose the gap in the report. Files in an unknown language are marked
+`omitted (copied-verbatim (unknown language))` and are copied nowhere, so no
+blind pass reviews them: disclose that gap too.
 
 **Mechanical strip** (with `--mechanical`, instead of the command above):
 
@@ -259,11 +261,11 @@ any files the stripper could not process. In sidecar mode: one line
   `LANGUAGES_BY_NAME`, and `LANGUAGES_BY_GLOB` (`strip_context.py`) uses
   a tree-sitter grammar pinned in the script header, and its comment nodes
   and docstring nodes are blanked. Embedded `<script>` and `<style>`
-  bodies, C macro bodies, and Make recipes are parsed with their own
+  bodies, C and C++ macro bodies, and Make recipes are parsed with their own
   grammar. The supported languages are the ones the owner's repositories
   use: Python, Rust, Go, TypeScript and JavaScript, Swift, Java, Kotlin,
-  Scala, Groovy, C, Ruby, Lua, SQL, shell, HCL, Nix, Make, Dockerfile, HTML,
-  CSS, XML, JSON, YAML, and TOML. Line-oriented config formats
+  Scala, Groovy, C, C++, Ruby, Lua, SQL, shell, HCL, Nix, Make, Dockerfile,
+  HTML, CSS, XML, JSON, YAML, and TOML. Line-oriented config formats
   (INI, `.properties`, `.gitignore`, `requirements.txt`, `go.mod`)
   have no grammar and use their full-line comment rule. Comments that
   change behavior stay: shebangs, `//go:build`, cgo preambles, Go
@@ -272,15 +274,28 @@ any files the stripper could not process. In sidecar mode: one line
   and Dockerfile parser directives. A file the grammar cannot parse is
   `copied-verbatim (parse error)`. Pinned grammars reject some valid code:
   dialect SQL (Postgres `DO` blocks, T-SQL `[ids]`), Swift regex literals,
-  Groovy slashy strings, and JSON5. Every strip is also checked against a
+  Groovy slashy strings, and JSON5. Known C and C++ gaps get a second parse
+  with the construct blanked and parsed on its own: a macro body with text
+  after a block comment, an `extern "C"` guard split over two
+  `#ifdef __cplusplus` blocks, and these Unreal forms: reflection macros
+  (`UCLASS`, `USTRUCT`, `UENUM`, `UINTERFACE`, `UPROPERTY`, `UFUNCTION`,
+  `UDELEGATE`, `GENERATED_BODY` and its variants), `UMETA`, `UPARAM`,
+  `UE_DEPRECATED`, `PURE_VIRTUAL`, `DECLARE_*` and `IMPLEMENT_*` calls at
+  the start of a line, module export macros (`*_API`), and `FORCEINLINE`,
+  `FORCENOINLINE`, `UE_NODISCARD`, `CONSTEXPR`. A construct inside a comment
+  or a literal is left as written. A file keeps its parse error when a
+  construct cannot be bounded (a raw string in macro arguments, parentheses
+  more than three deep) or is not in this list (Slate argument macros such
+  as `SLATE_BEGIN_ARGS`). A file that fails as C (a `.h`
+  file can be either) is then parsed as C++. Every strip is also checked against a
   space-mask contract (same length, same line count, only blanking) and,
   for Python, against `compile()`. Known silent gaps: HTML `<!-->` and
   `doc` inside Rust `cfg_attr`.
 - Only languages with a pinned grammar are stripped. Anything else (for
-  example C++, C#, PHP, Vue, Svelte, SCSS, Justfiles, zsh-only syntax, or
-  Solidity) is flagged
-  `copied-verbatim (unknown language)`, which means its comments reach
-  the blind arm: check the manifest before trusting a run whose diff is
+  example C#, PHP, Vue, Svelte, SCSS, Justfiles, zsh-only syntax, or
+  Solidity) is omitted and flagged
+  `omitted (copied-verbatim (unknown language))`, so the blind arm never
+  sees it: check the manifest before trusting a run whose diff is
   mostly unsupported files.
 - Blind isolation is prompt-level, not sandbox-level, except with
   `--mechanical`: there the reviewer process has no tools and receives only

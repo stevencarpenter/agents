@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agent_registry.agents import Agent, validate_isolated_read_only
+from agent_registry.agents import Agent, validate_isolated_read_only, yaml_string
 from agent_registry.model_translation import translate_model
 
 # Cursor also reads .claude/agents/, but its own copy gets a Cursor-real model id.
@@ -28,7 +28,7 @@ def emit_cursor_agent(agent: Agent) -> str:
     lines = [
         "---",
         f"name: {name}",
-        f"description: {description}",
+        f"description: {yaml_string(description)}",
     ]
 
     model = translate_model(agent.metadata.get("model", ""), "cursor")

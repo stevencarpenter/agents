@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agent_registry.agents import Agent, validate_isolated_read_only
+from agent_registry.agents import Agent, validate_isolated_read_only, yaml_string
 
 # `tools` is an allowlist in Claude Code: emit it only when the agent opts in,
 # so every other agent inherits the parent's MCP and plugin tools.
@@ -15,6 +15,6 @@ def emit_claude_agent(agent: Agent) -> str:
             continue
         value = agent.metadata.get(key)
         if value:
-            lines.append(f"{key}: {value}")
+            lines.append(f"{key}: {yaml_string(value) if key == 'description' else value}")
     lines.extend(["---", "", agent.body.rstrip(), ""])
     return "\n".join(lines)

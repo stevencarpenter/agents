@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -28,6 +29,7 @@ def main() -> int:
             """
         ).fetchall()
 
+    written = 0
     for project_dir, sessions in rows:
         name = _slug(project_dir)
         if not name:
@@ -36,13 +38,16 @@ def main() -> int:
             _candidate_markdown(name, project_dir, sessions),
             encoding="utf-8",
         )
+        written += 1
 
-    print(f"wrote {len(rows)} candidate sketches to {out}")
+    print(f"wrote {written} candidate sketches to {out}")
     return 0
 
 
 def _slug(value: str) -> str:
-    cleaned = value.strip("-/").replace("-Users-carpenter-projects-", "")
+    # Claude Code names a project directory after its path, with every non-alphanumeric as "-".
+    projects = re.sub(r"[^A-Za-z0-9]", "-", str(Path.home() / "projects")) + "-"
+    cleaned = value.removeprefix(projects).strip("-/")
     chars = [char.lower() if char.isalnum() else "-" for char in cleaned]
     return "-".join(part for part in "".join(chars).split("-") if part)[:80]
 

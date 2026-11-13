@@ -185,20 +185,15 @@ def _findings(reply: object) -> list[dict] | None:
             return None
         if f["side"] not in ("+", "-") or type(f["line"]) is not int:
             return None
+        if any(not isinstance(f[k], str) for k in required if k not in ("side", "line")):
+            return None
     return findings
-
-
-def _write(path: Path, text: str) -> None:
-    """Write a payload or result; a symlink left there is removed, never followed."""
-    if path.is_symlink():
-        path.unlink()
-    path.write_text(text, encoding="utf-8")
 
 
 def review_unit(unit: Path, out: Path, argv: list[str], repo_name: str) -> dict:
     """Review one unit in a fresh empty directory and record payload and result."""
     text = unit.read_text(encoding="utf-8")
-    _write(out / "payloads" / f"{unit.stem}.json", json.dumps({"argv": argv, "stdin": text}, indent=2))
+    agent_eval.write_text(out / "payloads" / f"{unit.stem}.json", json.dumps({"argv": argv, "stdin": text}, indent=2))
     reply: object = None
     try:
         proc = subprocess.run(
@@ -237,7 +232,7 @@ def review_unit(unit: Path, out: Path, argv: list[str], repo_name: str) -> dict:
         "input_sha256": hashlib.sha256(json.dumps([argv, text]).encode()).hexdigest(),
         "error": None if findings is not None else error,
     }
-    _write(out / "results" / f"{unit.stem}.json", json.dumps(result, indent=2))
+    agent_eval.write_text(out / "results" / f"{unit.stem}.json", json.dumps(result, indent=2))
     return result
 
 
@@ -297,7 +292,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     for field, key in USAGE_KEYS.items():
         run[field] = sum((r["usage"] or {}).get(key, 0) for r in results)
-    _write(out / "run.json", json.dumps(run, indent=2))
+    agent_eval.write_text(out / "run.json", json.dumps(run, indent=2))
     for r in results:
         status = f"{len(r['findings'])} finding(s)" if r["ok"] else f"FAILED: {r['error']}"
         print(f"{r['unit']}: {status}")

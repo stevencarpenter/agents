@@ -8,6 +8,9 @@ All judges are registered (``.register()``) so they show up in the experiment an
 are reusable, per the agent-evaluation skill. They are also returned so the
 runner can pass the objects straight to ``mlflow.genai.evaluate``.
 
+Judges are built by ``build_scorers(judge_model)`` and not at import, so the
+runner's ``--judge-model`` flag decides the model.
+
 Template variables available to instructions: ``{{ inputs }}`` (the dataset
 input dict, here ``{"task": ..., "agent": ...}``) and ``{{ outputs }}`` (the
 agent's text). See MLflow make_judge docs.
@@ -15,12 +18,7 @@ agent's text). See MLflow make_judge docs.
 
 from __future__ import annotations
 
-import os
-
 from mlflow.genai.judges import make_judge
-
-# make_judge needs a "provider:/model" id. Override with EVAL_JUDGE_MODEL.
-JUDGE_MODEL = os.environ.get("EVAL_JUDGE_MODEL", "anthropic:/claude-opus-5-5")
 
 _SCALE = (
     "Score 1-5 where 1 = badly fails the criterion and 5 = exemplary. "
@@ -29,7 +27,7 @@ _SCALE = (
 )
 
 
-def _judge(name: str, criterion: str):
+def _judge(name: str, criterion: str, model: str):
     return make_judge(
         name=name,
         instructions=(
@@ -37,16 +35,16 @@ def _judge(name: str, criterion: str):
             f"CRITERION: {criterion}\n\n"
             f"Response to grade:\n{{{{ outputs }}}}\n\n{_SCALE}"
         ),
-        model=JUDGE_MODEL,
+        model=model,
         feedback_value_type=int,
     )
 
 
-# One list of judges per domain. Names are unique across domains so registration
-# in a shared experiment doesn't collide.
-SCORERS: dict[str, list] = {
+# One list of (name, criterion) per domain. Names are unique across domains so
+# registration in a shared experiment doesn't collide.
+_CRITERIA: dict[str, list[tuple[str, str]]] = {
     "technical-writer": [
-        _judge(
+        (
             "tw_diataxis_discipline",
             "Diátaxis discipline. The response should serve the primary reader task "
             "(tutorial = learning by doing; how-to = a task; explanation = "
@@ -56,7 +54,7 @@ SCORERS: dict[str, list] = {
             "meta-narration ('I'll write this directly', 'before drafting, let me "
             "name the reader') leaking into the deliverable.",
         ),
-        _judge(
+        (
             "tw_operational_completeness",
             "Operational completeness. For a how-to: prerequisites up front, a "
             "verification step, and a real mechanism (not hand-waving). Require "
@@ -66,7 +64,7 @@ SCORERS: dict[str, list] = {
             "with a visible early win. For an explainer: states the why and the "
             "rejected alternatives. Reward the structure the chosen mode needs.",
         ),
-        _judge(
+        (
             "tw_concreteness",
             "Concreteness and runnability. Commands/code/examples are specific, "
             "correctly ordered, and safe; claims are checkable; the piece leads "
@@ -75,7 +73,7 @@ SCORERS: dict[str, list] = {
         ),
     ],
     "data-engineer": [
-        _judge(
+        (
             "de_lakehouse_streaming",
             "Lakehouse + streaming correctness for the requested pipeline. "
             "Require transactional table formats when updates, concurrency, or "
@@ -88,7 +86,7 @@ SCORERS: dict[str, list] = {
             "Accept exactly-once claims only with a concrete supporting sink and "
             "checkpoint mechanism. Do not reward unnecessary platform migrations.",
         ),
-        _judge(
+        (
             "de_ml_skew_safety",
             "ML / feature-store correctness where the task involves training or "
             "features. Point-in-time (as-of) joins so no "
@@ -100,7 +98,7 @@ SCORERS: dict[str, list] = {
             "or stale derived data. When neither ML nor RAG is in scope, assess "
             "preservation of downstream contracts without requiring a new ML design.",
         ),
-        _judge(
+        (
             "de_reliability_currency",
             "Reliability, governance, and cost at the task's scope. Quality "
             "checks need explicit dispositions (drop/quarantine/fail) and must "
@@ -116,14 +114,14 @@ SCORERS: dict[str, list] = {
         ),
     ],
     "slide-designer": [
-        _judge(
+        (
             "sd_storyline_action_titles",
             "Storyline and action titles. Leads with the answer (Pyramid/SCQA); "
             "every slide title is a full-sentence assertion of that slide's "
             "takeaway, not a topic label; reading the titles top-to-bottom tells "
             "the whole story (horizontal logic).",
         ),
-        _judge(
+        (
             "sd_one_message_per_slide",
             "One message per slide and supporting discipline. Each slide carries "
             "one primary message; necessary evidence stays with its claim and "
@@ -131,7 +129,7 @@ SCORERS: dict[str, list] = {
             "detail moves to speaker notes or another slide; do not cram it on "
             "the slide or require a split solely for supporting evidence.",
         ),
-        _judge(
+        (
             "sd_audience_fit",
             "Audience and format fit. The deck is tailored to the stated audience "
             "and time budget, makes a deliberate format/visual choice where "
@@ -142,10 +140,28 @@ SCORERS: dict[str, list] = {
 }
 
 
-def register_all(experiment_id: str | None = None) -> dict[str, list]:
-    """Register every domain's judges and return the registered scorer objects.
+def build_scorers(judge_model: str) -> dict[str, list]:
+    """Build every domain's judges on one judge model.
 
     Args:
+        judge_model: A make_judge "provider:/model" id.
+
+    Returns:
+        Domain -> list of judge objects, ready for evaluate() or register_all().
+    """
+    return {
+        domain: [_judge(name, criterion, judge_model) for name, criterion in criteria]
+        for domain, criteria in _CRITERIA.items()
+    }
+
+
+def register_all(
+    scorers_by_domain: dict[str, list], experiment_id: str | None = None
+) -> dict[str, list]:
+    """Register the given judges and return the registered scorer objects.
+
+    Args:
+        scorers_by_domain: Domain -> judges, from build_scorers().
         experiment_id: MLflow experiment to register into. If None, the active
             experiment is used.
 
@@ -153,6 +169,6 @@ def register_all(experiment_id: str | None = None) -> dict[str, list]:
         Domain -> list of registered scorer objects, ready for evaluate().
     """
     registered: dict[str, list] = {}
-    for domain, judges in SCORERS.items():
+    for domain, judges in scorers_by_domain.items():
         registered[domain] = [j.register(experiment_id=experiment_id) for j in judges]
     return registered
