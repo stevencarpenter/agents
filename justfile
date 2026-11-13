@@ -67,9 +67,9 @@ jj-st:
     jj st
     jj log -r 'ancestors(@, 5)'
 
-# Start fresh work on top of main (the jj equivalent of `git checkout main`)
+# Start fresh work on top of trunk (the jj equivalent of `git checkout main`)
 jj-new:
-    jj new main
+    jj new 'trunk()'
 
 # Fetch the remote and show where things stand
 jj-sync:

@@ -36,7 +36,7 @@ from agent_registry.agents import (  # noqa: E402  (after sys.path insert)
 
 # Default model under test; override with EVAL_AGENT_MODEL. Sonnet is cheaper than
 # the Opus session model that deployed agents inherit.
-DEFAULT_AGENT_MODEL = os.environ.get("EVAL_AGENT_MODEL", "claude-sonnet-4-6")
+DEFAULT_AGENT_MODEL = os.environ.get("EVAL_AGENT_MODEL", "claude-sonnet-5-5")
 
 # Applied equally to BOTH variants so it cannot bias the A/B: the API call has no
 # tools, so the agent must emit text rather than (e.g.) call the Figma MCP.
@@ -115,7 +115,8 @@ def run_agent(task: str, agent: str, variant: str, model: str = DEFAULT_AGENT_MO
     """
     message = _client().messages.create(
         model=model,
-        max_tokens=8192,
+        # Thinking is on by default on current models and counts toward this limit.
+        max_tokens=16000,
         system=system_prompt(agent, variant),
         messages=[{"role": "user", "content": task}],
     )

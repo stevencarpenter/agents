@@ -61,7 +61,7 @@ class DependencyTests(unittest.TestCase):
         body = json.loads(request.content)
         self.assertEqual(body["messages"][0]["role"], "user")
         self.assertTrue(body["system"])
-        self.assertEqual(body["max_tokens"], 8192)
+        self.assertEqual(body["max_tokens"], 16000)
         return sdk_http.Response(200, json={
             "id": "msg_offline",
             "type": "message",

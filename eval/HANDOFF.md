@@ -77,7 +77,7 @@ uv run --project eval python eval/run_eval.py --domains technical-writer --limit
 uv run --project eval python eval/run_eval.py
 
 # Higher fidelity to real use (agents run on Opus like Claude Code does):
-uv run --project eval python eval/run_eval.py --agent-model claude-opus-4-8
+uv run --project eval python eval/run_eval.py --agent-model claude-opus-5-5
 ```
 
 ### Running with Bedrock or Vertex
@@ -155,7 +155,7 @@ Mirrors the checklist in the PR description. Keep them in sync.
 **Robustness**
 - [ ] Re-ran with a second `EVAL_JUDGE_MODEL`; delta signs stable
 - [ ] Task count adequate (bumped `tasks.py` if per-scorer spread too wide)
-- [ ] Agent model reflects real use (re-ran with `--agent-model claude-opus-4-8` if needed)
+- [ ] Agent model reflects real use (re-ran with `--agent-model claude-opus-5-5` if needed)
 
 **Decision**
 - [ ] Verdict recorded: keep wiring as-is / tune rubrics / revert

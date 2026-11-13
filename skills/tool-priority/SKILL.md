@@ -9,7 +9,7 @@ Use configured agent tooling before built-in fallbacks.
 
 - Invoke relevant skills before starting task work when the runtime exposes a skill tool.
 - Use `ToolSearch` or the runtime's equivalent discovery tool before assuming deferred tools are unavailable.
-- Prefer semantic project tools for project understanding: IDEA/IntelliJ MCP, LSP, codegraph, and other MCP servers for file reads, search, symbol lookup, diagnostics, and dependency tracing.
+- Prefer semantic project tools for project understanding. For symbol lookup, callers, and change impact, use codebase-memory first, then `codegraph_explore` to read an area's source; codegraph's caller lists miss qualified-path calls. Use IDEA/IntelliJ MCP or LSP for type and diagnostic information at a known position, and other MCP servers for their domains.
 - Use specialized agents or teams when delegation is authorized and a bounded independent subtask can run alongside useful local work. Handle a single cohesive task directly.
 - Use built-in file tools only after the configured semantic tool is unavailable, not applicable, or too narrow for the artifact type.
 - Use `Bash` for repo-native gates, tests, build commands, CLIs, git inspection, and runtime proof. Do not use it as a substitute for semantic search/read tools.

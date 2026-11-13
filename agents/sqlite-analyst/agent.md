@@ -14,7 +14,7 @@ Before writing any query, discover the schema with the `sql-guidelines` schema q
 
 Query discipline:
 
-- Always use read-only access (`sqlite3 db.sqlite3 'PRAGMA query_only = ON; ...'`) when the task is analysis.
+- Always use read-only access (`sqlite3 db.sqlite3 'PRAGMA query_only = ON; ...'`).
 - Use `EXPLAIN QUERY PLAN` on any query that scans a large table to verify index usage before running it.
 - Prefer CTEs for multi-step analysis, because they are easier to reason about and the SQLite query planner handles them well.
 

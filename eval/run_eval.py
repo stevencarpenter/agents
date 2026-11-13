@@ -8,7 +8,7 @@ Usage (from the agent-registry repo root):
 
     uv run --project eval python eval/run_eval.py            # all domains, both variants
     uv run --project eval python eval/run_eval.py --domains technical-writer --limit 2
-    uv run --project eval python eval/run_eval.py --agent-model claude-opus-4-8
+    uv run --project eval python eval/run_eval.py --agent-model claude-opus-5-5
 
 Prerequisites: ANTHROPIC_API_KEY set; MLflow >= 3.8; ideally MLFLOW_TRACKING_URI
 + an experiment (a SQL-backed tracking server is needed for scorer registration:
@@ -56,8 +56,8 @@ def main() -> int:
     parser.add_argument("--domains", default=",".join(TASKS), help="comma-separated subset")
     parser.add_argument("--variants", default="unwired,wired")
     parser.add_argument("--limit", type=int, default=0, help="max tasks per domain (0 = all)")
-    parser.add_argument("--agent-model", default=os.environ.get("EVAL_AGENT_MODEL", "claude-sonnet-4-6"))
-    parser.add_argument("--judge-model", default=os.environ.get("EVAL_JUDGE_MODEL", "anthropic:/claude-opus-4-8"))
+    parser.add_argument("--agent-model", default=os.environ.get("EVAL_AGENT_MODEL", "claude-sonnet-5-5"))
+    parser.add_argument("--judge-model", default=os.environ.get("EVAL_JUDGE_MODEL", "anthropic:/claude-opus-5-5"))
     parser.add_argument("--experiment", default="agent-registry-wiring-ab")
     args = parser.parse_args()
 
