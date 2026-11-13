@@ -5,6 +5,7 @@
 #     "tree-sitter==0.25.2",
 #     "tree-sitter-python==0.25.0",
 #     "tree-sitter-c==0.24.2",
+#     "tree-sitter-cpp==0.23.4",
 #     "tree-sitter-java==0.23.5",
 #     "tree-sitter-kotlin==1.1.0",
 #     "tree-sitter-scala==0.26.3",
@@ -50,9 +51,10 @@ Subcommands:
                                           labels, for context-free reviewers
 
 Documentation files (.md/.rst/.txt/.adoc) are omitted entirely, except text
-files with a known language such as CMakeLists.txt and requirements.txt. Unknown or
-unparseable files are copied verbatim and flagged in manifest.json, except in
-mechanical mode, which omits them because their comments cannot be removed.
+files with a known language such as CMakeLists.txt and requirements.txt. Files in an
+unknown language are omitted and flagged in manifest.json, because their comments
+cannot be removed and copying them could expose an untracked key file. Unparseable
+files are copied verbatim and flagged in diff mode, and omitted in mechanical mode.
 """
 
 import argparse
@@ -73,7 +75,10 @@ import warnings
 from collections.abc import Callable
 from pathlib import Path
 
-from tree_sitter import Language, Node, Parser, Query, QueryCursor
+from tree_sitter import Language, Node, Parser, Query, QueryCursor, Tree
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import agent_eval
 
 DOC_SUFFIXES = {".md", ".rst", ".txt", ".adoc", ".mdx"}
 
@@ -81,6 +86,7 @@ DOC_SUFFIXES = {".md", ".rst", ".txt", ".adoc", ".mdx"}
 GRAMMARS = {
     "bash": ("tree_sitter_bash", "language"),
     "c": ("tree_sitter_c", "language"),
+    "cpp": ("tree_sitter_cpp", "language"),
     "css": ("tree_sitter_css", "language"),
     "dockerfile": ("tree_sitter_dockerfile", "language"),
     "go": ("tree_sitter_go", "language"),
@@ -318,6 +324,92 @@ def _embedded_language(element: Node, data: bytes) -> str | None:
 # (literal spans, docstring spans) in absolute byte offsets.
 Layout = tuple[list[tuple[int, int]], list[tuple[int, int]]]
 
+# Valid code the C and C++ grammars reject. After a parse error, each `mask` group is blanked for
+# a second parse (same length, so offsets hold) and each `code` group is parsed as a fragment.
+# A span must end where the compiler ends it, so the patterns read comments, strings, and character
+# literals as whole tokens. `R"` opens a raw string, which they cannot bound: nothing matches it.
+_C_TOKEN = (
+    rb"/\*(?:[^*]|\*(?!/))*\*/"
+    rb"|//(?:\\\r?\n|[^\r\n])*"
+    rb'|"(?:\\\r?\n|\\[^\r\n]|[^"\\\r\n])*"'
+    rb"|'(?:\\[^\r\n]|[^'\\\r\n])*'"
+    rb'|R(?!")|/(?![/*])'
+)
+# To the end of the logical line: a line splice or a block comment carries the body over a line end.
+_MACRO_BODY = rb"(?:" + _C_TOKEN + rb"|\\\r?\n|[^\"'/R\r\n])*(?=\r?\n|\Z)"
+_MACRO_ARGS = rb"(?!)"
+for _ in range(3):  # depth of nested parentheses
+    _MACRO_ARGS = rb"\((?:" + _C_TOKEN + rb"|[^\"'/R()]|" + _MACRO_ARGS + rb")*\)"
+_C_GAPS = [
+    # A macro body: the grammar ends it at `/*` and rejects the text after that comment.
+    re.compile(rb"^[ \t]*(?P<mask>#[ \t]*define\b(?P<code>" + _MACRO_BODY + rb"))", re.MULTILINE),
+    # `extern "C" {` and its `}`, each in its own `#ifdef __cplusplus`: braces that cross the conditionals.
+    re.compile(
+        rb"^[ \t]*#[ \t]*if(?:def[ \t]+__cplusplus|[ \t]+defined[ \t]*\(?[ \t]*__cplusplus[ \t]*\)?)[^\n]*\n"
+        rb'[ \t]*(?P<mask>extern[ \t]+"C"[ \t]*\{|\})(?=[^\n]*\n[ \t]*#[ \t]*endif)',
+        re.MULTILINE,
+    ),
+]
+_CPP_GAPS = [
+    *_C_GAPS,
+    # Unreal macros that take no semicolon, or take a type as an argument: the code around one does not parse.
+    re.compile(
+        rb"^[ \t]*(?P<mask>(?P<code>(?:UCLASS|USTRUCT|UENUM|UINTERFACE|UPROPERTY|UFUNCTION|UDELEGATE"
+        rb"|GENERATED_[A-Z_]*BODY|(?:DECLARE|IMPLEMENT)_\w+)[ \t]*" + _MACRO_ARGS + rb"))",
+        re.MULTILINE,
+    ),
+    re.compile(rb"\b(?P<mask>(?P<code>(?:UMETA|UPARAM|UE_DEPRECATED(?:_FORGAME)?|PURE_VIRTUAL)[ \t]*" + _MACRO_ARGS + rb"))"),
+    # A module export macro (`class GAME_API AThing`) or a specifier macro in front of a declaration.
+    re.compile(rb"\b(?P<mask>[A-Z][A-Z0-9_]*_API|FORCEINLINE|FORCENOINLINE|UE_NODISCARD|CONSTEXPR)\b"),
+]
+_GAPS = {"c": _C_GAPS, "cpp": _CPP_GAPS}
+
+
+def _parse_around_gaps(lang: str, data: bytes) -> tuple[Tree, list[tuple[int, int]]]:
+    """Parse ``data`` with the known grammar gaps blanked; return (tree, code spans to parse as fragments).
+
+    Raises:
+        SyntaxError: When the blanked text still does not parse, or two blanked spans cross.
+    """
+    gaps = sorted(
+        (
+            (match.span("mask"), match.span("code") if "code" in pattern.groupindex else None)
+            for pattern in _GAPS[lang]
+            for match in pattern.finditer(data)
+        ),
+        key=lambda gap: (gap[0][0], -gap[0][1]),
+    )
+    while True:
+        masked, code, end = bytearray(data), [], 0
+        for (start, stop), span in gaps:
+            if start < end < stop:  # one of the two starts inside a string of the other, so its end is a guess
+                raise SyntaxError(f"{lang} constructs cross at byte {start}")
+            if start >= end and span:  # an inner span is read by the outer span's parse, which knows its strings
+                code.append(span)
+            end = max(end, stop)
+            masked[start:stop] = bytes(b if b in b"\r\n" else 32 for b in data[start:stop])
+        tree = Parser(_language_object(lang)).parse(bytes(masked))
+        root = tree.root_node
+        if root.has_error:
+            raise SyntaxError(f"{lang} parse error at line {_first_error(root).start_point.row + 1}")
+        data_spans: Layout = ([], [])
+        _record_layout(root, 0, [], data_spans)
+        data_spans[0].extend((n.start_byte, n.end_byte) for n in _captures(_queries(lang)[0], root, "comment"))
+        holders = sorted(data_spans[0])
+        starts = [start for start, _ in holders]
+        for gap in gaps:
+            at = bisect.bisect_left(starts, gap[0][1]) - 1
+            if at >= 0 and holders[at][1] > gap[0][0]:
+                break
+        else:
+            return tree, code
+        # A blanked span in a comment or a literal is data, and blanking it can make that comment run
+        # on over code. Text is read left to right, so give the first such span back and parse again.
+        # A block comment ends at its first `*/`, so every span that starts before that goes back too.
+        held = holders[at][0]
+        stop = data.find(b"*/", held + 2) + 2 if data.startswith(b"/*", held) else 0
+        gaps = [other for other in gaps if other is not gap and not held < other[0][0] < stop]
+
 
 def _record_layout(root: Node, base: int, docs: list[Node], layout: Layout) -> None:
     """Record the outermost literal nodes of ``root`` and its docstrings, offset by ``base``."""
@@ -359,8 +451,21 @@ def _collect(
     # Hold the tree: a node outlives a dropped tree only as a dangling pointer (a segfault).
     tree = Parser(_language_object(lang)).parse(data)
     root = tree.root_node
+    gap_code: list[tuple[int, int]] = []
     if root.has_error and not fragment:
-        raise SyntaxError(f"{lang} parse error at line {_first_error(root).start_point.row + 1}")
+        error = SyntaxError(f"{lang} parse error at line {_first_error(root).start_point.row + 1}")
+        try:
+            if lang not in _GAPS:
+                raise error
+            tree, gap_code = _parse_around_gaps(lang, data)
+            root = tree.root_node
+        except SyntaxError:
+            if lang != "c":
+                raise error from None
+            try:  # a .h file is C or C++, and the suffix does not say which
+                return _collect("cpp", data, base, spans, layout=layout)
+            except SyntaxError:
+                raise error from None
     comments, docs = _queries(lang)
     py_blocks = [range(m.start(), m.end()) for m in _PY_SCRIPT_BLOCK.finditer(data)] if lang == "python" else []
     markup = lang == "html"
@@ -385,11 +490,11 @@ def _collect(
             spans.append((base + node.start_byte + quote.end(), base + node.end_byte - len(quote.group(1)), True))
         elif len(text) > 2:
             raise SyntaxError(f"{lang} docstring delimiters not recognized at line {node.start_point.row + 1}")
-    if lang == "c":
+    if lang in ("c", "cpp"):
         # The grammar keeps a macro body as raw text, so comments in it need their own parse.
-        for arg in _captures(_query(lang, "(preproc_arg) @arg"), root, "arg"):
-            arg_text = data[arg.start_byte : arg.end_byte]
-            _collect(lang, arg_text, base + arg.start_byte, spans, fragment=True, layout=layout)
+        raw = [(arg.start_byte, arg.end_byte) for arg in _captures(_query(lang, "(preproc_arg) @arg"), root, "arg")]
+        for start, end in raw + gap_code:
+            _collect(lang, data[start:end], base + start, spans, fragment=True, layout=layout)
     if lang == "dockerfile" and not _DOCKER_OTHER_SHELL.search(data):
         # A RUN, CMD, or ENTRYPOINT shell form runs in /bin/sh: its quotes are data, its `#` a comment.
         # A command bash cannot parse keeps its text, so nothing is blanked on a guess.
@@ -591,6 +696,7 @@ REQUIREMENTS_LINES = _lines(r"(?:^|(?<=[ \t]))#[^\r\n]*")
 LANGUAGES_BY_SUFFIX: dict[str, Callable[[str], str]] = {
     **_suffixes(".py .pyi .pyw", _grammar("python")),
     **_suffixes(".c .h .glsl .vert .frag .hlsl", _grammar("c")),
+    **_suffixes(".cc .cpp .cxx .c++ .hpp .hh .hxx .h++ .ino .cu .cuh .metal", _grammar("cpp")),
     **_suffixes(".java", _grammar("java")),
     **_suffixes(".kt .kts", _grammar("kotlin")),
     **_suffixes(".scala .sc", _grammar("scala")),
@@ -737,6 +843,9 @@ def validate_strip(path_name: str, source: str, stripped: str) -> str | None:
     return None
 
 
+_UNKNOWN_LANGUAGE = "copied-verbatim (unknown language)"
+
+
 def strip_source(path_name: str, source: str) -> tuple[str, str]:
     """Return (stripped_source, action) for a file by suffix.
 
@@ -746,7 +855,7 @@ def strip_source(path_name: str, source: str) -> tuple[str, str]:
     """
     strip = _language(path_name, source)
     if strip is None:
-        return source, "copied-verbatim (unknown language)"
+        return source, _UNKNOWN_LANGUAGE
     try:
         stripped = strip(source)
     except SyntaxError:
@@ -946,9 +1055,18 @@ def _write(out: Path, dest: Path, text: str) -> None:
     if resolved != out and out not in resolved.parents:
         raise SystemExit(f"{dest.parent} leads outside --out {out}")
     dest.parent.mkdir(parents=True, exist_ok=True)
-    if dest.is_symlink():
-        dest.unlink()
-    dest.write_text(text, encoding="utf-8")
+    agent_eval.write_text(dest, text)
+
+
+def _resolve_base(repo: Path, base: str) -> str:
+    """Return the object SHA for ``base``, so a ``--base=--output=FILE`` never reaches git as an option.
+
+    A tree is accepted as well as a commit: the empty tree is the base of a whole-repository review.
+
+    Raises:
+        SystemExit: When ``base`` does not name one object (a range such as ``A...B`` does not).
+    """
+    return _git(repo, "rev-parse", "--verify", "--end-of-options", base).strip()
 
 
 def _repo_and_out(args: argparse.Namespace) -> tuple[Path, Path]:
@@ -972,11 +1090,12 @@ def cmd_diff(args: argparse.Namespace) -> int:
     # A tree from an earlier run can hold files this change no longer touches.
     for generated in ("base", "head"):
         _clear(out / generated)
-    changed = _changed_files(repo, args.base)
+    base = _resolve_base(repo, args.base)
+    changed = _changed_files(repo, base)
     manifest: list[dict[str, str]] = []
     diff_chunks: list[str] = []
     for base_rel, rel in changed:
-        base_data, head_data = _base_and_head(repo, args.base, base_rel, rel)
+        base_data, head_data = _base_and_head(repo, base, base_rel, rel)
 
         entry = {"path": rel, "action": "" if (base_data, head_data) != (None, None) else _NO_CONTENT}
         if base_rel != rel:
@@ -989,6 +1108,9 @@ def cmd_diff(args: argparse.Namespace) -> int:
             if data is None:
                 continue
             stripped, action = process_file(rel, data)
+            if action == _UNKNOWN_LANGUAGE:
+                # Copying it would hand unstripped text (an untracked key file, say) to a reviewer.
+                stripped, action = None, f"omitted ({action})"
             # A failure on either side must stay visible; a clean head must not
             # relabel a base that was copied verbatim.
             if entry["action"] in ("", "stripped"):
@@ -1231,17 +1353,18 @@ def cmd_mechanical(args: argparse.Namespace) -> int:
     units = out / "units"
     # Output of an earlier run describes another revision. mechanical_review.py
     # globs units/, so a leftover unit would be reviewed as if it were current.
-    for generated in ("units", "payloads", "results"):
+    for generated in ("units", "payloads", "results", "run.json"):
         _clear(out / generated)
     units.mkdir(parents=True)
     manifest: list[dict[str, str]] = []
     unit_count = 0
-    for base_rel, rel in _changed_files(repo, args.base):
+    base = _resolve_base(repo, args.base)
+    for base_rel, rel in _changed_files(repo, base):
         entry = {"path": rel, "action": ""}
         if base_rel != rel:
             entry["base_path"] = base_rel
         manifest.append(entry)
-        pair = _base_and_head(repo, args.base, base_rel, rel)
+        pair = _base_and_head(repo, base, base_rel, rel)
         if pair == (None, None):
             entry["action"] = _NO_CONTENT
             continue

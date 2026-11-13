@@ -19,6 +19,9 @@ import json
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import agent_eval
+
 LOG = Path.home() / ".local" / "share" / "blind-review" / "pairs.jsonl"
 
 
@@ -35,9 +38,7 @@ def main(argv: list[str] | None = None) -> int:
         datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
     )
     record.setdefault("poc", True)
-    LOG.parent.mkdir(parents=True, exist_ok=True)
-    with LOG.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    agent_eval.append(LOG, [record])
     print(f"logged pair record -> {LOG}")
     return 0
 

@@ -61,6 +61,13 @@ def rev_parse(repo: str | Path, rev: str) -> str:
     return sha
 
 
+def write_text(path: Path, text: str) -> None:
+    """Write a generated file; a symlink left at ``path`` is removed, never followed."""
+    if path.is_symlink():
+        path.unlink()
+    path.write_text(text, encoding="utf-8")
+
+
 def append(path: Path, records: list[dict]) -> None:
     """Append records to a JSONL file, creating it if needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -78,12 +85,13 @@ def read(path: Path) -> list[dict]:
         return []
     records = []
     # One record per `\n`: json.dumps(ensure_ascii=False) leaves U+2028 unescaped.
-    for number, line in enumerate(path.read_text(encoding="utf-8").split("\n"), 1):
+    # Bytes, so a record cut inside a multibyte character costs that line only.
+    for number, line in enumerate(path.read_bytes().split(b"\n"), 1):
         if not line.strip():
             continue
         try:
             record = json.loads(line)
-        except json.JSONDecodeError:
+        except ValueError:  # JSONDecodeError and UnicodeDecodeError
             print(f"warning: {path}:{number} is not JSON; skipped", file=sys.stderr)
             continue
         if isinstance(record, dict):
