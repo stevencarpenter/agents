@@ -22,9 +22,15 @@ _MANIFEST = ".installed-by-agent-registry.json"
 
 
 def _load_agents(agents_dir: str, skills_dir: str) -> list[Agent]:
-    """Load and validate agents with their skills inlined; raises on an unknown skill."""
+    """Load and validate agents with their skills inlined.
+
+    Raises on an unknown skill or a skill-closure violation, so no command can
+    emit or install an agent that `validate` rejects.
+    """
     agents = validate_agent_tree(Path(agents_dir))
-    skills_by_name = {s.name: s for s in validate_skill_tree(Path(skills_dir))}
+    skills = validate_skill_tree(Path(skills_dir))
+    validate_skill_closure(agents, skills)
+    skills_by_name = {s.name: s for s in skills}
     return [compose_agent_with_skills(a, skills_by_name) for a in agents]
 
 
@@ -66,7 +72,6 @@ def main() -> int:
     if args.command == "validate":
         agents = _load_agents(args.agents_dir, args.skills_dir)
         skills = validate_skill_tree(Path(args.skills_dir))
-        validate_skill_closure(agents, skills)
         print(f"validated {len(agents)} agents and {len(skills)} skills")
         return 0
 

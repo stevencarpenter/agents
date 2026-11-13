@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 import re
 
@@ -159,6 +160,15 @@ def compose_agent_with_skills(agent: Agent, skills_by_name: dict[str, Skill]) ->
         )
     composed_body = "\n\n".join(sections) + "\n"
     return Agent(path=agent.path, name=agent.name, metadata=agent.metadata, body=composed_body)
+
+
+def yaml_string(value: str) -> str:
+    """Quote a free-text frontmatter value for the Markdown emitters.
+
+    A JSON string is a valid YAML double-quoted scalar. Unquoted, a `: ` or ` #`
+    inside a description is a syntax error or a comment for a strict YAML parser.
+    """
+    return json.dumps(value, ensure_ascii=False)
 
 
 def _split_frontmatter(text: str, path: Path) -> tuple[dict[str, str], str]:

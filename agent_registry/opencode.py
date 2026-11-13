@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agent_registry.agents import Agent, validate_isolated_read_only
+from agent_registry.agents import Agent, validate_isolated_read_only, yaml_string
 from agent_registry.mcp_tools import parse_tools_field
 from agent_registry.model_translation import translate_model
 
@@ -25,7 +25,7 @@ def emit_opencode_agent(agent: Agent) -> str:
 
     lines = [
         "---",
-        f"description: {description}",
+        f"description: {yaml_string(description)}",
         "mode: all",
     ]
 
