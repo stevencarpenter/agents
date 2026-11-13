@@ -11,10 +11,11 @@ _TARGET_MODEL_IDS: dict[str, dict[str, str]] = {
     "opencode": {
         # OpenCode has no built-in cost-tier alias; the provider/model-id pair
         # is the only supported format, so this hardcodes a specific model.
-        "haiku": "anthropic/claude-haiku-4-5",
+        "haiku": "anthropic/claude-haiku-5-5",
     },
     "cursor": {
-        "haiku": "claude-haiku-4-5",
+        # Cursor lists Haiku only with an effort suffix; medium without thinking.
+        "haiku": "claude-haiku-5-5-medium",
     },
 }
 

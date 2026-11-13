@@ -20,7 +20,7 @@ Language-specific Spark 4 rubric for Scala agents. Always apply `spark-guideline
   - You need compile-time type safety on map/filter operations that would be error-prone as string column names
   - You are building a reusable library API consumed by other Scala modules
 - Do not use Dataset for pipelines that are primarily SQL or PySpark-portable. The encoding overhead and version coupling rarely pay off.
-- **Never use RDD** in new Spark 4 pipeline code unless interfacing with legacy libraries that have no DataFrame equivalent.
+- Use the DataFrame or Dataset API for new pipeline code. Use RDDs only for a concrete unsupported operation or an existing library boundary; do not rewrite unrelated working code.
 
 ## Idiomatic Transforms
 

@@ -9,7 +9,7 @@ Shared rubric for working in a `jj` repository, especially one **colocated** wit
 
 ## Source Of Truth
 
-- `jj --version` first: these notes target **jj 0.4x** (bookmarks era). Older jj calls bookmarks "branches".
+- `jj --version` first: these notes assume the bookmarks era. Older jj calls bookmarks "branches".
 - `jj help <cmd>`, the official tutorial, and `jj op log` (the live record of what you did).
 - The repo's actual state: `jj st`, `jj log`, `jj git remote list`. Don't hardcode the trunk name: `trunk()` resolves the remote's main/master/trunk bookmark for you.
 

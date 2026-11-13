@@ -20,7 +20,7 @@ import os
 from mlflow.genai.judges import make_judge
 
 # make_judge needs a "provider:/model" id. Override with EVAL_JUDGE_MODEL.
-JUDGE_MODEL = os.environ.get("EVAL_JUDGE_MODEL", "anthropic:/claude-opus-4-8")
+JUDGE_MODEL = os.environ.get("EVAL_JUDGE_MODEL", "anthropic:/claude-opus-5-5")
 
 _SCALE = (
     "Score 1-5 where 1 = badly fails the criterion and 5 = exemplary. "

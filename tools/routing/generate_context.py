@@ -194,7 +194,7 @@ def render() -> str:
         else:
             lines.append(f"- in sync: all {len(canonical_names)} canonical agents installed")
         if extra:
-            lines.append(f"- orphaned locally (removed from repo, still installed): {', '.join(extra)}")
+            lines.append(f"- installed outside this registry (hand-placed or deployed by another repo): {', '.join(extra)}")
         lines.append("")
 
     if declared_personal_skills is not None:

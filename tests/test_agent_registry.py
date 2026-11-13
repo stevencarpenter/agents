@@ -312,7 +312,7 @@ Review code with adversarial attention to behavior.
             self.assertLess(deny_index, rendered.index("read: allow"))
             self.assertLess(deny_index, rendered.index('"docs_fetch": allow'))
             self.assertIn('"docs_resolve": allow', rendered)
-            self.assertIn("model: anthropic/claude-haiku-4-5", rendered)
+            self.assertIn("model: anthropic/claude-haiku-5-5", rendered)
 
     # ---- shared translations and Cursor ----
 
@@ -325,8 +325,8 @@ Review code with adversarial attention to behavior.
 
     def test_model_translation_uses_current_target_ids(self) -> None:
         self.assertEqual(translate_model("haiku", "codex"), "gpt-5.6-terra")
-        self.assertEqual(translate_model("haiku", "opencode"), "anthropic/claude-haiku-4-5")
-        self.assertEqual(translate_model("haiku", "cursor"), "claude-haiku-4-5")
+        self.assertEqual(translate_model("haiku", "opencode"), "anthropic/claude-haiku-5-5")
+        self.assertEqual(translate_model("haiku", "cursor"), "claude-haiku-5-5-medium")
         self.assertIsNone(translate_model("inherit", "codex"))
 
     def test_emit_cursor_keeps_mcp_agents_functional_and_warns_about_scope(self) -> None:
@@ -339,7 +339,7 @@ Review code with adversarial attention to behavior.
             rendered = emit_cursor_agent(load_agent(path))
 
             self.assertIn("name: lookup\n", rendered)
-            self.assertIn("model: claude-haiku-4-5\n", rendered)
+            self.assertIn("model: claude-haiku-5-5-medium\n", rendered)
             self.assertNotIn("readonly: true\n", rendered)
             self.assertIn("Tool-scope notice (Cursor)", rendered)
 

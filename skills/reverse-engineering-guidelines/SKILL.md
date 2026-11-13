@@ -40,7 +40,7 @@ need absolute paths.
 
 ## Provider setup (measured values)
 
-- REA gates the Ghidra provider to a version series (12.1.x at the time of writing). Do not fake
+- REA gates the Ghidra provider to a version series. Do not fake
   the version string: every Evidence record would name an engine you are not running.
 - The official Ghidra release ships no macOS decompiler. Build `decompile` and `sleigh` from the
   matching source tag (`./gradlew :Decompiler:buildNatives` with a JDK the tag accepts) and copy

@@ -9,7 +9,7 @@ Shared security rubric for agents. Language rubrics (python-guidelines, rust-gui
 
 ## Source Of Truth
 
-- OWASP ASVS (verification requirements) and OWASP Top 10 (2021) for web/API flaws
+- OWASP ASVS (verification requirements) and the current OWASP Top 10 for web/API flaws
 - CWE identifiers for classification: cite the CWE, not just a vibe
 - The repo's own authz/authn design docs, when present: understand intended trust boundaries before flagging their violation
 

@@ -19,9 +19,9 @@ def main() -> int:
     with closing(sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)) as connection:
         rows = connection.execute(
             """
-            SELECT project_dir, COUNT(*) AS sessions
-            FROM claude_sessions
-            WHERE is_subagent = 1
+            SELECT project_dir, COUNT(DISTINCT session_id) AS sessions
+            FROM agentic_sessions
+            WHERE harness = 'claude-code' AND is_subagent = 1 AND probe_tag IS NULL
             GROUP BY project_dir
             ORDER BY sessions DESC 
             LIMIT 10
