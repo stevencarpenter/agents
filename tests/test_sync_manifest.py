@@ -122,6 +122,17 @@ class SyncManifestTests(unittest.TestCase):
         self.assertFalse((out / "beta.md").exists())
         self.assertTrue((out / "alpha.md").exists())
 
+    def test_sync_dir_ignores_manifest_entries_outside_dest(self) -> None:
+        out = self.root / "out"
+        out.mkdir()
+        victim = self.root / "victim.txt"
+        victim.write_text("keep", encoding="utf-8")
+        (out / ".installed-by-agent-registry.json").write_text(
+            '["../victim.txt", "..", "sub/x.md"]', encoding="utf-8"
+        )
+        _sync_dir(out, {"a.md": "a"})
+        self.assertTrue(victim.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

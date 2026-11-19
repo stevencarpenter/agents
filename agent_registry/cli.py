@@ -219,13 +219,17 @@ def _sync_dir(dest: Path, files: dict[str, str]) -> int:
             previously_owned = set(json.loads(manifest_path.read_text(encoding="utf-8")))
         except (ValueError, OSError):
             previously_owned = set()
+    # Only plain filenames are ours; a tampered manifest must not reach outside dest.
+    previously_owned = {
+        name for name in previously_owned if isinstance(name, str) and name not in {"", ".", ".."} and Path(name).name == name
+    }
 
     for name, content in files.items():
         (dest / name).write_text(content, encoding="utf-8")
 
     for stale in previously_owned - set(files):
         target = dest / stale
-        if target.exists():
+        if target.resolve().parent == dest.resolve() and target.exists():
             target.unlink()
 
     manifest_path.write_text(json.dumps(sorted(files), indent=2), encoding="utf-8")
