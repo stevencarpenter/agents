@@ -83,15 +83,25 @@ class SyncManifestTests(unittest.TestCase):
             len(_load_agents(agents_dir, skills_dir, selection, apply=False)), 2
         )
 
-    def test_disabled_skill_is_not_inlined(self) -> None:
+    def test_enabled_agent_with_disabled_skill_is_rejected(self) -> None:
         path = self._write_manifest('[skills]\n"rubric" = false\n')
+        with self.assertRaisesRegex(ValueError, "alpha -> rubric"):
+            _load_agents(
+                str(self.root / "agents"),
+                str(self.root / "skills"),
+                load_sync_selection(path),
+            )
+
+    def test_disabled_skill_is_allowed_when_its_agents_are_disabled(self) -> None:
+        path = self._write_manifest(
+            '[agents]\n"alpha" = false\n"beta" = false\n[skills]\n"rubric" = false\n'
+        )
         agents = _load_agents(
             str(self.root / "agents"),
             str(self.root / "skills"),
             load_sync_selection(path),
         )
-        self.assertEqual(len(agents), 2)
-        self.assertTrue(all("Rubric body" not in a.body for a in agents))
+        self.assertEqual(agents, [])
 
     def test_unknown_name_is_rejected(self) -> None:
         path = self._write_manifest('[agents]\n"ghost" = false\n')

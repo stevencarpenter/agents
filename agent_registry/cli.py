@@ -60,14 +60,6 @@ def load_sync_selection(path: Path) -> SyncSelection:
     return SyncSelection(agents_off, skills_off, agents_listed, skills_listed)
 
 
-def _without_skills(agent: Agent, disabled: frozenset[str]) -> Agent:
-    """Drop disabled rubric names so their bodies are not inlined."""
-    refs = [name for name in agent_skill_refs(agent) if name not in disabled]
-    metadata = dict(agent.metadata)
-    metadata["skills"] = ", ".join(refs)
-    return Agent(agent.path, agent.name, metadata, agent.body)
-
-
 def _load_agents(
     agents_dir: str,
     skills_dir: str,
@@ -93,8 +85,17 @@ def _load_agents(
     if apply:
         if selection.disabled_agents:
             agents = [a for a in agents if a.name not in selection.disabled_agents]
-        if selection.disabled_skills:
-            agents = [_without_skills(a, selection.disabled_skills) for a in agents]
+        conflicts = sorted(
+            f"{a.name} -> {s}"
+            for a in agents
+            for s in agent_skill_refs(a)
+            if s in selection.disabled_skills
+        )
+        if conflicts:
+            raise ValueError(
+                "enabled agents reference disabled skills; disable the agent "
+                f"or enable the skill: {conflicts}"
+            )
     skills_by_name = {s.name: s for s in skills}
     return [compose_agent_with_skills(a, skills_by_name) for a in agents]
 

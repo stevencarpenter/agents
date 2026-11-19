@@ -119,7 +119,8 @@ is deleted, so disabled definitions remain available for later benchmarks.
   agents are also pruned from earlier `emit-*` output and excluded from the
   routing context's stale-agent check.
 - `[skills]` names match `skills/<name>/SKILL.md`. Rubrics set to `false` are not
-  inlined into emitted agents. Standalone skills sourced from this repo (for
+  inlined into emitted agents. An enabled agent that references a disabled
+  rubric is an error, so disable the agent too. Standalone skills sourced from this repo (for
   example `blind-review`) are deployed by `mcp_sync`; toggle those with `false`
   in `~/.config/skills/machine/<identity>.json`.
 - Hooks are contributed by dfm modules in `~/.dotfiles`. Toggle them in the
