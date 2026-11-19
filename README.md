@@ -106,6 +106,28 @@ or:
 just check
 ```
 
+## Sync toggles
+
+`sync-manifest.toml` lists every artifact this repo installs as a name mapped to
+`true` or `false`, in the same shape as dfm's `enabledPlugins`. Set a name to
+`false` to stop applying it. Set it back to `true` to turn it on. No source file
+is deleted, so disabled definitions remain available for later benchmarks.
+
+- `[agents]` names match `agents/<name>/agent.md`. Agents set to `false` are not
+  emitted or installed. `just validate` still checks every source file, and an
+  unknown name in the manifest is an error.
+- `[skills]` names match `skills/<name>/SKILL.md`. Rubrics set to `false` are not
+  inlined into emitted agents. Standalone skills sourced from this repo (for
+  example `blind-review`) are deployed by `mcp_sync`; toggle those with `false`
+  in `~/.config/skills/machine/<identity>.json`.
+- `[hooks]` uses the key `session-routing`. Setting it to `false` stops the
+  routing hook from printing its cache. Other hooks are contributed by dfm
+  modules in `~/.dotfiles`, so toggle those in the module TOML.
+
+`dfm sync` runs the installer from the checkout at `~/projects/agents`, not from
+this working copy. Commit and push a manifest change, then run `dfm sync` to
+apply it. `just install` uses the checkout you are in.
+
 ## Layout
 
 ```text

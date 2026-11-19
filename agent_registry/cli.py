@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import json
 from pathlib import Path
+import tomllib
 
 from agent_registry.agents import (
     Agent,
+    agent_skill_refs,
     compose_agent_with_skills,
     validate_agent_tree,
     validate_isolated_read_only,
@@ -19,17 +22,73 @@ from agent_registry.cursor import CURSOR_EXT, emit_cursor_agent
 from agent_registry.opencode import emit_opencode_agent
 
 _MANIFEST = ".installed-by-agent-registry.json"
+_SYNC_MANIFEST = "sync-manifest.toml"
 
 
-def _load_agents(agents_dir: str, skills_dir: str) -> list[Agent]:
+@dataclass(frozen=True)
+class SyncSelection:
+    """Names excluded from installation by the sync manifest."""
+
+    disabled_agents: frozenset[str] = frozenset()
+    disabled_skills: frozenset[str] = frozenset()
+
+
+def load_sync_selection(path: Path) -> SyncSelection:
+    """Read the opt-out lists. A missing manifest selects everything."""
+    if not path.is_file():
+        return SyncSelection()
+    with open(path, "rb") as handle:
+        data = tomllib.load(handle)
+    if data.get("schema", 1) != 1:
+        raise ValueError(f"unsupported sync manifest schema: {data.get('schema')}")
+
+    def names(section: str) -> frozenset[str]:
+        entry = data.get(section, {})
+        if not isinstance(entry, dict):
+            raise ValueError(f"[{section}] must be a table")
+        for name, enabled in entry.items():
+            if not isinstance(enabled, bool):
+                raise ValueError(f"[{section}].{name} must be true or false")
+        return frozenset(name for name, enabled in entry.items() if not enabled)
+
+    return SyncSelection(names("agents"), names("skills"))
+
+
+def _without_skills(agent: Agent, disabled: frozenset[str]) -> Agent:
+    """Drop disabled rubric names so their bodies are not inlined."""
+    refs = [name for name in agent_skill_refs(agent) if name not in disabled]
+    metadata = dict(agent.metadata)
+    metadata["skills"] = ", ".join(refs)
+    return Agent(agent.path, agent.name, metadata, agent.body)
+
+
+def _load_agents(
+    agents_dir: str,
+    skills_dir: str,
+    selection: SyncSelection | None = None,
+    *,
+    apply: bool = True,
+) -> list[Agent]:
     """Load and validate agents with their skills inlined.
 
     Raises on an unknown skill or a skill-closure violation, so no command can
-    emit or install an agent that `validate` rejects.
+    emit or install an agent that `validate` rejects. With `apply`, names in the
+    sync manifest are excluded from the returned list and from inlined rubrics.
     """
     agents = validate_agent_tree(Path(agents_dir))
     skills = validate_skill_tree(Path(skills_dir))
     validate_skill_closure(agents, skills)
+    selection = selection or SyncSelection()
+    unknown = (selection.disabled_agents - {a.name for a in agents}) | (
+        selection.disabled_skills - {s.name for s in skills}
+    )
+    if unknown:
+        raise ValueError(f"sync manifest disables unknown names: {sorted(unknown)}")
+    if apply:
+        if selection.disabled_agents:
+            agents = [a for a in agents if a.name not in selection.disabled_agents]
+        if selection.disabled_skills:
+            agents = [_without_skills(a, selection.disabled_skills) for a in agents]
     skills_by_name = {s.name: s for s in skills}
     return [compose_agent_with_skills(a, skills_by_name) for a in agents]
 
@@ -40,6 +99,7 @@ def main() -> int:
     source_parser = argparse.ArgumentParser(add_help=False)
     source_parser.add_argument("--agents-dir", default="agents")
     source_parser.add_argument("--skills-dir", default="skills")
+    source_parser.add_argument("--sync-manifest", default=None)
     emit_targets = ("claude", "codex", "opencode", "copilot", "cursor")
 
     subparsers.add_parser("validate", parents=[source_parser])
@@ -56,10 +116,14 @@ def main() -> int:
     )
 
     args = parser.parse_args()
+    # A custom agents dir implies its own checkout root; do not apply this
+    # repo's manifest to fixtures or another tree.
+    manifest = args.sync_manifest or str(Path(args.agents_dir).parent / _SYNC_MANIFEST)
+    selection = load_sync_selection(Path(manifest))
 
     # Validate every target before any write, so `install --target all` cannot half-install.
     if args.command != "validate":
-        agents = _load_agents(args.agents_dir, args.skills_dir)
+        agents = _load_agents(args.agents_dir, args.skills_dir, selection)
         targets = (
             list(emit_targets)
             if args.command == "install" and args.target == "all"
@@ -70,7 +134,7 @@ def main() -> int:
                 validate_isolated_read_only(agent, target)
 
     if args.command == "validate":
-        agents = _load_agents(args.agents_dir, args.skills_dir)
+        agents = _load_agents(args.agents_dir, args.skills_dir, selection, apply=False)
         skills = validate_skill_tree(Path(args.skills_dir))
         print(f"validated {len(agents)} agents and {len(skills)} skills")
         return 0
