@@ -115,14 +115,15 @@ is deleted, so disabled definitions remain available for later benchmarks.
 
 - `[agents]` names match `agents/<name>/agent.md`. Agents set to `false` are not
   emitted or installed. `just validate` still checks every source file, and an
-  unknown name in the manifest is an error.
+  unknown name in the manifest, enabled or disabled, is an error. Disabled
+  agents are also pruned from earlier `emit-*` output and excluded from the
+  routing context's stale-agent check.
 - `[skills]` names match `skills/<name>/SKILL.md`. Rubrics set to `false` are not
   inlined into emitted agents. Standalone skills sourced from this repo (for
   example `blind-review`) are deployed by `mcp_sync`; toggle those with `false`
   in `~/.config/skills/machine/<identity>.json`.
-- `[hooks]` uses the key `session-routing`. Setting it to `false` stops the
-  routing hook from printing its cache. Other hooks are contributed by dfm
-  modules in `~/.dotfiles`, so toggle those in the module TOML.
+- Hooks are contributed by dfm modules in `~/.dotfiles`. Toggle them in the
+  module TOML, not in this manifest.
 
 `dfm sync` runs the installer from the checkout at `~/projects/agents`, not from
 this working copy. Commit and push a manifest change, then run `dfm sync` to

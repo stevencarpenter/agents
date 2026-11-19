@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import tomllib
 from pathlib import Path
 
 AGENTS_REPO = Path(__file__).resolve().parents[2]
@@ -47,8 +48,19 @@ def parse_frontmatter(text: str) -> dict[str, str]:
     return fields
 
 
+def load_disabled_agents() -> set[str]:
+    """Agents the sync manifest opts out of; sync skips them on purpose."""
+    path = AGENTS_REPO / "sync-manifest.toml"
+    if not path.is_file():
+        return set()
+    with open(path, "rb") as handle:
+        table = tomllib.load(handle).get("agents", {})
+    return {name for name, enabled in table.items() if enabled is False}
+
+
 def load_canonical_agents() -> dict[str, dict]:
     agents: dict[str, dict] = {}
+    disabled = load_disabled_agents()
     agents_dir = AGENTS_REPO / "agents"
     if not agents_dir.is_dir():
         return agents
@@ -58,6 +70,8 @@ def load_canonical_agents() -> dict[str, dict]:
             continue
         fm = parse_frontmatter(f.read_text(encoding="utf-8"))
         name = fm.get("name", d.name)
+        if name in disabled:
+            continue
         agents[name] = {
             "skills": [s.strip() for s in fm.get("skills", "").split(",") if s.strip()],
         }

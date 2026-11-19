@@ -125,6 +125,3 @@ schema = 1
 "tutoring-guidelines" = false
 "typescript-guidelines" = false
 "unreal-guidelines" = true
-
-[hooks]
-"session-routing" = true

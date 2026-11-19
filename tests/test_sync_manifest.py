@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agent_registry.cli import SyncSelection, _load_agents, load_sync_selection
+from agent_registry.cli import SyncSelection, _load_agents, _sync_dir, load_sync_selection
 
 
 def _agent(name: str, skills: str = "") -> str:
@@ -101,6 +101,26 @@ class SyncManifestTests(unittest.TestCase):
                 str(self.root / "skills"),
                 load_sync_selection(path),
             )
+
+    def test_unknown_enabled_name_is_rejected(self) -> None:
+        path = self._write_manifest('[agents]\n"ghost" = true\n')
+        with self.assertRaisesRegex(ValueError, "unknown names: \\['ghost'\\]"):
+            _load_agents(
+                str(self.root / "agents"),
+                str(self.root / "skills"),
+                load_sync_selection(path),
+            )
+
+    def test_emit_prunes_agent_disabled_after_earlier_emit(self) -> None:
+        out = self.root / "out"
+        agents_dir, skills_dir = str(self.root / "agents"), str(self.root / "skills")
+        files = lambda agents: {f"{a.name}.md": a.body for a in agents}
+        _sync_dir(out, files(_load_agents(agents_dir, skills_dir)))
+        self.assertTrue((out / "beta.md").exists())
+        selection = load_sync_selection(self._write_manifest('[agents]\n"beta" = false\n'))
+        _sync_dir(out, files(_load_agents(agents_dir, skills_dir, selection)))
+        self.assertFalse((out / "beta.md").exists())
+        self.assertTrue((out / "alpha.md").exists())
 
 
 if __name__ == "__main__":

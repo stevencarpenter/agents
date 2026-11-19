@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from pathlib import Path
 import tomllib
@@ -31,6 +31,9 @@ class SyncSelection:
 
     disabled_agents: frozenset[str] = frozenset()
     disabled_skills: frozenset[str] = frozenset()
+    # Every name the manifest lists, enabled or not, so typos are caught either way.
+    listed_agents: frozenset[str] = field(default=frozenset(), compare=False)
+    listed_skills: frozenset[str] = field(default=frozenset(), compare=False)
 
 
 def load_sync_selection(path: Path) -> SyncSelection:
@@ -42,16 +45,19 @@ def load_sync_selection(path: Path) -> SyncSelection:
     if data.get("schema", 1) != 1:
         raise ValueError(f"unsupported sync manifest schema: {data.get('schema')}")
 
-    def names(section: str) -> frozenset[str]:
+    def names(section: str) -> tuple[frozenset[str], frozenset[str]]:
         entry = data.get(section, {})
         if not isinstance(entry, dict):
             raise ValueError(f"[{section}] must be a table")
         for name, enabled in entry.items():
             if not isinstance(enabled, bool):
                 raise ValueError(f"[{section}].{name} must be true or false")
-        return frozenset(name for name, enabled in entry.items() if not enabled)
+        disabled = frozenset(name for name, enabled in entry.items() if not enabled)
+        return disabled, frozenset(entry)
 
-    return SyncSelection(names("agents"), names("skills"))
+    agents_off, agents_listed = names("agents")
+    skills_off, skills_listed = names("skills")
+    return SyncSelection(agents_off, skills_off, agents_listed, skills_listed)
 
 
 def _without_skills(agent: Agent, disabled: frozenset[str]) -> Agent:
@@ -79,11 +85,11 @@ def _load_agents(
     skills = validate_skill_tree(Path(skills_dir))
     validate_skill_closure(agents, skills)
     selection = selection or SyncSelection()
-    unknown = (selection.disabled_agents - {a.name for a in agents}) | (
-        selection.disabled_skills - {s.name for s in skills}
-    )
+    unknown = (
+        (selection.disabled_agents | selection.listed_agents) - {a.name for a in agents}
+    ) | ((selection.disabled_skills | selection.listed_skills) - {s.name for s in skills})
     if unknown:
-        raise ValueError(f"sync manifest disables unknown names: {sorted(unknown)}")
+        raise ValueError(f"sync manifest lists unknown names: {sorted(unknown)}")
     if apply:
         if selection.disabled_agents:
             agents = [a for a in agents if a.name not in selection.disabled_agents]
@@ -149,9 +155,8 @@ def main() -> int:
         target = targets[0]
         emit, extension = emitters[target]
         out_dir = Path(args.out_dir)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        for agent in agents:
-            (out_dir / f"{agent.name}{extension}").write_text(emit(agent), encoding="utf-8")
+        # _sync_dir prunes files a previous emit wrote for agents that are now disabled.
+        _sync_dir(out_dir, {f"{a.name}{extension}": emit(a) for a in agents})
         print(f"emitted {len(agents)} {target} agents to {out_dir}")
         return 0
 
