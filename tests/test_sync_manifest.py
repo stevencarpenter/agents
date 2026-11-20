@@ -1,3 +1,5 @@
+from contextlib import chdir, redirect_stderr
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -199,11 +201,11 @@ class SyncManifestTests(unittest.TestCase):
         self.assertTrue((installed / "alpha.md").exists())
         self.assertFalse((installed / "beta.md").exists())
 
-    def test_emit_removes_pre_manifest_files_for_disabled_agents(self) -> None:
+    def test_emit_preserves_unowned_file_in_custom_output(self) -> None:
         out = self.root / "out"
         out.mkdir()
-        (out / "beta.md").write_text("old emit\n", encoding="utf-8")
-        (out / "notes.md").write_text("hand written\n", encoding="utf-8")
+        manual = out / "beta.md"
+        manual.write_text("hand written\n", encoding="utf-8")
         self._write_manifest('[agents]\n"beta" = false\n')
         with patch(
             "sys.argv",
@@ -219,9 +221,31 @@ class SyncManifestTests(unittest.TestCase):
             ],
         ):
             main()
+        self.assertEqual(manual.read_text(encoding="utf-8"), "hand written\n")
+        self.assertTrue((out / "alpha.md").exists())
+
+    def test_emit_removes_pre_manifest_files_in_default_output(self) -> None:
+        out = self.root / "build" / "claude" / "agents"
+        out.mkdir(parents=True)
+        (out / "beta.md").write_text("old emit\n", encoding="utf-8")
+        self._write_manifest('[agents]\n"beta" = false\n')
+        with chdir(self.root), patch("sys.argv", ["agent-registry", "emit-claude"]):
+            main()
         self.assertFalse((out / "beta.md").exists())
         self.assertTrue((out / "alpha.md").exists())
-        self.assertTrue((out / "notes.md").exists(), "must not touch unowned files")
+
+    def test_explicit_missing_sync_manifest_fails_before_writing(self) -> None:
+        stderr = io.StringIO()
+        with (
+            chdir(self.root),
+            patch("sys.argv", ["agent-registry", "emit-claude", "--sync-manifest", "missing.toml"]),
+            redirect_stderr(stderr),
+            self.assertRaises(SystemExit) as error,
+        ):
+            main()
+        self.assertEqual(error.exception.code, 2)
+        self.assertIn("sync manifest not found: missing.toml", stderr.getvalue())
+        self.assertFalse((self.root / "build").exists())
 
     def test_unknown_enabled_name_is_rejected(self) -> None:
         path = self._write_manifest('[agents]\n"ghost" = true\n')

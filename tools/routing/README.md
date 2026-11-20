@@ -24,15 +24,15 @@ because it has caught real staleness.
 - This script lives in the agents repo (canonical source), not dotfiles,
   because it needs direct filesystem access to `agents/*/agent.md`.
 - `routing-overlay.md` (sibling file) holds the hand-curated
-  disambiguation rules, a judgment call no config states, kept separate
-  from the generator so it isn't clobbered by re-generation and doesn't
-  need a code change to edit.
+  disambiguation rules, one Markdown bullet per line. Put agent names and
+  family patterns such as `spark-*` in backticks so the generator can skip
+  rules for disabled agents and families.
 - The cache (`~/.cache/agent-routing/context.md`) is written by the
   dotfiles script `scripts/install-agent-registry.sh`, right after it runs
   `agent_registry.cli install` from the checkout at `~/projects/agents`
   (the `agent-registry` package resource in `dfm-module-agents.toml`). It
-  runs this script and moves the output into place atomically. No new
-  trigger plumbing.
+  runs this script and moves the output into place atomically. When the
+  effective `[hooks].session-routing` setting is false, the output is empty.
 - `~/.claude/hooks/emit-routing-context.sh` (dotfiles:
   `home/.claude/hooks/emit-routing-context.sh`) is the actual SessionStart
   hook; it only `cat`s the cache (~10ms, no Python startup cost per
@@ -68,8 +68,4 @@ because it has caught real staleness.
 - There is no central table of hosts and their capabilities (dfm profiles
   are per host and nothing enumerates them), so the block cannot say which
   other machines lack the agents capability.
-- The disambiguation rules in `routing-overlay.md` are hand-written prose
-  with no structured source (no `disambiguates_with:` frontmatter field
-  exists on agents today). If a new ambiguous family shows up, someone has
-  to remember to add a rule by hand. The generator does nothing to detect
-  that one is needed.
+- Add a rule to `routing-overlay.md` when a new family needs disambiguation.

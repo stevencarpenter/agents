@@ -116,18 +116,17 @@ is deleted, so disabled definitions remain available for later benchmarks.
 - `[agents]` names match `agents/<name>/agent.md`. Agents set to `false` are not
   emitted or installed. `just validate` still checks every source file, and an
   unknown name in the manifest, enabled or disabled, is an error. Disabled
-  agents are also pruned from earlier `emit-*` output and excluded from the
-  routing context's stale-agent check.
+  agents are pruned from default build output and from files recorded as
+  registry-owned in custom output directories. The routing context omits
+  disabled agents from its recommendations and stale-agent check.
 - `[skills]` names match `skills/<name>/SKILL.md`. Rubrics set to `false` are not
   inlined into emitted agents. An enabled agent that references a disabled
   rubric is an error, so disable the agent too. Standalone skills sourced from this repo (for
   example `blind-review`) are deployed by `mcp_sync`; toggle those with `false`
   in `~/.config/skills/machine/<identity>.json`.
-- `[hooks]` toggles the routing hook fed by `tools/routing`. `"session-routing"
-  = false` in the manifest or in the machine overlay stops
-  `~/.claude/hooks/emit-routing-context.sh` from printing its cached block. The
-  hook is registered by a dfm module in `~/.dotfiles`; removing it there is a
-  separate change.
+- `[hooks]` toggles the routing hook fed by `tools/routing`. On the next
+  `dfm sync`, the effective `"session-routing" = false` setting clears the
+  cached block emitted by `~/.claude/hooks/emit-routing-context.sh`.
 
 `dfm sync` runs the installer from the checkout at `~/projects/agents`, not from
 this working copy. Commit and push a manifest change, then run `dfm sync` to

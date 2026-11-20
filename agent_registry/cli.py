@@ -35,6 +35,7 @@ class SyncSelection:
     # Every name the manifest lists, enabled or not, so typos are caught either way.
     listed_agents: frozenset[str] = field(default=frozenset(), compare=False)
     listed_skills: frozenset[str] = field(default=frozenset(), compare=False)
+    disabled_hooks: frozenset[str] = frozenset()
 
 
 def _deep_merge(base: dict, overlay: dict) -> dict:
@@ -96,7 +97,8 @@ def load_sync_selection(path: Path, machine_config: Path | None = None) -> SyncS
 
     agents_off, agents_listed = names("agents")
     skills_off, skills_listed = names("skills")
-    return SyncSelection(agents_off, skills_off, agents_listed, skills_listed)
+    hooks_off, _ = names("hooks")
+    return SyncSelection(agents_off, skills_off, agents_listed, skills_listed, hooks_off)
 
 
 def _load_agents(
@@ -152,8 +154,7 @@ def main() -> int:
     subparsers.add_parser("validate", parents=[source_parser])
     for target in emit_targets:
         emit_parser = subparsers.add_parser(f"emit-{target}", parents=[source_parser])
-        out_dir = f"build/{target}" if target == "copilot" else f"build/{target}/agents"
-        emit_parser.add_argument("--out-dir", default=out_dir)
+        emit_parser.add_argument("--out-dir", type=Path)
 
     install_parser = subparsers.add_parser("install", parents=[source_parser])
     install_parser.add_argument(
@@ -165,12 +166,16 @@ def main() -> int:
     args = parser.parse_args()
     # A custom agents dir implies its own checkout root; do not apply this
     # repo's manifest to fixtures or another tree.
-    manifest = args.sync_manifest or str(Path(args.agents_dir).parent / _SYNC_MANIFEST)
+    manifest = Path(args.agents_dir).parent / _SYNC_MANIFEST
+    if args.sync_manifest is not None:
+        manifest = Path(args.sync_manifest).expanduser()
+        if not manifest.is_file():
+            parser.error(f"sync manifest not found: {manifest}")
     machine_config = Path(args.machine_config).expanduser() if args.machine_config else None
     # `just install` runs on this host, so apply the overlay dfm linked for it.
     if machine_config is None and args.command == "install":
         machine_config = _default_machine_config()
-    selection = load_sync_selection(Path(manifest), machine_config)
+    selection = load_sync_selection(manifest, machine_config)
 
     # Validate every target before any write, so `install --target all` cannot half-install.
     if args.command != "validate":
@@ -199,10 +204,9 @@ def main() -> int:
     if args.command.startswith("emit-") and targets[0] in emitters:
         target = targets[0]
         emit, extension = emitters[target]
-        out_dir = Path(args.out_dir)
-        # A directory written before the ownership manifest existed still holds
-        # files for names this selection now disables. Remove those by name.
-        if not (out_dir / _MANIFEST).exists():
+        out_dir = args.out_dir or Path("build") / target / "agents"
+        # Only the default scratch directory can contain legacy files we may claim by name.
+        if args.out_dir is None and not (out_dir / _MANIFEST).exists():
             for name in selection.disabled_agents:
                 (out_dir / f"{name}{extension}").unlink(missing_ok=True)
         # _sync_dir prunes files a previous emit wrote for agents that are now disabled.
@@ -211,7 +215,7 @@ def main() -> int:
         return 0
 
     if args.command == "emit-copilot":
-        out_dir = Path(args.out_dir)
+        out_dir = args.out_dir or Path("build/copilot")
         out_dir.mkdir(parents=True, exist_ok=True)
         content = emit_copilot_instructions(agents)
         (out_dir / "global-agents-instructions.md").write_text(content, encoding="utf-8")
