@@ -29,9 +29,10 @@ because it has caught real staleness.
   need a code change to edit.
 - The cache (`~/.cache/agent-routing/context.md`) is written by the
   dotfiles script `scripts/install-agent-registry.sh`, right after it runs
-  `agent_registry.cli install` from the side-channel clone of this repo at
-  `~/.local/share/agent-registry`. It runs this script and moves the output
-  into place atomically. No new trigger plumbing.
+  `agent_registry.cli install` from the checkout at `~/projects/agents`
+  (the `agent-registry` package resource in `dfm-module-agents.toml`). It
+  runs this script and moves the output into place atomically. No new
+  trigger plumbing.
 - `~/.claude/hooks/emit-routing-context.sh` (dotfiles:
   `home/.claude/hooks/emit-routing-context.sh`) is the actual SessionStart
   hook; it only `cat`s the cache (~10ms, no Python startup cost per

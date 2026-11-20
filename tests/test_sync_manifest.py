@@ -169,6 +169,60 @@ class SyncManifestTests(unittest.TestCase):
         self.assertTrue((installed / "alpha.md").exists())
         self.assertFalse((installed / "beta.md").exists())
 
+    def test_install_discovers_the_linked_machine_overlay(self) -> None:
+        install_home = self.root / "home"
+        skills_overlay = install_home / ".config" / "skills" / "machine" / "personal.json"
+        skills_overlay.parent.mkdir(parents=True)
+        skills_overlay.write_text("{}", encoding="utf-8")
+        agents_overlay = install_home / ".config" / "agents" / "machine" / "personal.json"
+        agents_overlay.parent.mkdir(parents=True)
+        agents_overlay.write_text('{"agents": {"beta": false}}', encoding="utf-8")
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "agent-registry",
+                    "install",
+                    "--agents-dir",
+                    str(self.root / "agents"),
+                    "--skills-dir",
+                    str(self.root / "skills"),
+                    "--target",
+                    "claude",
+                ],
+            ),
+            patch.object(Path, "home", return_value=install_home),
+            patch.dict("os.environ", {"DFM_IDENTITY": ""}),
+        ):
+            main()
+        installed = install_home / ".claude" / "agents"
+        self.assertTrue((installed / "alpha.md").exists())
+        self.assertFalse((installed / "beta.md").exists())
+
+    def test_emit_removes_pre_manifest_files_for_disabled_agents(self) -> None:
+        out = self.root / "out"
+        out.mkdir()
+        (out / "beta.md").write_text("old emit\n", encoding="utf-8")
+        (out / "notes.md").write_text("hand written\n", encoding="utf-8")
+        self._write_manifest('[agents]\n"beta" = false\n')
+        with patch(
+            "sys.argv",
+            [
+                "agent-registry",
+                "emit-claude",
+                "--agents-dir",
+                str(self.root / "agents"),
+                "--skills-dir",
+                str(self.root / "skills"),
+                "--out-dir",
+                str(out),
+            ],
+        ):
+            main()
+        self.assertFalse((out / "beta.md").exists())
+        self.assertTrue((out / "alpha.md").exists())
+        self.assertTrue((out / "notes.md").exists(), "must not touch unowned files")
+
     def test_unknown_enabled_name_is_rejected(self) -> None:
         path = self._write_manifest('[agents]\n"ghost" = true\n')
         with self.assertRaisesRegex(ValueError, "unknown names: \\['ghost'\\]"):

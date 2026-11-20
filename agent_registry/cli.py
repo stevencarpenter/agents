@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, field
 import json
+import os
 from pathlib import Path
 import tomllib
 
@@ -45,6 +46,19 @@ def _deep_merge(base: dict, overlay: dict) -> dict:
         else:
             merged[key] = value
     return merged
+
+
+def _default_machine_config() -> Path | None:
+    """The overlay linked for this host, for installs that do not name one."""
+    identity = os.environ.get("DFM_IDENTITY", "")
+    if not identity:
+        machine_dir = Path.home() / ".config" / "skills" / "machine"
+        overlays = sorted(machine_dir.glob("*.json")) if machine_dir.is_dir() else []
+        identity = overlays[0].stem if len(overlays) == 1 else ""
+    if not identity:
+        return None
+    path = Path.home() / ".config" / "agents" / "machine" / f"{identity}.json"
+    return path if path.is_file() else None
 
 
 def load_sync_selection(path: Path, machine_config: Path | None = None) -> SyncSelection:
@@ -153,6 +167,9 @@ def main() -> int:
     # repo's manifest to fixtures or another tree.
     manifest = args.sync_manifest or str(Path(args.agents_dir).parent / _SYNC_MANIFEST)
     machine_config = Path(args.machine_config).expanduser() if args.machine_config else None
+    # `just install` runs on this host, so apply the overlay dfm linked for it.
+    if machine_config is None and args.command == "install":
+        machine_config = _default_machine_config()
     selection = load_sync_selection(Path(manifest), machine_config)
 
     # Validate every target before any write, so `install --target all` cannot half-install.
@@ -183,6 +200,11 @@ def main() -> int:
         target = targets[0]
         emit, extension = emitters[target]
         out_dir = Path(args.out_dir)
+        # A directory written before the ownership manifest existed still holds
+        # files for names this selection now disables. Remove those by name.
+        if not (out_dir / _MANIFEST).exists():
+            for name in selection.disabled_agents:
+                (out_dir / f"{name}{extension}").unlink(missing_ok=True)
         # _sync_dir prunes files a previous emit wrote for agents that are now disabled.
         _sync_dir(out_dir, {f"{a.name}{extension}": emit(a) for a in agents})
         print(f"emitted {len(agents)} {target} agents to {out_dir}")
