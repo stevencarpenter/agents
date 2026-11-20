@@ -123,12 +123,26 @@ is deleted, so disabled definitions remain available for later benchmarks.
   rubric is an error, so disable the agent too. Standalone skills sourced from this repo (for
   example `blind-review`) are deployed by `mcp_sync`; toggle those with `false`
   in `~/.config/skills/machine/<identity>.json`.
-- Hooks are contributed by dfm modules in `~/.dotfiles`. Toggle them in the
-  module TOML, not in this manifest.
+- `[hooks]` toggles the routing hook fed by `tools/routing`. `"session-routing"
+  = false` in the manifest or in the machine overlay stops
+  `~/.claude/hooks/emit-routing-context.sh` from printing its cached block. The
+  hook is registered by a dfm module in `~/.dotfiles`; removing it there is a
+  separate change.
 
 `dfm sync` runs the installer from the checkout at `~/projects/agents`, not from
 this working copy. Commit and push a manifest change, then run `dfm sync` to
 apply it. `just install` uses the checkout you are in.
+
+Per-machine overrides live in `~/.config/agents/machine/<identity>.json`, linked by
+dfm for each identity. Its contents are deep-merged into the manifest, so a work
+machine can disable entries the personal machine keeps, without editing the shared
+manifest:
+
+```json
+{"agents": {"rust-idiom-reviewer": false}, "skills": {"rust-guidelines": false}}
+```
+
+External bundles link their own overlay at the same path.
 
 ## Layout
 

@@ -50,6 +50,10 @@ because it has caught real staleness.
   `~/.config/skills/machine/<identity>.json`. The identity comes from
   `DFM_IDENTITY` when set (the same seam the dotfiles sync scripts use),
   else from the single overlay the identity module links there.
+- The agent opt-out overlay is `AGENTS_MACHINE_CONFIG` when the installer
+  passes it (it resolves the identity from its own checkout, which is the
+  only reliable way on an external bundle), else
+  `~/.config/agents/machine/<identity>.json` for the identity above.
 
 ## Known limitations (not solved here)
 

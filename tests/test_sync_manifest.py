@@ -1,8 +1,15 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from agent_registry.cli import SyncSelection, _load_agents, _sync_dir, load_sync_selection
+from agent_registry.cli import (
+    SyncSelection,
+    _load_agents,
+    _sync_dir,
+    load_sync_selection,
+    main,
+)
 
 
 def _agent(name: str, skills: str = "") -> str:
@@ -111,6 +118,56 @@ class SyncManifestTests(unittest.TestCase):
                 str(self.root / "skills"),
                 load_sync_selection(path),
             )
+
+    def test_machine_config_overrides_manifest(self) -> None:
+        path = self._write_manifest('[agents]\n"alpha" = true\n"beta" = true\n')
+        overlay = self.root / "overlay.json"
+        overlay.write_text('{"agents": {"beta": false}}', encoding="utf-8")
+        selection = load_sync_selection(path, overlay)
+        self.assertEqual(selection.disabled_agents, frozenset({"beta"}))
+
+    def test_machine_config_unknown_name_is_rejected(self) -> None:
+        path = self._write_manifest('[agents]\n"alpha" = true\n')
+        overlay = self.root / "overlay.json"
+        overlay.write_text('{"agents": {"ghost": false}}', encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "unknown names: \\['ghost'\\]"):
+            _load_agents(
+                str(self.root / "agents"),
+                str(self.root / "skills"),
+                load_sync_selection(path, overlay),
+            )
+
+    def test_missing_machine_config_is_an_error(self) -> None:
+        path = self._write_manifest('[agents]\n"alpha" = true\n')
+        with self.assertRaisesRegex(ValueError, "machine config not found"):
+            load_sync_selection(path, self.root / "absent.json")
+
+    def test_install_applies_machine_config(self) -> None:
+        overlay = self.root / "overlay.json"
+        overlay.write_text('{"agents": {"beta": false}}', encoding="utf-8")
+        install_home = self.root / "home"
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "agent-registry",
+                    "install",
+                    "--agents-dir",
+                    str(self.root / "agents"),
+                    "--skills-dir",
+                    str(self.root / "skills"),
+                    "--machine-config",
+                    str(overlay),
+                    "--target",
+                    "claude",
+                ],
+            ),
+            patch.object(Path, "home", return_value=install_home),
+        ):
+            main()
+        installed = install_home / ".claude" / "agents"
+        self.assertTrue((installed / "alpha.md").exists())
+        self.assertFalse((installed / "beta.md").exists())
 
     def test_unknown_enabled_name_is_rejected(self) -> None:
         path = self._write_manifest('[agents]\n"ghost" = true\n')

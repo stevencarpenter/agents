@@ -83,6 +83,39 @@ class RoutingContextTests(unittest.TestCase):
             self.assertNotIn("STALE", output)
             self.assertNotIn("MCP servers", output)
 
+    def test_disabled_agents_apply_manifest_and_machine_overlay(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            for name in ("alpha", "beta"):
+                agent = repo / "agents" / name / "agent.md"
+                agent.parent.mkdir(parents=True)
+                agent.write_text(
+                    f"---\nname: {name}\ndescription: Use when testing {name}.\n---\n\nBody.\n",
+                    encoding="utf-8",
+                )
+            (repo / "sync-manifest.toml").write_text(
+                '[agents]\n"alpha" = true\n"beta" = true\n', encoding="utf-8"
+            )
+            overlay = repo / "overlay.json"
+            overlay.write_text('{"agents": {"beta": false}}', encoding="utf-8")
+            with (
+                mock.patch.object(gc, "AGENTS_REPO", repo),
+                mock.patch.dict("os.environ", {"AGENTS_MACHINE_CONFIG": str(overlay)}),
+            ):
+                self.assertEqual(gc.load_disabled_agents(), {"beta"})
+                self.assertNotIn("beta", gc.load_canonical_agents())
+
+    def test_disabled_agents_are_best_effort_on_a_bad_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "sync-manifest.toml").write_text("not = [", encoding="utf-8")
+            with (
+                mock.patch.object(gc, "AGENTS_REPO", repo),
+                mock.patch.object(gc, "current_identity", return_value=None),
+                mock.patch.dict("os.environ", {}, clear=True),
+            ):
+                self.assertEqual(gc.load_disabled_agents(), set())
+
     def test_live_mcp_servers_reads_claude_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             claude_json = Path(tmp) / "claude.json"

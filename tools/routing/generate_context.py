@@ -8,10 +8,12 @@ import json
 import os
 import re
 import sys
-import tomllib
 from pathlib import Path
 
 AGENTS_REPO = Path(__file__).resolve().parents[2]
+# This script runs from tools/routing, so put the checkout on the path to read
+# the sync manifest through the same loader the installer uses.
+sys.path.insert(0, str(AGENTS_REPO))
 HOME = Path(os.environ.get("HOME_OVERRIDE", str(Path.home())))
 INSTALLED_AGENTS_DIR = Path(os.environ.get("CLAUDE_AGENTS_DIR", str(HOME / ".claude" / "agents")))
 INSTALLED_SKILLS_DIR = Path(os.environ.get("CLAUDE_SKILLS_DIR", str(HOME / ".claude" / "skills")))
@@ -48,14 +50,30 @@ def parse_frontmatter(text: str) -> dict[str, str]:
     return fields
 
 
+def _machine_config_path() -> Path | None:
+    """This host's overlay: the installer's pick first, then its identity."""
+    override = os.environ.get("AGENTS_MACHINE_CONFIG")
+    if override:
+        path = Path(override).expanduser()
+        return path if path.is_file() else None
+    identity = current_identity()
+    if not identity:
+        return None
+    path = HOME / ".config" / "agents" / "machine" / f"{identity}.json"
+    return path if path.is_file() else None
+
+
 def load_disabled_agents() -> set[str]:
-    """Agents the sync manifest opts out of; sync skips them on purpose."""
-    path = AGENTS_REPO / "sync-manifest.toml"
-    if not path.is_file():
+    """Agents the sync manifest and this machine's overlay opt out of."""
+    from agent_registry.cli import load_sync_selection
+
+    try:
+        selection = load_sync_selection(
+            AGENTS_REPO / "sync-manifest.toml", _machine_config_path()
+        )
+    except (ValueError, OSError):
         return set()
-    with open(path, "rb") as handle:
-        table = tomllib.load(handle).get("agents", {})
-    return {name for name, enabled in table.items() if enabled is False}
+    return set(selection.disabled_agents)
 
 
 def load_canonical_agents() -> dict[str, dict]:

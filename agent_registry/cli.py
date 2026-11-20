@@ -36,14 +36,39 @@ class SyncSelection:
     listed_skills: frozenset[str] = field(default=frozenset(), compare=False)
 
 
-def load_sync_selection(path: Path) -> SyncSelection:
-    """Read the opt-out lists. A missing manifest selects everything."""
+def _deep_merge(base: dict, overlay: dict) -> dict:
+    """Merge overlay into base, with overlay values winning per key."""
+    merged = dict(base)
+    for key, value in overlay.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def load_sync_selection(path: Path, machine_config: Path | None = None) -> SyncSelection:
+    """Read the opt-out lists. A missing manifest selects everything.
+
+    When machine_config is given, its JSON contents are deep-merged into the
+    manifest first, so a per-machine overlay can flip entries without editing
+    the shared manifest.
+    """
     if not path.is_file():
-        return SyncSelection()
-    with open(path, "rb") as handle:
-        data = tomllib.load(handle)
+        data: dict = {}
+    else:
+        with open(path, "rb") as handle:
+            data = tomllib.load(handle)
     if data.get("schema", 1) != 1:
         raise ValueError(f"unsupported sync manifest schema: {data.get('schema')}")
+    if machine_config is not None:
+        if not machine_config.is_file():
+            raise ValueError(f"machine config not found: {machine_config}")
+        with open(machine_config, encoding="utf-8") as handle:
+            overlay = json.load(handle)
+        if not isinstance(overlay, dict):
+            raise ValueError(f"machine config must be a JSON object: {machine_config}")
+        data = _deep_merge(data, overlay)
 
     def names(section: str) -> tuple[frozenset[str], frozenset[str]]:
         entry = data.get(section, {})
@@ -107,6 +132,7 @@ def main() -> int:
     source_parser.add_argument("--agents-dir", default="agents")
     source_parser.add_argument("--skills-dir", default="skills")
     source_parser.add_argument("--sync-manifest", default=None)
+    source_parser.add_argument("--machine-config", default=None)
     emit_targets = ("claude", "codex", "opencode", "copilot", "cursor")
 
     subparsers.add_parser("validate", parents=[source_parser])
@@ -126,7 +152,8 @@ def main() -> int:
     # A custom agents dir implies its own checkout root; do not apply this
     # repo's manifest to fixtures or another tree.
     manifest = args.sync_manifest or str(Path(args.agents_dir).parent / _SYNC_MANIFEST)
-    selection = load_sync_selection(Path(manifest))
+    machine_config = Path(args.machine_config).expanduser() if args.machine_config else None
+    selection = load_sync_selection(Path(manifest), machine_config)
 
     # Validate every target before any write, so `install --target all` cannot half-install.
     if args.command != "validate":
