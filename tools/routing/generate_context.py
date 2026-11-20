@@ -11,6 +11,11 @@ import sys
 from pathlib import Path
 
 AGENTS_REPO = Path(__file__).resolve().parents[2]
+# This script runs from tools/routing, so put the checkout on the path to read
+# the sync manifest through the same loader the installer uses.
+sys.path.insert(0, str(AGENTS_REPO))
+from agent_registry.cli import SyncSelection, load_sync_selection
+
 HOME = Path(os.environ.get("HOME_OVERRIDE", str(Path.home())))
 INSTALLED_AGENTS_DIR = Path(os.environ.get("CLAUDE_AGENTS_DIR", str(HOME / ".claude" / "agents")))
 INSTALLED_SKILLS_DIR = Path(os.environ.get("CLAUDE_SKILLS_DIR", str(HOME / ".claude" / "skills")))
@@ -29,7 +34,7 @@ SKIP_SKILL_FAMILIES = {
     "spark-pyspark-guidelines",
     "spark-scala-guidelines",
     "data-engineering-guidelines",
-    # unreal-* agents also inline cpp-guidelines; overlay rule 8 covers that split.
+    # The routing overlay covers the C++ and Unreal split.
     "cpp-guidelines",
 }
 
@@ -47,7 +52,30 @@ def parse_frontmatter(text: str) -> dict[str, str]:
     return fields
 
 
-def load_canonical_agents() -> dict[str, dict]:
+def _machine_config_path() -> Path | None:
+    """This host's overlay: the installer's pick first, then its identity."""
+    override = os.environ.get("AGENTS_MACHINE_CONFIG")
+    if override:
+        path = Path(override).expanduser()
+        return path if path.is_file() else None
+    identity = current_identity()
+    if not identity:
+        return None
+    path = HOME / ".config" / "agents" / "machine" / f"{identity}.json"
+    return path if path.is_file() else None
+
+
+def load_routing_selection() -> SyncSelection:
+    """Read the registry selection for this machine, if available."""
+    try:
+        return load_sync_selection(
+            AGENTS_REPO / "sync-manifest.toml", _machine_config_path()
+        )
+    except (ValueError, OSError):
+        return SyncSelection()
+
+
+def load_canonical_agents(disabled: frozenset[str]) -> dict[str, dict]:
     agents: dict[str, dict] = {}
     agents_dir = AGENTS_REPO / "agents"
     if not agents_dir.is_dir():
@@ -58,6 +86,8 @@ def load_canonical_agents() -> dict[str, dict]:
             continue
         fm = parse_frontmatter(f.read_text(encoding="utf-8"))
         name = fm.get("name", d.name)
+        if name in disabled:
+            continue
         agents[name] = {
             "skills": [s.strip() for s in fm.get("skills", "").split(",") if s.strip()],
         }
@@ -156,7 +186,10 @@ def skill_sharers(agents: dict[str, dict]) -> dict[str, list[str]]:
 
 
 def render() -> str:
-    canonical_agents = load_canonical_agents()
+    selection = load_routing_selection()
+    if "session-routing" in selection.disabled_hooks:
+        return ""
+    canonical_agents = load_canonical_agents(selection.disabled_agents)
     installed_agent_names = load_installed_agent_names()
     installed_skill_names = load_installed_skill_names()
     machine = current_identity()
@@ -169,8 +202,18 @@ def render() -> str:
     lines.append("")
 
     if OVERLAY_MD.exists():
-        lines.append(OVERLAY_MD.read_text(encoding="utf-8").strip())
-        lines.append("")
+        rules = []
+        for rule in OVERLAY_MD.read_text(encoding="utf-8").splitlines():
+            if not rule.startswith("- "):
+                continue
+            references = set(re.findall(r"`([^`]+)`", rule))
+            families = [ref[:-1] for ref in references if ref.endswith("-*")]
+            if references & selection.disabled_agents:
+                continue
+            if all(any(name.startswith(prefix) for name in canonical_agents) for prefix in families):
+                rules.append(rule)
+        if rules:
+            lines.extend(["### Disambiguation rules", "", *rules, ""])
 
     shared = skill_sharers(canonical_agents)
     if shared:

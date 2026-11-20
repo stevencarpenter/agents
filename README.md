@@ -106,6 +106,43 @@ or:
 just check
 ```
 
+## Sync toggles
+
+`sync-manifest.toml` lists every artifact this repo installs as a name mapped to
+`true` or `false`, in the same shape as dfm's `enabledPlugins`. Set a name to
+`false` to stop applying it. Set it back to `true` to turn it on. No source file
+is deleted, so disabled definitions remain available for later benchmarks.
+
+- `[agents]` names match `agents/<name>/agent.md`. Agents set to `false` are not
+  emitted or installed. `just validate` still checks every source file, and an
+  unknown name in the manifest, enabled or disabled, is an error. Disabled
+  agents are pruned from default build output and from files recorded as
+  registry-owned in custom output directories. The routing context omits
+  disabled agents from its recommendations and stale-agent check.
+- `[skills]` names match `skills/<name>/SKILL.md`. Rubrics set to `false` are not
+  inlined into emitted agents. An enabled agent that references a disabled
+  rubric is an error, so disable the agent too. Standalone skills sourced from this repo (for
+  example `blind-review`) are deployed by `mcp_sync`; toggle those with `false`
+  in `~/.config/skills/machine/<identity>.json`.
+- `[hooks]` toggles the routing hook fed by `tools/routing`. On the next
+  `dfm sync`, the effective `"session-routing" = false` setting clears the
+  cached block emitted by `~/.claude/hooks/emit-routing-context.sh`.
+
+`dfm sync` runs the installer from the checkout at `~/projects/agents`, not from
+this working copy. Commit and push a manifest change, then run `dfm sync` to
+apply it. `just install` uses the checkout you are in.
+
+Per-machine overrides live in `~/.config/agents/machine/<identity>.json`, linked by
+dfm for each identity. Its contents are deep-merged into the manifest, so a work
+machine can disable entries the personal machine keeps, without editing the shared
+manifest:
+
+```json
+{"agents": {"rust-idiom-reviewer": false}, "skills": {"rust-guidelines": false}}
+```
+
+External bundles link their own overlay at the same path.
+
 ## Layout
 
 ```text

@@ -83,6 +83,61 @@ class RoutingContextTests(unittest.TestCase):
             self.assertNotIn("STALE", output)
             self.assertNotIn("MCP servers", output)
 
+    def test_disabled_agents_apply_manifest_and_machine_overlay(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            for name in ("alpha", "beta"):
+                agent = repo / "agents" / name / "agent.md"
+                agent.parent.mkdir(parents=True)
+                agent.write_text(
+                    f"---\nname: {name}\ndescription: Use when testing {name}.\n---\n\nBody.\n",
+                    encoding="utf-8",
+                )
+            (repo / "sync-manifest.toml").write_text(
+                '[agents]\n"alpha" = true\n"beta" = true\n', encoding="utf-8"
+            )
+            overlay = repo / "overlay.json"
+            overlay.write_text('{"agents": {"beta": false}}', encoding="utf-8")
+            rules = repo / "routing-overlay.md"
+            rules.write_text("- Route to `alpha`.\n- Route to `beta`.\n- Route to the `spark-*` family.\n")
+            with (
+                mock.patch.multiple(gc, AGENTS_REPO=repo, OVERLAY_MD=rules),
+                mock.patch.dict("os.environ", {"AGENTS_MACHINE_CONFIG": str(overlay)}),
+            ):
+                output = gc.render()
+            self.assertIn("- Route to `alpha`.", output)
+            self.assertNotIn("- Route to `beta`.", output)
+            self.assertNotIn("`spark-*`", output)
+
+    def test_machine_hook_value_overrides_shared_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            manifest = repo / "sync-manifest.toml"
+            overlay = repo / "overlay.json"
+            with (
+                mock.patch.object(gc, "AGENTS_REPO", repo),
+                mock.patch.dict("os.environ", {"AGENTS_MACHINE_CONFIG": str(overlay)}),
+            ):
+                for shared, machine, enabled in (
+                    (False, None, False), (False, True, True), (True, False, False)
+                ):
+                    with self.subTest(shared=shared, machine=machine):
+                        manifest.write_text(f'[hooks]\n"session-routing" = {json.dumps(shared)}\n')
+                        overrides = {} if machine is None else {"session-routing": machine}
+                        overlay.write_text(json.dumps({"hooks": overrides}))
+                        self.assertEqual(bool(gc.render()), enabled)
+
+    def test_disabled_agents_are_best_effort_on_a_bad_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "sync-manifest.toml").write_text("not = [", encoding="utf-8")
+            with (
+                mock.patch.object(gc, "AGENTS_REPO", repo),
+                mock.patch.object(gc, "current_identity", return_value=None),
+                mock.patch.dict("os.environ", {}, clear=True),
+            ):
+                self.assertEqual(gc.load_routing_selection(), gc.SyncSelection())
+
     def test_live_mcp_servers_reads_claude_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             claude_json = Path(tmp) / "claude.json"

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass, field
 import json
+import os
 from pathlib import Path
+import tomllib
 
 from agent_registry.agents import (
     Agent,
+    agent_skill_refs,
     compose_agent_with_skills,
     validate_agent_tree,
     validate_isolated_read_only,
@@ -19,17 +23,120 @@ from agent_registry.cursor import CURSOR_EXT, emit_cursor_agent
 from agent_registry.opencode import emit_opencode_agent
 
 _MANIFEST = ".installed-by-agent-registry.json"
+_SYNC_MANIFEST = "sync-manifest.toml"
 
 
-def _load_agents(agents_dir: str, skills_dir: str) -> list[Agent]:
+@dataclass(frozen=True)
+class SyncSelection:
+    """Names excluded from installation by the sync manifest."""
+
+    disabled_agents: frozenset[str] = frozenset()
+    disabled_skills: frozenset[str] = frozenset()
+    # Every name the manifest lists, enabled or not, so typos are caught either way.
+    listed_agents: frozenset[str] = field(default=frozenset(), compare=False)
+    listed_skills: frozenset[str] = field(default=frozenset(), compare=False)
+    disabled_hooks: frozenset[str] = frozenset()
+
+
+def _deep_merge(base: dict, overlay: dict) -> dict:
+    """Merge overlay into base, with overlay values winning per key."""
+    merged = dict(base)
+    for key, value in overlay.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _default_machine_config() -> Path | None:
+    """The overlay linked for this host, for installs that do not name one."""
+    identity = os.environ.get("DFM_IDENTITY", "")
+    if not identity:
+        machine_dir = Path.home() / ".config" / "skills" / "machine"
+        overlays = sorted(machine_dir.glob("*.json")) if machine_dir.is_dir() else []
+        identity = overlays[0].stem if len(overlays) == 1 else ""
+    if not identity:
+        return None
+    path = Path.home() / ".config" / "agents" / "machine" / f"{identity}.json"
+    return path if path.is_file() else None
+
+
+def load_sync_selection(path: Path, machine_config: Path | None = None) -> SyncSelection:
+    """Read the opt-out lists. A missing manifest selects everything.
+
+    When machine_config is given, its JSON contents are deep-merged into the
+    manifest first, so a per-machine overlay can flip entries without editing
+    the shared manifest.
+    """
+    if not path.is_file():
+        data: dict = {}
+    else:
+        with open(path, "rb") as handle:
+            data = tomllib.load(handle)
+    if data.get("schema", 1) != 1:
+        raise ValueError(f"unsupported sync manifest schema: {data.get('schema')}")
+    if machine_config is not None:
+        if not machine_config.is_file():
+            raise ValueError(f"machine config not found: {machine_config}")
+        with open(machine_config, encoding="utf-8") as handle:
+            overlay = json.load(handle)
+        if not isinstance(overlay, dict):
+            raise ValueError(f"machine config must be a JSON object: {machine_config}")
+        data = _deep_merge(data, overlay)
+
+    def names(section: str) -> tuple[frozenset[str], frozenset[str]]:
+        entry = data.get(section, {})
+        if not isinstance(entry, dict):
+            raise ValueError(f"[{section}] must be a table")
+        for name, enabled in entry.items():
+            if not isinstance(enabled, bool):
+                raise ValueError(f"[{section}].{name} must be true or false")
+        disabled = frozenset(name for name, enabled in entry.items() if not enabled)
+        return disabled, frozenset(entry)
+
+    agents_off, agents_listed = names("agents")
+    skills_off, skills_listed = names("skills")
+    hooks_off, _ = names("hooks")
+    return SyncSelection(agents_off, skills_off, agents_listed, skills_listed, hooks_off)
+
+
+def _load_agents(
+    agents_dir: str,
+    skills_dir: str,
+    selection: SyncSelection | None = None,
+    *,
+    apply: bool = True,
+) -> list[Agent]:
     """Load and validate agents with their skills inlined.
 
     Raises on an unknown skill or a skill-closure violation, so no command can
-    emit or install an agent that `validate` rejects.
+    emit or install an agent that `validate` rejects. With `apply`, names in the
+    sync manifest are excluded from the returned list and from inlined rubrics.
     """
     agents = validate_agent_tree(Path(agents_dir))
     skills = validate_skill_tree(Path(skills_dir))
     validate_skill_closure(agents, skills)
+    selection = selection or SyncSelection()
+    unknown = (
+        (selection.disabled_agents | selection.listed_agents) - {a.name for a in agents}
+    ) | ((selection.disabled_skills | selection.listed_skills) - {s.name for s in skills})
+    if unknown:
+        raise ValueError(f"sync manifest lists unknown names: {sorted(unknown)}")
+    if apply:
+        if selection.disabled_agents:
+            agents = [a for a in agents if a.name not in selection.disabled_agents]
+        conflicts = sorted(
+            f"{a.name} -> {s}"
+            for a in agents
+            for s in agent_skill_refs(a)
+            if s in selection.disabled_skills
+        )
+        if conflicts:
+            raise ValueError(
+                "enabled agents reference disabled skills; disable the agent "
+                f"or enable the skill: {conflicts}"
+            )
     skills_by_name = {s.name: s for s in skills}
     return [compose_agent_with_skills(a, skills_by_name) for a in agents]
 
@@ -40,13 +147,14 @@ def main() -> int:
     source_parser = argparse.ArgumentParser(add_help=False)
     source_parser.add_argument("--agents-dir", default="agents")
     source_parser.add_argument("--skills-dir", default="skills")
+    source_parser.add_argument("--sync-manifest", default=None)
+    source_parser.add_argument("--machine-config", default=None)
     emit_targets = ("claude", "codex", "opencode", "copilot", "cursor")
 
     subparsers.add_parser("validate", parents=[source_parser])
     for target in emit_targets:
         emit_parser = subparsers.add_parser(f"emit-{target}", parents=[source_parser])
-        out_dir = f"build/{target}" if target == "copilot" else f"build/{target}/agents"
-        emit_parser.add_argument("--out-dir", default=out_dir)
+        emit_parser.add_argument("--out-dir", type=Path)
 
     install_parser = subparsers.add_parser("install", parents=[source_parser])
     install_parser.add_argument(
@@ -56,10 +164,22 @@ def main() -> int:
     )
 
     args = parser.parse_args()
+    # A custom agents dir implies its own checkout root; do not apply this
+    # repo's manifest to fixtures or another tree.
+    manifest = Path(args.agents_dir).parent / _SYNC_MANIFEST
+    if args.sync_manifest is not None:
+        manifest = Path(args.sync_manifest).expanduser()
+        if not manifest.is_file():
+            parser.error(f"sync manifest not found: {manifest}")
+    machine_config = Path(args.machine_config).expanduser() if args.machine_config else None
+    # `just install` runs on this host, so apply the overlay dfm linked for it.
+    if machine_config is None and args.command == "install":
+        machine_config = _default_machine_config()
+    selection = load_sync_selection(manifest, machine_config)
 
     # Validate every target before any write, so `install --target all` cannot half-install.
     if args.command != "validate":
-        agents = _load_agents(args.agents_dir, args.skills_dir)
+        agents = _load_agents(args.agents_dir, args.skills_dir, selection)
         targets = (
             list(emit_targets)
             if args.command == "install" and args.target == "all"
@@ -70,7 +190,7 @@ def main() -> int:
                 validate_isolated_read_only(agent, target)
 
     if args.command == "validate":
-        agents = _load_agents(args.agents_dir, args.skills_dir)
+        agents = _load_agents(args.agents_dir, args.skills_dir, selection, apply=False)
         skills = validate_skill_tree(Path(args.skills_dir))
         print(f"validated {len(agents)} agents and {len(skills)} skills")
         return 0
@@ -84,15 +204,18 @@ def main() -> int:
     if args.command.startswith("emit-") and targets[0] in emitters:
         target = targets[0]
         emit, extension = emitters[target]
-        out_dir = Path(args.out_dir)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        for agent in agents:
-            (out_dir / f"{agent.name}{extension}").write_text(emit(agent), encoding="utf-8")
+        out_dir = args.out_dir or Path("build") / target / "agents"
+        # Only the default scratch directory can contain legacy files we may claim by name.
+        if args.out_dir is None and not (out_dir / _MANIFEST).exists():
+            for name in selection.disabled_agents:
+                (out_dir / f"{name}{extension}").unlink(missing_ok=True)
+        # _sync_dir prunes files a previous emit wrote for agents that are now disabled.
+        _sync_dir(out_dir, {f"{a.name}{extension}": emit(a) for a in agents})
         print(f"emitted {len(agents)} {target} agents to {out_dir}")
         return 0
 
     if args.command == "emit-copilot":
-        out_dir = Path(args.out_dir)
+        out_dir = args.out_dir or Path("build/copilot")
         out_dir.mkdir(parents=True, exist_ok=True)
         content = emit_copilot_instructions(agents)
         (out_dir / "global-agents-instructions.md").write_text(content, encoding="utf-8")
@@ -150,13 +273,17 @@ def _sync_dir(dest: Path, files: dict[str, str]) -> int:
             previously_owned = set(json.loads(manifest_path.read_text(encoding="utf-8")))
         except (ValueError, OSError):
             previously_owned = set()
+    # Only plain filenames are ours; a tampered manifest must not reach outside dest.
+    previously_owned = {
+        name for name in previously_owned if isinstance(name, str) and name not in {"", ".", ".."} and Path(name).name == name
+    }
 
     for name, content in files.items():
         (dest / name).write_text(content, encoding="utf-8")
 
     for stale in previously_owned - set(files):
         target = dest / stale
-        if target.exists():
+        if target.resolve().parent == dest.resolve() and target.exists():
             target.unlink()
 
     manifest_path.write_text(json.dumps(sorted(files), indent=2), encoding="utf-8")
